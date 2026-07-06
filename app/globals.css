@@ -1,26 +1,224 @@
+@font-face {
+  font-family: "Gmarket Sans";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff")
+    format("woff");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gmarket Sans";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff")
+    format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f3f6fc;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --muted: #475569;
+  --border: #d8e0ef;
+  --border-subtle: #e8edf6;
+
+  --brand: #1e40af;
+  --brand-hover: #1e3a8a;
+  --brand-light: #eff6ff;
+  --brand-muted: #bfdbfe;
+  --brand-deep: #172554;
+
+  --accent: #2563eb;
+  --accent-light: #dbeafe;
+
+  --safe: #15803d;
+  --caution: #b45309;
+  --risk: #c2410c;
+  --high-risk: #be123c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-light: var(--brand-light);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --font-sans: "Gmarket Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+  --font-report: "Gmarket Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--brand-light);
+  color: var(--brand-deep);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  .report-readable {
+    --muted: #475569;
+    font-family: var(--font-report);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .report-readable .text-muted {
+    color: #475569;
+  }
+
+  .report-readable .text-foreground {
+    color: #0f172a;
+  }
+
+  .report-readable p,
+  .report-readable li,
+  .report-readable dd,
+  .report-readable td {
+    color: #475569;
+    font-weight: 500;
+  }
+
+  .report-readable h1,
+  .report-readable h2,
+  .report-readable h3,
+  .report-readable h4,
+  .report-readable dt {
+    color: #0f172a;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .report-readable .text-\[10px\] {
+    font-size: 0.8125rem;
+    line-height: 1.4rem;
+  }
+
+  .report-readable .text-\[11px\] {
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+  }
+
+  .report-readable .text-\[12px\] {
+    font-size: 0.9375rem;
+    line-height: 1.6rem;
+  }
+
+  .report-readable .text-\[13px\] {
+    font-size: 1rem;
+    line-height: 1.65rem;
+  }
+
+  .report-readable .text-\[14px\] {
+    font-size: 1.0625rem;
+    line-height: 1.75rem;
+  }
+
+  .report-readable .text-\[15px\] {
+    font-size: 1.125rem;
+    line-height: 1.8rem;
+  }
+
+  .report-hero-card {
+    border-radius: 1.5rem;
+    border: 1px solid var(--border);
+    background: linear-gradient(145deg, #ffffff 0%, #f8fbff 55%, #eff6ff 100%);
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 16px 48px rgba(30, 64, 175, 0.1);
+  }
+
+  .report-summary-card {
+    border-radius: 1.25rem;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface);
+    box-shadow:
+      0 4px 20px rgba(30, 58, 138, 0.06),
+      0 1px 3px rgba(15, 23, 42, 0.04);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  .report-summary-card:hover {
+    border-color: #c7d7f5;
+    box-shadow:
+      0 8px 28px rgba(30, 58, 138, 0.1),
+      0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+
+  .report-evidence-card {
+    border-radius: 1.25rem;
+    border: 1px solid var(--border-subtle);
+    background: #ffffff;
+    box-shadow: 0 4px 20px rgba(30, 58, 138, 0.05);
+  }
+
+  .report-callout-card {
+    border-radius: 1.25rem;
+    border: 1px solid #c7d7f5;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow:
+      0 8px 32px rgba(30, 64, 175, 0.1),
+      0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+
+  .report-callout-card-strong {
+    border-radius: 1.25rem;
+    border: 1px solid #93b4f6;
+    background: linear-gradient(145deg, #ffffff 0%, #eff6ff 55%, #dbeafe 100%);
+    box-shadow:
+      0 12px 40px rgba(30, 64, 175, 0.14),
+      0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+
+  .report-step-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    background: var(--brand);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+  }
+
+  .report-card-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d8e0ef 12%, #d8e0ef 88%, transparent);
+  }
+
+  .report-secondary {
+    opacity: 1;
+  }
+
+  .report-secondary h2,
+  .report-secondary h3 {
+    font-weight: 700;
+  }
 }
