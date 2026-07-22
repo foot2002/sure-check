@@ -42,6 +42,7 @@ export function classifyContext(form: NormalizedForm): FormContext {
     publicSectorDetected: publicSector.publicSectorDetected,
     publicSectorConfidence: publicSector.publicSectorConfidence,
     publicSectorEvidence: publicSector.publicSectorEvidence,
+    publicInstitutionEvidence: publicSector.publicInstitutionEvidence,
     detectedOrganizations: publicSector.detectedOrganizations,
     surveyPurposeTypes: publicSector.surveyPurposeTypes,
   };

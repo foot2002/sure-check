@@ -19,10 +19,27 @@ export type ContextFlag =
   | "complaint_report"
   | "child_possible";
 
-export type SubjectType = "public_sector" | "company" | "unknown";
+export type SubjectType =
+  | "public_sector"
+  | "private_company"
+  | "public_contracted_private"
+  | "nonprofit_or_association"
+  | "education"
+  | "medical"
+  | "unknown"
+  /** @deprecated Prefer private_company */
+  | "company";
 
 export type PublicSectorConfidence = "high" | "medium" | "low" | "none";
 
+export interface PublicInstitutionEvidence {
+  matchedName?: string;
+  matchedType?: string;
+  matchedRegion?: string;
+  matchedBy?: string;
+  evidenceText?: string;
+  evidenceSource?: string;
+}
 export type ObligationKey =
   | "collection_purpose"
   | "collection_items"
@@ -70,6 +87,7 @@ export interface FormContext {
   publicSectorDetected: boolean;
   publicSectorConfidence: PublicSectorConfidence;
   publicSectorEvidence: string[];
+  publicInstitutionEvidence?: PublicInstitutionEvidence;
   detectedOrganizations: string[];
   surveyPurposeTypes: string[];
 }

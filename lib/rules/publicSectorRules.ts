@@ -1,11 +1,18 @@
-import type { PublicSectorConfidence, SubjectType } from "@/lib/types/analyzer";
+import type {
+  PublicInstitutionEvidence,
+  PublicSectorConfidence,
+  SubjectType,
+} from "@/lib/types/analyzer";
 import type { NormalizedForm } from "@/lib/types/scan";
+import { collectAuthorityTextCandidates } from "@/lib/public-sector/collectAuthorityTexts";
+import { matchPublicInstitution } from "@/lib/public-sector/publicInstitutionMatcher";
 
 export interface PublicSectorDetectionResult {
   subjectType: SubjectType;
   publicSectorDetected: boolean;
   publicSectorConfidence: PublicSectorConfidence;
   publicSectorEvidence: string[];
+  publicInstitutionEvidence?: PublicInstitutionEvidence;
   detectedOrganizations: string[];
   surveyPurposeTypes: string[];
   possibleOnly: boolean;
@@ -393,13 +400,65 @@ export function detectPublicSector(form: NormalizedForm): PublicSectorDetectionR
   const organizations = extractOrganizationNames(text);
   const surveyPurposeTypes = detectSurveyPurposeTypes(fullText);
 
+  // 1) Public-institution list match (exact / alias / keyword fallback)
+  const listMatch = matchPublicInstitution(collectAuthorityTextCandidates(form));
+  if (
+    listMatch.isPublicSector &&
+    (listMatch.confidence === "high" || listMatch.confidence === "medium")
+  ) {
+    const institutionEvidence: PublicInstitutionEvidence = {
+      matchedName: listMatch.matchedName,
+      matchedType: listMatch.matchedType,
+      matchedRegion: listMatch.matchedRegion,
+      matchedBy: listMatch.matchedBy,
+      evidenceText: listMatch.evidenceText,
+      evidenceSource: listMatch.evidenceSource,
+    };
+    const matchLabel =
+      listMatch.matchedBy === "exact_list"
+        ? "공공기관 리스트"
+        : listMatch.matchedBy === "alias"
+          ? "기관명 별칭"
+          : "기관명 키워드";
+    evidence.push(
+      `공공기관 리스트 매칭(${matchLabel}): ${listMatch.matchedName ?? "공공기관"}`,
+    );
+    if (listMatch.evidenceText) {
+      evidence.push(`근거 텍스트: ${listMatch.evidenceText.slice(0, 120)}`);
+    }
+
+    let subjectType: SubjectType = "public_sector";
+    if (/병원|의료|클리닉/.test(text)) subjectType = "medical";
+    else if (/학교|교육청|교육지원청/.test(text)) subjectType = "education";
+    else if (/위탁|용역|수행기관|대행/.test(text) && /민간|주식회사|㈜/.test(text)) {
+      subjectType = "public_contracted_private";
+    }
+
+    return {
+      subjectType,
+      publicSectorDetected: true,
+      publicSectorConfidence: listMatch.confidence,
+      publicSectorEvidence: [...new Set(evidence)],
+      publicInstitutionEvidence: institutionEvidence,
+      detectedOrganizations: [
+        ...new Set(
+          [listMatch.matchedName, ...organizations].filter(
+            (value): value is string => Boolean(value && value.length >= 2),
+          ),
+        ),
+      ],
+      surveyPurposeTypes,
+      possibleOnly: false,
+    };
+  }
+
   if (hasPrivateFoundationContext(text) && !/(재)/.test(text)) {
     const hasExplicitPublic = STRONG_PUBLIC_KEYWORDS.some((keyword) =>
       text.includes(keyword),
     );
     if (!hasExplicitPublic && organizations.every((org) => /민간/.test(org))) {
       return {
-        subjectType: "company",
+        subjectType: "private_company",
         publicSectorDetected: false,
         publicSectorConfidence: "none",
         publicSectorEvidence: ["민간재단 맥락으로 공공부문 확정 보류"],
@@ -459,13 +518,20 @@ export function detectPublicSector(form: NormalizedForm): PublicSectorDetectionR
 
   let subjectType: SubjectType = "unknown";
   if (publicSectorDetected) {
-    subjectType = "public_sector";
-  } else if (form.operatorType?.includes("기업") || form.operatorType?.includes("회사")) {
-    subjectType = "company";
+    if (/병원|의료|클리닉/.test(text)) subjectType = "medical";
+    else if (/학교|교육청|교육지원청/.test(text)) subjectType = "education";
+    else subjectType = "public_sector";
+  } else if (
+    form.operatorType?.includes("기업") ||
+    form.operatorType?.includes("회사")
+  ) {
+    subjectType = "private_company";
+  } else if (/협회|사단법인|비영리/.test(text)) {
+    subjectType = "nonprofit_or_association";
   } else if (possibleOnly) {
     subjectType = "unknown";
   } else if (!publicSectorDetected && organizations.length === 0 && !keywordHit) {
-    subjectType = "company";
+    subjectType = "private_company";
   }
 
   return {
@@ -473,6 +539,17 @@ export function detectPublicSector(form: NormalizedForm): PublicSectorDetectionR
     publicSectorDetected,
     publicSectorConfidence: confidence,
     publicSectorEvidence: uniqueEvidence,
+    publicInstitutionEvidence:
+      listMatch.matchedBy && listMatch.matchedBy !== "none"
+        ? {
+            matchedName: listMatch.matchedName,
+            matchedType: listMatch.matchedType,
+            matchedRegion: listMatch.matchedRegion,
+            matchedBy: listMatch.matchedBy,
+            evidenceText: listMatch.evidenceText,
+            evidenceSource: listMatch.evidenceSource,
+          }
+        : undefined,
     detectedOrganizations: organizations.filter((org) => org.length >= 2),
     surveyPurposeTypes,
     possibleOnly,

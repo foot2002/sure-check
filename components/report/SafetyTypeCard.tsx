@@ -63,6 +63,16 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
           >
             설문 주체: {safetyType.subjectLabel}
           </span>
+          {safetyType.subjectEvidenceLabel ? (
+            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
+              {safetyType.subjectEvidenceLabel}
+            </span>
+          ) : null}
+          {safetyType.subjectMatchMethodLabel ? (
+            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
+              {safetyType.subjectMatchMethodLabel}
+            </span>
+          ) : null}
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
             <Database className="h-3.5 w-3.5 text-muted" aria-hidden />
             수집정보: {safetyType.dataBadge}

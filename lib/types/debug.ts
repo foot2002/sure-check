@@ -42,7 +42,16 @@ export interface ScanDebugInfo {
   contextLabels: string[];
   contextSummary?: string;
   publicSectorDetected: boolean;
+  publicSectorConfidence?: "high" | "medium" | "low" | "none";
   publicSectorEvidence: string[];
+  publicInstitutionEvidence?: {
+    matchedName?: string;
+    matchedType?: string;
+    matchedRegion?: string;
+    matchedBy?: string;
+    evidenceText?: string;
+    evidenceSource?: string;
+  };
   dataRiskLevel?: AnalysisResult["dataRisk"]["level"];
   dataRiskLabel?: string;
   toolRiskLevel?: AnalysisResult["toolRisk"]["level"];

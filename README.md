@@ -140,6 +140,21 @@ SURE Check는 `quasi_identifier`를 “성별·연령·거주지역 등” 같�
 
 공공부문 탐지는 설문 운영 주체를 판단하는 기능입니다. 응답자가 선택하는 거주지 선택지는 공공부문 근거로 사용하지 않습니다.
 
+## 공공기관 리스트 기반 설문주체 판별
+
+공공기관 판별은 엑셀 원본이 아니라 변환된 JSON 인덱스를 사용합니다.
+
+- 인덱스 파일: `data/public-institutions.json`
+- 생성 스크립트: `npm run build:public-institutions` (`scripts/build-public-institution-index.ts`)
+- 엑셀 원본은 `data/source/public-institutions.xlsx`에만 두고, `data/source/`와 `*.xlsx`는 `.gitignore`로 공개 저장소에 올리지 않습니다.
+- JSON에는 기관명·기관유형·지역 등 판별에 필요한 최소 정보만 포함합니다. 담당자명·전화번호·이메일은 포함하지 않습니다.
+- 앱 런타임에서는 xlsx를 직접 읽지 않습니다.
+- 매칭 우선순위: **리스트 exact match → alias → 기존 공공 키워드/맥락 → keyword fallback**
+- 리스트 exact match가 기존 키워드 판단보다 우선합니다.
+- 거주지역 선택지의 지자체명만으로 공공기관으로 판단하지 않습니다.
+- 공공기관 + 개인정보/민감정보/고위험정보 + 외부 설문도구(+ CSAP 미확인) 조건에서는 CSAP 강력 권고를 표시합니다.
+- D2 준식별정보만 있는 공공 설문에서는 CSAP 강력 권고를 과도하게 표시하지 않고, 보유·파기·담당부서·외부도구 안내 중심의 약한 안내만 표시합니다.
+
 ### 공공부문 근거로 사용하는 텍스트
 
 - 설문 제목

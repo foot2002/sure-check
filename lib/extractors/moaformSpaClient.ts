@@ -94,7 +94,6 @@ function extractGatewayToken(html: string): string | null {
  */
 export async function fetchMoaformSpaForm(
   formId: string,
-  refererUrl: string,
 ): Promise<MoaformSpaFetchResult> {
   const form2Url = `${ANSWER_ORIGIN}/answers/${formId}/form2`;
   const safety = await safeUrlCheck(form2Url);

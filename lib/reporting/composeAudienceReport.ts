@@ -936,7 +936,9 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
   const isReportRecommended = respondentDecision === "REPORT_OR_INQUIRE";
 
   const publicSectorCsapWarning =
-    privacyType === "direct_identifier" || privacyType === "sensitive_or_high_risk"
+    privacyType === "direct_identifier" ||
+    privacyType === "sensitive_or_high_risk" ||
+    privacyType === "quasi_only"
       ? buildPublicSectorCsapAssessment(report, collectedDataSummary)
       : undefined;
   const privateSectorSecurityCertWarning =

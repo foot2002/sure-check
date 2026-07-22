@@ -370,12 +370,26 @@ export function buildSubjectToolEvidence(
   rows.push({
     item: "설문주체",
     result: subjectLabel(subject),
-    evidence:
-      subject === "unknown"
-        ? "운영기관명 또는 담당자 정보 미확인"
-        : report.debug?.publicSectorEvidence?.[0] ||
-          report.debug?.contextSummary ||
-          "설문 제목·맥락 신호로 판단",
+    evidence: (() => {
+      const institution = report.debug?.publicInstitutionEvidence;
+      if (institution?.matchedName) {
+        const method =
+          institution.matchedBy === "exact_list"
+            ? "공공기관 리스트"
+            : institution.matchedBy === "alias"
+              ? "기관명 별칭"
+              : institution.matchedBy === "keyword_fallback"
+                ? "기관명 키워드"
+                : "공공 맥락";
+        return `공공기관 리스트에서 '${institution.matchedName}' 매칭 (${method})`;
+      }
+      if (subject === "unknown") return "운영기관명 또는 담당자 정보 미확인";
+      return (
+        report.debug?.publicSectorEvidence?.[0] ||
+        report.debug?.contextSummary ||
+        "설문 제목·맥락 신호로 판단"
+      );
+    })(),
   });
 
   rows.push({
@@ -391,14 +405,21 @@ export function buildSubjectToolEvidence(
             : "지원 플랫폼 미확인 또는 일반 HTML",
   });
 
-  rows.push({
-    item: "공공부문 여부",
-    result: publicLike ? "해당" : "해당 없음",
-    evidence: publicLike
-      ? "공공기관·공공시설·공공위탁 맥락 확인"
-      : "공공부문 신호가 확인되지 않음",
-  });
-
+  if (report.debug?.publicInstitutionEvidence?.matchedName) {
+    rows.push({
+      item: "공공부문 여부",
+      result: "공공기관",
+      evidence: `매칭 근거: ${report.debug.publicInstitutionEvidence.evidenceText ?? report.debug.publicInstitutionEvidence.matchedName}`,
+    });
+  } else {
+    rows.push({
+      item: "공공부문 여부",
+      result: publicLike ? "해당" : "해당 없음",
+      evidence: publicLike
+        ? "공공기관·공공시설·공공위탁 맥락 확인"
+        : "공공부문 신호가 확인되지 않음",
+    });
+  }
   rows.push({
     item: "외부 SaaS 여부",
     result: external ? "해당" : "해당 없음",

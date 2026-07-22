@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint app components lib --max-warnings 0",
+    "build:public-institutions": "tsx scripts/build-public-institution-index.ts",
+    "test:public-institutions": "tsx scripts/test-public-institution-matcher.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -23,6 +25,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "xlsx": "^0.18.5"
   }
 }

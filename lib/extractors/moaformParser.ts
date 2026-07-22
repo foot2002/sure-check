@@ -219,6 +219,12 @@ function extractHtmlMeta(html: string): MoaformPageMetadata {
     .map((candidate) => candidate.replace(/\.$/, ""))
     .filter((candidate) => !/^20\d{2}\s/.test(candidate))
     .filter((candidate) => !/신청서|참여\]|MD 상담/.test(candidate))
+    .filter(
+      (candidate) =>
+        !/모아폼으로 제작|전문가들이 선택한 설문|www\.moaform|이 양식은/i.test(
+          candidate,
+        ),
+    )
     .sort((a, b) => {
       const score = (value: string) => {
         let points = 0;
@@ -1050,7 +1056,7 @@ export async function parseMoaformDocument(
 
   let answerJsonSoftFail = false;
   if (formId) {
-    const spa = await fetchMoaformSpaForm(formId, finalUrl);
+    const spa = await fetchMoaformSpaForm(formId);
     if (spa.ok && spa.data) {
       trace.push(
         `SPA session success/fail: success (pages=${spa.pageCount ?? 0}, blocks=${spa.blockCount ?? 0})`,

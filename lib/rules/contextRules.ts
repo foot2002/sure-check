@@ -98,7 +98,7 @@ export function detectContextFlags(form: NormalizedForm): ContextFlag[] {
     flags.add("general_company");
   }
 
-  if (flags.size === 0 && publicSector.subjectType === "company") {
+  if (flags.size === 0 && (publicSector.subjectType === "company" || publicSector.subjectType === "private_company")) {
     flags.add("general_company");
   }
 

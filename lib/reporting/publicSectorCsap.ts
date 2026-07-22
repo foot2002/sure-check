@@ -131,7 +131,7 @@ function buildMildAssessment(profile: ToolCsapProfile): PublicSectorCsapAssessme
     showStrongWarning: false,
     showMildNotice: true,
     title: "공공부문 설문에서 외부 설문도구를 사용하고 있습니다",
-    body: "공공부문 설문에서 외부 설문도구를 사용하고 있습니다. 보유기간, 파기 기준, 담당부서, 외부 도구 이용 안내를 보완하는 것이 좋습니다.",
+    body: "공공부문 설문에서 외부 설문도구를 사용하고 있습니다. 보유기간, 파기 기준, 담당부서, 외부도구 이용 안내를 보완하는 것이 좋습니다.",
     strongRecommendation:
       "준식별정보만 수집하더라도 외부 설문도구의 보유·파기, 담당부서, 위탁 또는 이용 안내를 확인하세요.",
     platformNote:
@@ -150,6 +150,12 @@ export function buildPublicSectorCsapAssessment(
   summary: CollectedDataSummary,
 ): PublicSectorCsapAssessment | undefined {
   if (!report.debug?.publicSectorDetected) return undefined;
+
+  const confidence = report.debug.publicSectorConfidence ?? "medium";
+  if (confidence !== "high" && confidence !== "medium") {
+    return undefined;
+  }
+
   if (isCsapCertifiedTool(report.platform, report.form.management)) return undefined;
 
   const profile = getToolCsapProfile(report.platform, report.form.management);

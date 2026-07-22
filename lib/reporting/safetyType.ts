@@ -45,6 +45,10 @@ export interface SafetyTypeProfile {
   tone: SafetyTypeTone;
   subjectType: SurveySubjectType;
   subjectLabel: string;
+  /** e.g. 판단 근거: 서울시 소상공인정책과 */
+  subjectEvidenceLabel?: string;
+  /** e.g. 매칭 방식: 공공기관 리스트 */
+  subjectMatchMethodLabel?: string;
   dataBadge: string;
   toolBadge: string;
   toolJudgmentBadge: string;
@@ -377,6 +381,36 @@ export function buildSafetyTypeProfile(
         }
       : null;
 
+  const institution = report.debug?.publicInstitutionEvidence;
+  const baseSubjectLabel =
+    limitedUnknown?.subjectLabel ?? SURVEY_SUBJECT_LABELS[subjectType];
+  const subjectLabel =
+    report.debug?.publicSectorDetected &&
+    institution?.matchedBy === "keyword_fallback"
+      ? "공공기관 가능성"
+      : baseSubjectLabel;
+  const subjectEvidenceLabel = institution?.matchedName
+    ? institution.evidenceSource && /notice|description|title/i.test(institution.evidenceSource)
+      ? `판단 근거: 설문 안내문에 '${institution.matchedName}' 포함`
+      : `판단 근거: ${institution.matchedName}`
+    : report.debug?.publicSectorEvidence?.[0]
+      ? `판단 근거: ${report.debug.publicSectorEvidence[0]}`
+      : undefined;
+  const subjectMatchMethodLabel = (() => {
+    switch (institution?.matchedBy) {
+      case "exact_list":
+        return "매칭 방식: 공공기관 리스트";
+      case "alias":
+        return "매칭 방식: 기관명 별칭";
+      case "keyword_fallback":
+        return "매칭 방식: 기관명 키워드";
+      default:
+        return report.debug?.publicSectorDetected
+          ? "매칭 방식: 공공 키워드·맥락"
+          : undefined;
+    }
+  })();
+
   return {
     typeId,
     typeName: meta.name,
@@ -386,8 +420,9 @@ export function buildSafetyTypeProfile(
     action: meta.action,
     tone: meta.tone,
     subjectType,
-    subjectLabel:
-      limitedUnknown?.subjectLabel ?? SURVEY_SUBJECT_LABELS[subjectType],
+    subjectLabel,
+    subjectEvidenceLabel,
+    subjectMatchMethodLabel,
     dataBadge: limitedUnknown?.dataBadge ?? dataBadge(privacyType, summary),
     toolBadge: limitedUnknown?.toolBadge ?? platformLabel(report),
     toolJudgmentBadge: buildToolJudgmentBadge(subjectType, privacyType, report),
