@@ -8,27 +8,35 @@ import {
   type KeyReason,
   type PrivacyDataAssessment,
   type PrivacyDataType,
-  type RespondentDecision,
   type RiskDimension,
+  type VerdictType,
   type VisualRiskLevel,
 } from "@/lib/reporting/reportMessages";
 import { getDetectedCategoryDisplayLabel } from "@/lib/extractors/htmlTextUtils";
 import { dedupeFindings } from "@/lib/reporting/dedupeFindings";
 import {
-  decideRespondentDecision,
+  classifyPrivacyDataType,
+  decideVerdict,
 } from "@/lib/reporting/respondentDecision";
-import { buildOperatorActions } from "@/lib/reporting/operatorActions";
 import {
-  buildCsapHeroReason,
+  buildDecisionSummary,
+  buildPrimaryReasons,
+  getScoreEvaluationForVerdict,
+} from "@/lib/reporting/buildDecisionSummary";
+import { buildLegalCheckSummary } from "@/lib/reporting/buildLegalCheckSummary";
+import { buildToolGovernanceSummary } from "@/lib/reporting/buildToolGovernanceSummary";
+import { buildOperatorActions } from "@/lib/reporting/operatorActions";
+import { buildOperatorImprovementReport } from "@/lib/reporting/buildOperatorImprovementReport";
+import { buildSafetyTypeProfile } from "@/lib/reporting/safetyType";
+import {
   buildPublicSectorCsapAssessment,
-  hasEmployeeSensitiveCombination,
   shouldElevateToolRiskForCsap,
 } from "@/lib/reporting/publicSectorCsap";
 import {
-  buildPrivateSectorHeroReason,
   buildPrivateSectorSecurityCertAssessment,
   shouldElevateToolRiskForPrivateCert,
 } from "@/lib/reporting/privateSectorSecurityCert";
+import { VERDICT_COPY } from "@/lib/reporting/verdictTypes";
 
 const DIRECT_CATEGORIES = new Set<DetectedCategory>([
   "name",
@@ -232,74 +240,7 @@ function buildHeroReasons(
   report: ScanReport,
   summary: CollectedDataSummary,
 ): string[] {
-  const missing = missingNoticeLabels(report);
-  const reasons: string[] = [];
-
-  switch (type) {
-    case "minimal":
-      reasons.push("이름·연락처·이메일은 요구하지 않습니다.");
-      if (summary.generalOpinions.length > 0) {
-        reasons.push(
-          `${formatKoreanList(summary.generalOpinions)} 등 의견·선호도를 묻습니다.`,
-        );
-      }
-      reasons.push("자유의견에는 개인정보를 쓰지 않는 것이 좋습니다.");
-      break;
-    case "quasi_only":
-      if (summary.quasiIdentifiers.length > 0) {
-        reasons.push(`${formatKoreanList(summary.quasiIdentifiers)}가 수집됩니다.`);
-      }
-      reasons.push("이름·연락처는 요구하지 않습니다.");
-      if (summary.generalOpinions.length > 0) {
-        reasons.push(
-          `${formatKoreanList(summary.generalOpinions)} 등 의견·선호도를 묻습니다.`,
-        );
-      }
-      reasons.push("자유의견에 개인정보를 쓰지 않도록 안내가 필요합니다.");
-      break;
-    case "direct_identifier":
-      if (summary.directIdentifiers.length > 0) {
-        reasons.push(`${formatKoreanList(summary.directIdentifiers)}를 수집합니다.`);
-      }
-      if (missing.some((label) => /보유|파기/.test(label))) {
-        reasons.push("보유기간과 파기 기준 안내가 필요합니다.");
-      }
-      if (missing.some((label) => /목적/.test(label))) {
-        reasons.push("수집 목적 안내가 부족합니다.");
-      }
-      if (
-        report.platform === "google_forms" ||
-        report.platform === "naver_forms" ||
-        report.platform === "moaform"
-      ) {
-        reasons.push("외부 설문도구 사용 안내가 필요합니다.");
-      }
-      break;
-    case "sensitive_or_high_risk":
-      if (summary.sensitiveItems.length > 0) {
-        reasons.push(
-          `${formatKoreanList(summary.sensitiveItems)} 관련 문항이 포함되어 있습니다.`,
-        );
-      }
-      if (summary.highRiskItems.length > 0) {
-        reasons.push(
-          `${formatKoreanList(summary.highRiskItems)} 등 고위험정보를 수집합니다.`,
-        );
-      }
-      if (summary.directIdentifiers.length > 0 || summary.quasiIdentifiers.length > 0) {
-        reasons.push("응답자를 식별할 수 있는 정보와 결합될 수 있습니다.");
-      }
-      reasons.push("별도 동의와 접근권한 관리가 필요합니다.");
-      reasons.push("보안 인증 도구와 관리체계 확인이 필요합니다.");
-      break;
-    case "limited":
-      reasons.push("설문 문항을 자동으로 확인하지 못했습니다.");
-      reasons.push("개인정보 안내문 확인이 필요합니다.");
-      reasons.push("운영기관·담당자를 직접 확인해야 합니다.");
-      break;
-  }
-
-  return unique(reasons).slice(0, 3);
+  return buildPrimaryReasons(type, report, summary);
 }
 
 function buildCertificationNotice(
@@ -351,147 +292,34 @@ function buildCertificationNotice(
   };
 }
 
-function getScoreEvaluation(
-  type: PrivacyDataType,
-  score: number | null | undefined,
-  decision: RespondentDecision,
-): string {
-  if (type === "limited" || score == null) return "판단 불가";
-
-  if (type === "sensitive_or_high_risk" || decision === "hold_response") {
-    return "응답하지 않는 것이 좋음";
-  }
-  if (type === "direct_identifier" || decision === "check_before_responding") {
-    return score < 50 ? "개인정보 노출 위험" : "확인 후 응답";
-  }
-  if (type === "quasi_only" || decision === "respond_with_caution") {
-    return "주의 필요";
-  }
-
-  if (score >= 85) return "응답해도 비교적 안전";
-  if (score >= 70) return "주의 필요";
-  if (score >= 50) return "확인 후 응답";
-  if (score >= 30) return "개인정보 노출 위험";
-  return "응답하지 않는 것이 좋음";
-}
-
 function buildPrivacyAssessment(
   report: ScanReport,
   summary: CollectedDataSummary,
-  decision: RespondentDecision = "check_before_responding",
+  verdict: VerdictType,
 ): PrivacyDataAssessment {
-  const hasDirect = summary.directIdentifiers.length > 0;
-  const hasQuasi = summary.quasiIdentifiers.length > 0;
-  const hasSensitiveOrHighRisk =
-    summary.sensitiveItems.length > 0 ||
-    summary.highRiskItems.length > 0 ||
-    hasEmployeeSensitiveCombination(report);
+  const type = classifyPrivacyDataType(report, summary);
+  const copy = VERDICT_COPY[verdict];
+  const inclusionSummary = buildInclusionSummary(type, summary);
   const missing = missingNoticeLabels(report);
 
-  if (report.isLimited || report.diagnosisStatus === "limited") {
-    const type: PrivacyDataType = "limited";
-    const conclusion = "이 설문은 안전성을 판단할 수 없습니다.";
-    const inclusionSummary = buildInclusionSummary(type, summary);
-    const respondentAdvice =
-      "개인정보를 입력하기 전 운영기관, 수집 목적, 보유기간, 담당자를 직접 확인하세요.";
-    return {
-      type,
-      conclusion,
-      inclusionSummary,
-      respondentAdvice,
-      statusBadge: "판단 불가",
-      scoreEvaluation: "판단 불가",
-      title: inclusionSummary,
-      action: conclusion,
-      description: inclusionSummary,
-      quickActions: buildHeroReasons(type, report, summary),
-    };
-  }
+  const highRiskNote =
+    type === "direct_identifier" && missing.length >= 3
+      ? "고지문이 부족하면 개인정보 처리 기준 확인이 더 필요합니다."
+      : undefined;
 
-  if (hasSensitiveOrHighRisk) {
-    const type: PrivacyDataType = "sensitive_or_high_risk";
-    const conclusion = hasSensitiveItems(summary)
-      ? "이 설문은 민감정보가 포함될 수 있어 응답하지 않는 것이 좋습니다."
-      : "이 설문은 응답하면 개인정보 노출 위험이 있습니다.";
-    const inclusionSummary = buildInclusionSummary(type, summary);
-    const respondentAdvice =
-      "운영기관의 개인정보 처리 기준을 확인하기 전에는 응답하지 마세요.";
-    return {
-      type,
-      conclusion,
-      inclusionSummary,
-      respondentAdvice,
-      statusBadge: "위험",
-      scoreEvaluation: getScoreEvaluation(type, report.score, decision),
-      title: inclusionSummary,
-      action: conclusion,
-      description: inclusionSummary,
-      quickActions: buildHeroReasons(type, report, summary),
-      certificationNotice: buildCertificationNotice(type, report, summary),
-    };
-  }
-
-  if (hasDirect) {
-    const type: PrivacyDataType = "direct_identifier";
-    const conclusion = "이 설문은 개인정보가 포함되어 있어 확인 후 응답해야 합니다.";
-    const inclusionSummary = buildInclusionSummary(type, summary);
-    const respondentAdvice = "고지 확인 전에는 이름·연락처 입력을 미루세요.";
-    const highRiskNote =
-      missing.length >= 3
-        ? "고지문이 부족하면 개인정보 노출 위험이 있습니다."
-        : undefined;
-    return {
-      type,
-      conclusion,
-      inclusionSummary,
-      respondentAdvice,
-      statusBadge: "확인 후 응답",
-      scoreEvaluation: getScoreEvaluation(type, report.score, decision),
-      title: inclusionSummary,
-      action: conclusion,
-      description: inclusionSummary,
-      quickActions: buildHeroReasons(type, report, summary),
-      certificationNotice: buildCertificationNotice(type, report, summary),
-      highRiskNote,
-    };
-  }
-
-  if (hasQuasi) {
-    const type: PrivacyDataType = "quasi_only";
-    const conclusion = "이 설문은 개인정보·민감정보는 없으나, 주의가 필요합니다.";
-    const inclusionSummary = buildInclusionSummary(type, summary);
-    const respondentAdvice =
-      "응답은 가능해 보입니다. 다만 자유의견에는 개인정보를 추가로 쓰지 마세요.";
-    return {
-      type,
-      conclusion,
-      inclusionSummary,
-      respondentAdvice,
-      statusBadge: "주의 필요",
-      scoreEvaluation: getScoreEvaluation(type, report.score, decision),
-      title: inclusionSummary,
-      action: conclusion,
-      description: inclusionSummary,
-      quickActions: buildHeroReasons(type, report, summary),
-    };
-  }
-
-  const type: PrivacyDataType = "minimal";
-  const conclusion = "이 설문은 응답해도 비교적 안전합니다.";
-  const inclusionSummary = buildInclusionSummary(type, summary);
-  const respondentAdvice =
-    "다만 자유의견에는 이름, 연락처, 상세한 개인 사정은 쓰지 않는 것이 좋습니다.";
   return {
     type,
-    conclusion,
+    conclusion: copy.headline,
     inclusionSummary,
-    respondentAdvice,
-    statusBadge: "응답 가능",
-    scoreEvaluation: getScoreEvaluation(type, report.score, decision),
+    respondentAdvice: copy.actionLabel,
+    statusBadge: copy.statusBadge,
+    scoreEvaluation: getScoreEvaluationForVerdict(verdict, report.score),
     title: inclusionSummary,
-    action: conclusion,
+    action: copy.headline,
     description: inclusionSummary,
     quickActions: buildHeroReasons(type, report, summary),
+    certificationNotice: buildCertificationNotice(type, report, summary),
+    highRiskNote,
   };
 }
 
@@ -689,6 +517,16 @@ function buildRiskDimensions(
             ? 38
             : 15;
   const toolScore = (() => {
+    const privacyType = classifyPrivacyDataType(report, summary);
+
+    // 개인정보 거의 없음 / 준식별만: 도구 위험을 강하게 표시하지 않음
+    if (privacyType === "minimal") {
+      return report.platform === "google_forms" ? 22 : 12;
+    }
+    if (privacyType === "quasi_only") {
+      return report.platform === "google_forms" ? 35 : 28;
+    }
+
     let score =
       report.platform === "google_forms"
         ? 72
@@ -742,19 +580,32 @@ function buildRiskDimensions(
     },
     {
       id: "tool" as const,
-      title: "도구·처리경로 위험",
+      title: "도구·처리경로",
       score: toolScore,
-      description:
-        shouldElevateToolRiskForCsap(report, summary) ||
-        shouldElevateToolRiskForPrivateCert(report, summary)
-          ? report.debug?.publicSectorDetected
-            ? "공공부문 개인정보 설문에서 CSAP 인증 여부가 확인되지 않은 외부 도구 사용이 확인됩니다."
-            : "민간 설문에서 범용 외부 설문도구로 개인정보를 수집하고 있어 보안 인증 도구·수행기관 확인이 필요합니다."
-          : report.platform === "google_forms"
-            ? "해외 SaaS 사용에 따른 안내 확인이 필요합니다."
-            : report.platform === "generic"
-              ? "지원 플랫폼이 아니어서 베타 진단입니다."
-              : "외부 설문 도구 사용 안내를 확인하세요.",
+      description: (() => {
+        const privacyType = classifyPrivacyDataType(report, summary);
+        if (privacyType === "minimal") {
+          return "개인정보가 거의 없어 도구 위험을 낮게 평가했습니다.";
+        }
+        if (privacyType === "quasi_only") {
+          return "준식별정보만 있어 도구는 보조 확인 사항입니다.";
+        }
+        if (
+          shouldElevateToolRiskForCsap(report, summary) ||
+          shouldElevateToolRiskForPrivateCert(report, summary)
+        ) {
+          return report.debug?.publicSectorDetected
+            ? "공공부문 개인정보 설문에서 CSAP 인증 여부 확인이 필요합니다."
+            : "범용 외부 설문도구로 개인정보를 수집하고 있어 보안 인증 확인이 필요합니다.";
+        }
+        if (report.platform === "google_forms") {
+          return "해외 SaaS 사용에 따른 국외 보관·이전 안내 확인이 필요합니다.";
+        }
+        if (report.platform === "generic") {
+          return "지원 플랫폼이 아니어서 베타 진단입니다.";
+        }
+        return "외부 설문 도구 사용 안내를 확인하세요.";
+      })(),
     },
     {
       id: "notice" as const,
@@ -908,63 +759,169 @@ function buildKeyReasons(
 }
 
 function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
+  const isMoaform = report.platform === "moaform";
   const limitedReason =
     report.limitedReason ??
     report.form.limitedReason ??
-    "설문 문항 또는 입력 필드를 자동으로 확인하지 못했습니다.";
+    (isMoaform
+      ? "모아폼 페이지는 확인했지만, 설문 문항을 자동으로 읽지 못했습니다."
+      : "설문 문항 또는 입력 필드를 자동으로 확인하지 못했습니다.");
 
-  const privacyAssessment = buildPrivacyAssessment(
+  const emptySummary: CollectedDataSummary = {
+    directIdentifiers: [],
+    quasiIdentifiers: [],
+    generalOpinions: [],
+    sensitiveItems: [],
+    highRiskItems: [],
+  };
+  const verdict: VerdictType = "LIMITED_DIAGNOSIS";
+  const privacyAssessment = buildPrivacyAssessment(report, emptySummary, verdict);
+  const decisionSummary = buildDecisionSummary(report, emptySummary, verdict, false);
+  const legalCheckSummary = buildLegalCheckSummary(report, emptySummary, "limited");
+  const toolGovernanceSummary = buildToolGovernanceSummary(
     report,
-    {
-      directIdentifiers: [],
-      quasiIdentifiers: [],
-      generalOpinions: [],
-      sensitiveItems: [],
-      highRiskItems: [],
-    },
-    "check_before_responding",
+    emptySummary,
+    "limited",
   );
+  const safetyType = buildSafetyTypeProfile(report, emptySummary, verdict, false);
+  const operatorImprovement = buildOperatorImprovementReport(
+    report,
+    emptySummary,
+    [],
+    [],
+  );
+
+  // Moaform-specific copy overrides (do not invent PII judgments)
+  if (isMoaform) {
+    safetyType.description =
+      "모아폼 페이지는 확인했지만, 실제 설문 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.";
+    safetyType.action =
+      "개인정보를 입력하기 전 운영기관, 수집 목적, 보유기간, 담당자, 개인정보 고지문을 직접 확인하세요.";
+    safetyType.toolBadge = "Moaform";
+    safetyType.dataBadge = "확인 불가";
+    if (
+      report.form.metadata?.operatorHint &&
+      safetyType.subjectLabel === "확인 불가"
+    ) {
+      safetyType.subjectLabel = `${report.form.metadata.operatorHint} (확인 필요)`;
+    }
+    decisionSummary.primaryReasons = [
+      "모아폼 페이지는 확인됨",
+      "문항 자동 추출 제한",
+      "개인정보 입력 전 고지문 직접 확인 필요",
+    ];
+    decisionSummary.actionDescription =
+      "모아폼 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 충분히 읽지 못했습니다.";
+    privacyAssessment.conclusion = "이 설문은 안전성을 판단할 수 없습니다.";
+    privacyAssessment.inclusionSummary = safetyType.description;
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  }
 
   return {
     isLimited: true,
     privacyAssessment,
-    respondentDecision: "check_before_responding",
+    respondentDecision: verdict,
     respondentDecisionTitle: privacyAssessment.conclusion,
     respondentDecisionSummary: privacyAssessment.inclusionSummary,
     respondentReasons: [limitedReason],
-    collectedDataSummary: {
-      directIdentifiers: [],
-      quasiIdentifiers: [],
-      generalOpinions: [],
-      sensitiveItems: [],
-      highRiskItems: [],
-    },
-    respondentDoList: [
-      "설문 운영 주체와 목적을 직접 확인하세요.",
-      "개인정보를 요구한다면 보유기간과 담당자 안내가 있는지 확인하세요.",
-    ],
+    collectedDataSummary: emptySummary,
+    respondentDoList: isMoaform
+      ? [
+          "설문 첫 화면의 운영기관·수집 목적·보유기간·담당자를 직접 확인하세요.",
+          "개인정보 고지문이 보이기 전에는 개인정보를 입력하지 마세요.",
+        ]
+      : [
+          "설문 운영 주체와 목적을 직접 확인하세요.",
+          "개인정보를 요구한다면 보유기간과 담당자 안내가 있는지 확인하세요.",
+        ],
     respondentDontList: ["주민등록번호", "계좌번호", "비밀번호나 인증번호"],
-    operatorSummary: "문항을 확인하지 못해 운영자 보완 리포트를 최소화했습니다.",
-    operatorTopFixes: [],
-    requiredFixes: [],
-    recommendedFixes: [],
+    operatorSummary: isMoaform
+      ? "모아폼 문항을 자동으로 확인하지 못해 제한 진단용 핵심 개선사항만 안내합니다."
+      : "문항을 확인하지 못해 운영자 보완 리포트를 최소화했습니다.",
+    operatorTopFixes: isMoaform
+      ? [
+          {
+            priority: "required" as const,
+            category: "basic_notice" as const,
+            title: "모아폼 문항 자동 확인 제한",
+            reason: "모아폼 페이지는 확인했지만 문항을 자동으로 읽지 못했습니다.",
+            action: "설문 첫 화면에 운영기관·수집 목적·보유기간·담당자와 개인정보 고지문을 명확히 노출하세요.",
+          },
+          {
+            priority: "recommended" as const,
+            category: "outsourcing" as const,
+            title: "외부 설문도구 이용 안내",
+            reason: "모아폼 등 외부 설문도구로 응답이 처리될 수 있습니다.",
+            action: "외부 설문도구 이용 사실과 수탁자·위탁업무를 안내하세요.",
+          },
+        ]
+      : [],
+    requiredFixes: isMoaform
+      ? [
+          {
+            priority: "required" as const,
+            category: "basic_notice" as const,
+            title: "모아폼 문항 자동 확인 제한",
+            reason: "모아폼 페이지는 확인했지만 문항을 자동으로 읽지 못했습니다.",
+            action: "설문 첫 화면에 운영기관·수집 목적·보유기간·담당자와 개인정보 고지문을 명확히 노출하세요.",
+          },
+        ]
+      : [],
+    recommendedFixes: isMoaform
+      ? [
+          {
+            priority: "recommended" as const,
+            category: "outsourcing" as const,
+            title: "외부 설문도구 이용 안내",
+            reason: "모아폼 등 외부 설문도구로 응답이 처리될 수 있습니다.",
+            action: "외부 설문도구 이용 사실과 수탁자·위탁업무를 안내하세요.",
+          },
+        ]
+      : [],
     copyableTemplates: [],
-    riskDimensions: buildRiskDimensions(report, {
-      directIdentifiers: [],
-      quasiIdentifiers: [],
-      generalOpinions: [],
-      sensitiveItems: [],
-      highRiskItems: [],
-    }),
-    keyReasons: buildKeyReasons(report, {
-      directIdentifiers: [],
-      quasiIdentifiers: [],
-      generalOpinions: [],
-      sensitiveItems: [],
-      highRiskItems: [],
-    }),
-    noticeSummary: "문항 자동 추출 불가",
+    riskDimensions: buildRiskDimensions(report, emptySummary),
+    keyReasons: isMoaform
+      ? [
+          {
+            id: "moaform_page_ok",
+            category: "tool",
+            title: "모아폼 페이지 확인",
+            description: "모아폼 페이지는 확인되었습니다.",
+            severity: "limited",
+            evidence: ["사용도구: Moaform"],
+            extraCount: 0,
+          },
+          {
+            id: "moaform_q_limit",
+            category: "limited",
+            title: "문항 자동 추출 제한",
+            description:
+              "JavaScript 동적 로딩 등으로 문항을 HTML에서 읽지 못했습니다.",
+            severity: "limited",
+            evidence: [limitedReason],
+            extraCount: 0,
+          },
+          {
+            id: "moaform_manual_check",
+            category: "management",
+            title: "고지문 직접 확인 필요",
+            description:
+              "개인정보 입력 전 운영기관과 고지문을 직접 확인하세요.",
+            severity: "limited",
+            evidence: [],
+            extraCount: 0,
+          },
+        ]
+      : buildKeyReasons(report, emptySummary),
+    noticeSummary: isMoaform
+      ? "모아폼 문항 자동 확인 제한"
+      : "문항 자동 추출 불가",
     detailsSummary: "진단 제한 사유와 원본 JSON만 확인할 수 있습니다.",
+    decisionSummary,
+    legalCheckSummary,
+    toolGovernanceSummary,
+    safetyType,
+    operatorImprovement,
   };
 }
 
@@ -974,43 +931,83 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
   }
 
   const collectedDataSummary = collectDataSummary(report);
-  const publicSectorCsapWarning = buildPublicSectorCsapAssessment(
-    report,
-    collectedDataSummary,
-  );
-  const privateSectorSecurityCertWarning = publicSectorCsapWarning
-    ? undefined
-    : buildPrivateSectorSecurityCertAssessment(report, collectedDataSummary);
-  const respondentDecision = decideRespondentDecision(report, collectedDataSummary);
+  const privacyType = classifyPrivacyDataType(report, collectedDataSummary);
+  const respondentDecision = decideVerdict(report, collectedDataSummary);
+  const isReportRecommended = respondentDecision === "REPORT_OR_INQUIRE";
+
+  const publicSectorCsapWarning =
+    privacyType === "direct_identifier" || privacyType === "sensitive_or_high_risk"
+      ? buildPublicSectorCsapAssessment(report, collectedDataSummary)
+      : undefined;
+  const privateSectorSecurityCertWarning =
+    publicSectorCsapWarning ||
+    (privacyType !== "direct_identifier" && privacyType !== "sensitive_or_high_risk")
+      ? undefined
+      : buildPrivateSectorSecurityCertAssessment(report, collectedDataSummary);
+
   const privacyAssessment = buildPrivacyAssessment(
     report,
     collectedDataSummary,
     respondentDecision,
   );
-
-  if (publicSectorCsapWarning) {
-    const csapReason = buildCsapHeroReason(
-      publicSectorCsapWarning,
-      report,
-      collectedDataSummary,
-    );
-    privacyAssessment.quickActions = unique([
-      csapReason,
-      ...privacyAssessment.quickActions.filter((reason) => reason !== csapReason),
-    ]).slice(0, 3);
-  } else if (privateSectorSecurityCertWarning) {
-    const certReason = buildPrivateSectorHeroReason(
-      privateSectorSecurityCertWarning,
-      report,
-      collectedDataSummary,
-    );
-    privacyAssessment.quickActions = unique([
-      certReason,
-      ...privacyAssessment.quickActions.filter((reason) => reason !== certReason),
-    ]).slice(0, 3);
-  }
+  const decisionSummary = buildDecisionSummary(
+    report,
+    collectedDataSummary,
+    respondentDecision,
+    isReportRecommended,
+  );
+  const legalCheckSummary = buildLegalCheckSummary(
+    report,
+    collectedDataSummary,
+    privacyType,
+  );
+  const toolGovernanceSummary = buildToolGovernanceSummary(
+    report,
+    collectedDataSummary,
+    privacyType,
+  );
 
   const operatorActions = buildOperatorActions(report, collectedDataSummary);
+  const safetyType = buildSafetyTypeProfile(
+    report,
+    collectedDataSummary,
+    respondentDecision,
+    isReportRecommended,
+  );
+  const operatorImprovement = buildOperatorImprovementReport(
+    report,
+    collectedDataSummary,
+    operatorActions.operatorTopFixes,
+    operatorActions.copyableTemplates,
+  );
+
+  // 공공 + 개인정보일 때 핵심 이유에 CSAP 한 줄 반영
+  if (
+    (privacyType === "direct_identifier" || privacyType === "sensitive_or_high_risk") &&
+    report.debug?.publicSectorDetected
+  ) {
+    const csapReason =
+      "공공기관 개인정보 설문은 CSAP 인증 도구 사용을 강력히 권고합니다.";
+    decisionSummary.primaryReasons = [
+      csapReason,
+      ...decisionSummary.primaryReasons.filter((r) => r !== csapReason),
+    ].slice(0, 3);
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  }
+
+  if (
+    safetyType.typeId === "SECURITY_CHECK" &&
+    report.platform === "google_forms"
+  ) {
+    const overseas =
+      "Google Forms 사용 시 국외 보관·이전 안내 확인이 필요합니다.";
+    decisionSummary.primaryReasons = [
+      ...decisionSummary.primaryReasons.filter((r) => r !== overseas),
+      overseas,
+    ].slice(0, 3);
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  }
+
   const detailsSummary = [
     report.findings.length > 0 ? `상세 finding ${report.findings.length}건` : "",
     report.sections.evidenceItems.length > 0
@@ -1040,5 +1037,10 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
     privateSectorSecurityCertWarning,
     noticeSummary: buildNoticeSummary(report),
     detailsSummary: detailsSummary || "상세 근거가 제한적입니다.",
+    decisionSummary,
+    legalCheckSummary,
+    toolGovernanceSummary,
+    safetyType,
+    operatorImprovement,
   };
 }

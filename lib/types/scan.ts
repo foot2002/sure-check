@@ -138,6 +138,12 @@ export interface FormMetadata {
   privacyPolicyUrls?: string[];
   headings?: string[];
   extractionWarnings?: string[];
+  /** Platform-specific extraction failure code (e.g. MOAFORM_DYNAMIC_RENDERING) */
+  failureReason?: string;
+  extractionMethod?: string;
+  operatorHint?: string;
+  operatorCandidates?: string[];
+  diagnosisScope?: "full" | "limited" | "partial";
 }
 
 export interface NormalizedPage {

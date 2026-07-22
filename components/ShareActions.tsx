@@ -75,19 +75,19 @@ export function ShareActions({ report }: ShareActionsProps) {
   ];
 
   return (
-    <div className="rounded-2xl border border-border-subtle bg-surface p-5 md:p-6">
-      <h3 className="mb-4 flex items-center gap-2.5 text-base font-bold text-foreground md:text-lg">
-        <Share2 size={18} className="text-brand" strokeWidth={2.25} />
+    <div className="rounded-[1.75rem] border border-border-subtle bg-white p-6 shadow-[var(--report-shadow-soft)] md:p-7">
+      <h3 className="mb-5 flex items-center gap-2.5 text-xl font-bold text-foreground md:text-2xl">
+        <Share2 size={20} className="text-teal-700" strokeWidth={2.25} />
         공유 · 복사 · 다운로드
       </h3>
 
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex flex-wrap gap-3">
         {primaryActions.map(({ label, icon: Icon, onClick }) => (
           <button
             key={label}
             type="button"
             onClick={onClick}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand/30"
+            className="report-btn-primary bg-teal-700 text-white shadow-md hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-300"
           >
             <Icon size={16} strokeWidth={2.25} />
             {label}
@@ -99,12 +99,12 @@ export function ShareActions({ report }: ShareActionsProps) {
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand/20 ${
+            className={`report-btn-secondary ${
               disabled
-                ? "cursor-not-allowed border-border-subtle text-muted/50"
+                ? "cursor-not-allowed opacity-50"
                 : accent
-                  ? "border-[#f0e0a0] bg-[#fefce8] text-[#8a6914] hover:bg-[#fef9c3]"
-                  : "border-border bg-background text-foreground hover:border-brand-muted hover:bg-brand-light/30"
+                  ? "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                  : ""
             }`}
           >
             <Icon size={16} strokeWidth={2.25} />
@@ -115,10 +115,10 @@ export function ShareActions({ report }: ShareActionsProps) {
 
       {toast && (
         <p
-          className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
+          className={`mt-4 rounded-2xl px-4 py-3 text-base font-medium ${
             toast.type === "success"
-              ? "bg-[#edf7f1] text-[#1f6b47]"
-              : "bg-[#fdf6e8] text-[#8a5f12]"
+              ? "bg-emerald-50 text-emerald-800"
+              : "bg-amber-50 text-amber-900"
           }`}
           role="status"
         >

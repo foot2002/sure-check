@@ -1,12 +1,12 @@
 import type { RiskGrade, ScanReport } from "@/lib/types/scan";
-import type { AudienceReport, RespondentDecision } from "@/lib/reporting/reportMessages";
+import type { AudienceReport, VerdictType } from "@/lib/reporting/reportMessages";
 import { RESPONDENT_DECISION_LABELS } from "@/lib/reporting/reportMessages";
 import type { GoldenCase, GoldenExpectedDataItems } from "@/lib/validation/goldenCases";
 import { deriveContextFromReport } from "@/lib/validation/mapActualFromReport";
 import type { ValidationResultStatus } from "@/lib/validation/types";
 
 export interface GoldenActualValues {
-  decision: RespondentDecision;
+  decision: VerdictType;
   decisionLabel: string;
   score: number | null;
   grade?: RiskGrade;
@@ -100,6 +100,67 @@ function buildReportText(report: ScanReport, audience: AudienceReport): string {
     audience.privacyAssessment.statusBadge,
     audience.privacyAssessment.scoreEvaluation,
     audience.privacyAssessment.highRiskNote,
+    audience.decisionSummary.headline,
+    audience.decisionSummary.actionLabel,
+    audience.decisionSummary.reportRecommendation,
+    audience.decisionSummary.statusBadge,
+    ...audience.decisionSummary.primaryReasons,
+    audience.safetyType.displayName,
+    audience.safetyType.typeName,
+    audience.safetyType.headline,
+    audience.safetyType.description,
+    audience.safetyType.action,
+    audience.safetyType.subjectLabel,
+    audience.safetyType.dataBadge,
+    audience.safetyType.toolBadge,
+    audience.safetyType.toolJudgmentBadge,
+    audience.safetyType.reportOrInquireLabel,
+    audience.operatorImprovement.tool.summary,
+    ...audience.operatorImprovement.tool.platformNotes,
+    ...audience.operatorImprovement.tool.certificationCards.flatMap((card) => [
+      card.title,
+      card.description,
+      card.note,
+      card.disclaimer,
+    ]),
+    ...audience.operatorImprovement.noticeItems.flatMap((item) => [
+      item.title,
+      item.detail,
+    ]),
+    ...audience.operatorImprovement.questionItems.flatMap((item) => [
+      item.title,
+      item.detail,
+    ]),
+    ...audience.operatorImprovement.managementItems.flatMap((item) => [
+      item.title,
+      item.detail,
+    ]),
+    ...audience.operatorImprovement.topFixes.flatMap((fix) => [
+      fix.title,
+      fix.reason,
+      fix.action,
+    ]),
+    audience.operatorImprovement.coreProblems.summaryLine,
+    ...audience.operatorImprovement.coreProblems.problems.flatMap((problem) => [
+      problem.title,
+      problem.why,
+      problem.action,
+      problem.severityLabel,
+      ...problem.basisLabels,
+    ]),
+    ...audience.operatorImprovement.legalBasisDetails.flatMap((basis) => [
+      basis.label,
+      basis.description,
+    ]),
+    ...audience.legalCheckSummary.severeViolationSuspicions.map((item) => item.label),
+    ...audience.legalCheckSummary.checkRequiredItems.map((item) => item.label),
+    ...audience.legalCheckSummary.improvementRecommendations.map((item) => item.label),
+    ...audience.legalCheckSummary.passedItems.map((item) => item.label),
+    audience.toolGovernanceSummary.title,
+    audience.toolGovernanceSummary.body,
+    audience.toolGovernanceSummary.certificationRecommendation,
+    audience.toolGovernanceSummary.certificationReason,
+    ...audience.toolGovernanceSummary.bullets,
     audience.privacyAssessment.certificationNotice?.title,
     audience.privacyAssessment.certificationNotice?.body,
     audience.privacyAssessment.certificationNotice?.contextNote,

@@ -193,7 +193,7 @@ const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
   {
     category: "address",
     patterns: [
-      /(?<!거)주소(?!지)/,
+      /(?<!이메일\s)(?<!e-?mail\s)주소(?!지)/i,
       /상세주소/,
       /도로명주소/,
       /지번주소/,

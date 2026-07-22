@@ -9,6 +9,10 @@ import { GRADE_LABELS } from "@/lib/utils/grade";
 
 interface DebugPanelProps {
   report: ScanReport;
+  /** When true, skip the outer accordion (parent already collapses). */
+  embedded?: boolean;
+  /** Initial open state when not embedded. */
+  defaultOpen?: boolean;
 }
 
 function boolLabel(value: boolean | undefined): string {
@@ -86,8 +90,12 @@ function JsonBlock({ title, data }: { title: string; data: unknown }) {
   );
 }
 
-export function DebugPanel({ report }: DebugPanelProps) {
-  const [open, setOpen] = useState(false);
+export function DebugPanel({
+  report,
+  embedded = false,
+  defaultOpen = false,
+}: DebugPanelProps) {
+  const [open, setOpen] = useState(embedded || defaultOpen);
   const [cacheState, setCacheState] = useState<"idle" | "clearing" | "cleared" | "failed">(
     "idle",
   );
@@ -101,6 +109,174 @@ export function DebugPanel({ report }: DebugPanelProps) {
     } catch {
       setCacheState("failed");
     }
+  }
+
+  const body = (
+    <div className={`space-y-5 ${embedded ? "" : "border-t border-border-subtle px-5 py-5 md:px-6 md:py-6"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background px-4 py-3">
+        <p className="text-sm leading-relaxed text-muted md:text-[15px]">
+          이전 진단 결과가 남아 보이면 URL 캐시를 초기화하세요.
+        </p>
+        <div className="flex items-center gap-2">
+          {cacheState === "cleared" && (
+            <span className="text-sm font-medium text-emerald-600">초기화됨</span>
+          )}
+          {cacheState === "failed" && (
+            <span className="text-sm font-medium text-red-600">초기화 실패</span>
+          )}
+          <button
+            type="button"
+            onClick={handleClearCache}
+            disabled={cacheState === "clearing"}
+            className="rounded-lg border border-border-subtle px-3 py-2 text-sm font-semibold text-muted transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {cacheState === "clearing" ? "초기화 중..." : "URL 캐시 초기화"}
+          </button>
+        </div>
+      </div>
+
+      {!debug ? (
+        <p className="text-sm text-muted md:text-[15px]">
+          상세 분석 메타데이터가 아직 생성되지 않았습니다.
+        </p>
+      ) : (
+        <>
+          <dl className="rounded-xl border border-border-subtle bg-background px-4 py-2">
+            <DebugField label="입력 URL" value={debug.inputUrl} mono />
+            <DebugField label="정규화 URL" value={debug.normalizedUrl} mono />
+            <DebugField label="플랫폼" value={debug.platform} />
+            <DebugField
+              label="진단 상태"
+              value={debug.diagnosisStatus ?? report.diagnosisStatus ?? "—"}
+            />
+            <DebugField label="최종 URL" value={debug.finalUrl ?? "—"} mono />
+            <DebugField label="추출기" value={debug.extractorName} />
+            <DebugField label="문항 수" value={debug.questionCount} />
+            <DebugField label="부분 진단" value={boolLabel(debug.partialScan)} />
+            <DebugField label="진단 제한" value={boolLabel(debug.isLimited)} />
+            <DebugField label="제한 사유" value={debug.limitedReason ?? "—"} />
+            <DebugField label="신뢰도" value={debug.confidence ?? "—"} />
+            <DebugField label="분기 감지" value={boolLabel(debug.branchDetected)} />
+            <DebugField label="로그인 필요" value={boolLabel(debug.loginRequired)} />
+            <DebugField label="응답 마감" value={boolLabel(debug.closedForm)} />
+            <DebugField
+              label="맥락"
+              value={
+                debug.contextSummary ??
+                (debug.contextLabels.length > 0
+                  ? debug.contextLabels.join(", ")
+                  : "—")
+              }
+            />
+            <DebugField
+              label="공공부문 감지"
+              value={boolLabel(debug.publicSectorDetected)}
+            />
+            <DebugField
+              label="공공부문 근거"
+              value={debug.publicSectorEvidence.join(" | ") || "—"}
+            />
+            <DebugField
+              label="수집정보 위험"
+              value={
+                debug.dataRiskLevel
+                  ? `${debug.dataRiskLevel} (${debug.dataRiskLabel ?? ""})`
+                  : "—"
+              }
+            />
+            <DebugField
+              label="도구 위험"
+              value={
+                debug.toolRiskLevel
+                  ? `${debug.toolRiskLevel} (${debug.toolRiskLabel ?? ""})`
+                  : "—"
+              }
+            />
+            <DebugField
+              label="필수 의무"
+              value={
+                debug.obligations.length > 0
+                  ? debug.obligations.map((o) => o.label).join(", ")
+                  : "—"
+              }
+            />
+            <DebugField
+              label="누락 고지"
+              value={
+                debug.missingNotices.length > 0
+                  ? debug.missingNotices
+                      .map((gap) => `${gap.label} [${gap.status}]`)
+                      .join(", ")
+                  : "—"
+              }
+            />
+            <DebugField
+              label="관리 위험"
+              value={
+                debug.managementItems.length > 0
+                  ? debug.managementItems
+                      .map((item) => `${item.label} [${item.status}]`)
+                      .join(", ")
+                  : "—"
+              }
+            />
+            <DebugField
+              label="등급 보정 규칙"
+              value={
+                debug.overrideRules.length > 0
+                  ? debug.overrideRules.map((rule) => rule.ruleId).join(", ")
+                  : "—"
+              }
+            />
+            <DebugField
+              label="적용된 보정"
+              value={
+                debug.overrideRules.length > 0
+                  ? debug.overrideRules
+                      .map((rule) => `${rule.ruleId} → ${rule.minGrade}`)
+                      .join(", ")
+                  : "—"
+              }
+            />
+            <DebugField
+              label="최종 점수"
+              value={debug.finalScore ?? (debug.isLimited ? "산정 불가" : "—")}
+            />
+            <DebugField
+              label="최종 등급"
+              value={
+                debug.finalGrade
+                  ? `${debug.finalGrade} (${GRADE_LABELS[debug.finalGrade]})`
+                  : "—"
+              }
+            />
+          </dl>
+
+          <div>
+            <h3 className="mb-3 text-base font-bold text-foreground md:text-lg">
+              추출 문항
+            </h3>
+            <ExtractedQuestionTable questions={report.form.questions} readable />
+          </div>
+
+          <div>
+            <h3 className="mb-3 text-base font-bold text-foreground md:text-lg">
+              Analyzer 판단 흐름
+            </h3>
+            <AnalyzerTrace trace={report.analyzerTrace} readable />
+          </div>
+        </>
+      )}
+
+      <div className="space-y-3">
+        <JsonBlock title="NormalizedForm JSON" data={report.form} />
+        <JsonBlock title="ScanReport JSON" data={report} />
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return body;
   }
 
   return (
@@ -133,169 +309,7 @@ export function DebugPanel({ report }: DebugPanelProps) {
         )}
       </button>
 
-      {open && (
-        <div className="space-y-5 border-t border-border-subtle px-5 py-5 md:px-6 md:py-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background px-4 py-3">
-            <p className="text-sm leading-relaxed text-muted md:text-[15px]">
-              이전 진단 결과가 남아 보이면 URL 캐시를 초기화하세요.
-            </p>
-            <div className="flex items-center gap-2">
-              {cacheState === "cleared" && (
-                <span className="text-sm font-medium text-emerald-600">초기화됨</span>
-              )}
-              {cacheState === "failed" && (
-                <span className="text-sm font-medium text-red-600">초기화 실패</span>
-              )}
-              <button
-                type="button"
-                onClick={handleClearCache}
-                disabled={cacheState === "clearing"}
-                className="rounded-lg border border-border-subtle px-3 py-2 text-sm font-semibold text-muted transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {cacheState === "clearing" ? "초기화 중..." : "URL 캐시 초기화"}
-              </button>
-            </div>
-          </div>
-
-          {!debug ? (
-            <p className="text-sm text-muted md:text-[15px]">
-              상세 분석 메타데이터가 아직 생성되지 않았습니다.
-            </p>
-          ) : (
-            <>
-              <dl className="rounded-xl border border-border-subtle bg-background px-4 py-2">
-                <DebugField label="입력 URL" value={debug.inputUrl} mono />
-                <DebugField label="정규화 URL" value={debug.normalizedUrl} mono />
-                <DebugField label="플랫폼" value={debug.platform} />
-                <DebugField
-                  label="진단 상태"
-                  value={debug.diagnosisStatus ?? report.diagnosisStatus ?? "—"}
-                />
-                <DebugField label="최종 URL" value={debug.finalUrl ?? "—"} mono />
-                <DebugField label="추출기" value={debug.extractorName} />
-                <DebugField label="문항 수" value={debug.questionCount} />
-                <DebugField label="부분 진단" value={boolLabel(debug.partialScan)} />
-                <DebugField label="진단 제한" value={boolLabel(debug.isLimited)} />
-                <DebugField label="제한 사유" value={debug.limitedReason ?? "—"} />
-                <DebugField label="신뢰도" value={debug.confidence ?? "—"} />
-                <DebugField label="분기 감지" value={boolLabel(debug.branchDetected)} />
-                <DebugField label="로그인 필요" value={boolLabel(debug.loginRequired)} />
-                <DebugField label="응답 마감" value={boolLabel(debug.closedForm)} />
-                <DebugField
-                  label="맥락"
-                  value={
-                    debug.contextSummary ??
-                    (debug.contextLabels.length > 0
-                      ? debug.contextLabels.join(", ")
-                      : "—")
-                  }
-                />
-                <DebugField
-                  label="공공부문 감지"
-                  value={boolLabel(debug.publicSectorDetected)}
-                />
-                <DebugField
-                  label="공공부문 근거"
-                  value={debug.publicSectorEvidence.join(" | ") || "—"}
-                />
-                <DebugField
-                  label="수집정보 위험"
-                  value={
-                    debug.dataRiskLevel
-                      ? `${debug.dataRiskLevel} (${debug.dataRiskLabel ?? ""})`
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="도구 위험"
-                  value={
-                    debug.toolRiskLevel
-                      ? `${debug.toolRiskLevel} (${debug.toolRiskLabel ?? ""})`
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="필수 의무"
-                  value={
-                    debug.obligations.length > 0
-                      ? debug.obligations.map((o) => o.label).join(", ")
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="누락 고지"
-                  value={
-                    debug.missingNotices.length > 0
-                      ? debug.missingNotices
-                          .map((gap) => `${gap.label} [${gap.status}]`)
-                          .join(", ")
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="관리 위험"
-                  value={
-                    debug.managementItems.length > 0
-                      ? debug.managementItems
-                          .map((item) => `${item.label} [${item.status}]`)
-                          .join(", ")
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="등급 보정 규칙"
-                  value={
-                    debug.overrideRules.length > 0
-                      ? debug.overrideRules.map((rule) => rule.ruleId).join(", ")
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="적용된 보정"
-                  value={
-                    debug.overrideRules.length > 0
-                      ? debug.overrideRules
-                          .map((rule) => `${rule.ruleId} → ${rule.minGrade}`)
-                          .join(", ")
-                      : "—"
-                  }
-                />
-                <DebugField
-                  label="최종 점수"
-                  value={debug.finalScore ?? (debug.isLimited ? "산정 불가" : "—")}
-                />
-                <DebugField
-                  label="최종 등급"
-                  value={
-                    debug.finalGrade
-                      ? `${debug.finalGrade} (${GRADE_LABELS[debug.finalGrade]})`
-                      : "—"
-                  }
-                />
-              </dl>
-
-              <div>
-                <h3 className="mb-3 text-base font-bold text-foreground md:text-lg">
-                  추출 문항
-                </h3>
-                <ExtractedQuestionTable questions={report.form.questions} readable />
-              </div>
-
-              <div>
-                <h3 className="mb-3 text-base font-bold text-foreground md:text-lg">
-                  Analyzer 판단 흐름
-                </h3>
-                <AnalyzerTrace trace={report.analyzerTrace} readable />
-              </div>
-            </>
-          )}
-
-          <div className="space-y-3">
-            <JsonBlock title="NormalizedForm JSON" data={report.form} />
-            <JsonBlock title="ScanReport JSON" data={report} />
-          </div>
-        </div>
-      )}
+      {open && body}
     </section>
   );
 }

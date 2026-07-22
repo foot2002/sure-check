@@ -1,10 +1,32 @@
 import type { DetectedCategory, RiskGrade } from "@/lib/types/scan";
+import type {
+  DecisionSummary,
+  LegalCheckSummary,
+  ToolGovernanceSummary,
+  VerdictType,
+} from "@/lib/reporting/verdictTypes";
+import {
+  VERDICT_LABELS,
+  VERDICT_STYLES,
+} from "@/lib/reporting/verdictTypes";
+import type { SafetyTypeProfile } from "@/lib/reporting/safetyType";
+import type { OperatorImprovementReport } from "@/lib/reporting/buildOperatorImprovementReport";
 
-export type RespondentDecision =
-  | "can_respond"
-  | "respond_with_caution"
-  | "check_before_responding"
-  | "hold_response";
+export type {
+  DecisionSummary,
+  LegalCheckItem,
+  LegalCheckSeverity,
+  LegalCheckSummary,
+  ToolGovernanceSummary,
+  ToolImportanceLevel,
+  VerdictType,
+} from "@/lib/reporting/verdictTypes";
+
+export type { SafetyTypeProfile, SafetyTypeId, SurveySubjectType } from "@/lib/reporting/safetyType";
+export type { OperatorImprovementReport, OperatorImprovementItem, OperatorToolImprovement, CertificationExplainCard } from "@/lib/reporting/buildOperatorImprovementReport";
+
+/** @deprecated use VerdictType */
+export type RespondentDecision = VerdictType;
 
 export type PrivacyDataType =
   | "minimal"
@@ -146,7 +168,7 @@ export interface PrivacyDataAssessment {
 export interface AudienceReport {
   isLimited: boolean;
   privacyAssessment: PrivacyDataAssessment;
-  respondentDecision: RespondentDecision;
+  respondentDecision: VerdictType;
   respondentDecisionTitle: string;
   respondentDecisionSummary: string;
   respondentReasons: string[];
@@ -164,21 +186,15 @@ export interface AudienceReport {
   privateSectorSecurityCertWarning?: PrivateSectorSecurityCertAssessment;
   noticeSummary: string;
   detailsSummary: string;
+  decisionSummary: DecisionSummary;
+  legalCheckSummary: LegalCheckSummary;
+  toolGovernanceSummary: ToolGovernanceSummary;
+  safetyType: SafetyTypeProfile;
+  operatorImprovement: OperatorImprovementReport;
 }
 
-export const RESPONDENT_DECISION_LABELS: Record<RespondentDecision, string> = {
-  can_respond: "응답 가능",
-  respond_with_caution: "주의 필요",
-  check_before_responding: "확인 후 응답",
-  hold_response: "위험",
-};
-
-export const RESPONDENT_DECISION_STYLES: Record<RespondentDecision, string> = {
-  can_respond: "border-[#c5e6d4] bg-[#edf7f1] text-[#1f6b47]",
-  respond_with_caution: "border-[#f0ddb0] bg-[#fdf6e8] text-[#8a5f12]",
-  check_before_responding: "border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af]",
-  hold_response: "border-[#f5c2cc] bg-[#fdf0f2] text-[#9e2a3e]",
-};
+export const RESPONDENT_DECISION_LABELS = VERDICT_LABELS;
+export const RESPONDENT_DECISION_STYLES = VERDICT_STYLES;
 
 export const CATEGORY_LABELS: Record<DetectedCategory, string> = {
   name: "이름",

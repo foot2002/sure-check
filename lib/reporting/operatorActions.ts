@@ -331,40 +331,95 @@ function buildOperatorTopFixes(
 ): OperatorFix[] {
   const all = [...requiredFixes, ...recommendedFixes];
   const hasDirect = summary.directIdentifiers.length > 0;
+  const hasSensitiveOrHighRisk =
+    summary.sensitiveItems.length > 0 || summary.highRiskItems.length > 0;
+  const isPublicSector = Boolean(report.debug?.publicSectorDetected);
   const hasSignificantPersonalData = hasSignificantPersonalDataForCsap(
     report,
     summary,
   );
-  const hasSensitiveOrHighRisk =
-    summary.sensitiveItems.length > 0 || summary.highRiskItems.length > 0;
-  const isPublicSector = Boolean(report.debug?.publicSectorDetected);
-  const isEmployee = Boolean(report.form.contextHints?.isEmployeeSurvey) ||
+  const isQuasiOnly =
+    summary.quasiIdentifiers.length > 0 &&
+    !hasDirect &&
+    !hasSensitiveOrHighRisk;
+  const isMinimal =
+    !hasDirect &&
+    !hasSensitiveOrHighRisk &&
+    summary.quasiIdentifiers.length === 0;
+  const isEmployee =
+    Boolean(report.form.contextHints?.isEmployeeSurvey) ||
     hasContext(report, /직원|근로|조직진단|employee/i);
+
+  // 상황별 우선순위 문구 (섹션 7)
+  const situationTitles: string[] = [];
+
+  if (hasSensitiveOrHighRisk) {
+    situationTitles.push(
+      "민감정보 문항을 삭제하거나 별도 동의와 수집 필요성을 명시하세요.",
+      "인증된 보안 도구 또는 인증 수행기관 이용을 우선 검토하세요.",
+      "원자료 접근자, 보유기간, 파기 기준, 불이익 방지 기준을 명시하세요.",
+    );
+  } else if (isPublicSector && hasSignificantPersonalData) {
+    situationTitles.push(
+      "CSAP 인증 등 공공부문 보안 기준을 충족하는 설문 도구 사용을 우선 검토하세요.",
+      "개인정보 수집·이용 고지문을 보완하세요.",
+      "위탁 또는 국외이전 안내와 보유·파기 기준을 명시하세요.",
+    );
+  } else if (!isPublicSector && hasSignificantPersonalData) {
+    situationTitles.push(
+      "CSAP 인증 도구, ISMS-P 인증 수행기관, 보안인증 수집도구 사용을 검토하세요.",
+      "개인정보 수집·이용 고지문을 보완하세요.",
+      "원자료 접근권한, 보유기간, 파기 기준을 명시하세요.",
+    );
+  } else if (hasDirect) {
+    situationTitles.push(
+      "개인정보 수집·이용 고지문을 보완하세요.",
+      "보유기간과 파기 기준을 명시하세요.",
+      "인증된 수집도구 또는 인증 수행기관 이용을 검토하세요.",
+    );
+  } else if (isQuasiOnly) {
+    situationTitles.push(
+      "보유기간과 파기 기준을 명시하세요.",
+      "담당부서 또는 문의처를 표시하세요.",
+      "자유의견 개인정보 입력 금지 안내를 추가하세요.",
+    );
+  } else if (isMinimal) {
+    situationTitles.push(
+      "자유의견에 개인정보를 쓰지 말라는 안내를 추가하세요.",
+      "담당부서 또는 문의처를 표시하세요.",
+      "보유기간과 파기 기준을 간단히 안내하세요.",
+    );
+  }
 
   const priorities: RegExp[] = [];
 
   if (hasSensitiveOrHighRisk) {
-    priorities.push(/민감정보 문항|별도 동의·접근권한/);
-    priorities.push(/보안 검증된 수집 도구|CSAP 인증 도구/);
-    priorities.push(/ISMS-P|관리체계 인증/);
+    priorities.push(/민감정보 문항|별도 동의/);
+    priorities.push(/보안 검증된 수집 도구|CSAP 인증 도구|보안 인증/);
+    priorities.push(/원자료 관리|보유기간|파기|불이익/);
+  } else if (isPublicSector && hasSignificantPersonalData) {
+    priorities.push(/CSAP 인증|공공부문 보안 기준/);
+    priorities.push(/고지문|수집 목적|수집 항목|보유기간/);
+    priorities.push(/위탁|국외이전|국외보관|파기/);
+  } else if (!isPublicSector && hasSignificantPersonalData) {
+    priorities.push(/CSAP|ISMS-P|보안 인증/);
+    priorities.push(/고지문|수집 목적|보유기간/);
+    priorities.push(/원자료|접근권한|파기/);
+  } else if (hasDirect) {
+    priorities.push(/고지문|수집 목적|수집 항목/);
+    priorities.push(/보유기간|파기/);
+    priorities.push(/보안 인증|수행기관|ISMS-P|CSAP/);
+  } else if (isQuasiOnly || isMinimal) {
+    priorities.push(/보유기간|파기/);
+    priorities.push(/담당자|문의|처리자/);
+    priorities.push(/자유의견/);
   }
 
-  if (isPublicSector && hasSignificantPersonalData) {
-    priorities.push(/CSAP 인증|공공부문 보안 기준/);
-  }
-  if (!isPublicSector && hasSignificantPersonalData) {
-    priorities.push(/보안 인증 수집도구|관리체계가 확인된 수행기관/);
-    priorities.push(/CSAP 인증 도구, ISMS-P|보안 인증 수집도구 사용 우선/);
-    priorities.push(/ISMS-P|관리체계 인증/);
-  }
   if (isEmployee) {
-    priorities.push(/원자료|익명성|직원 설문/);
+    priorities.unshift(/원자료|익명성|직원 설문/);
   }
   if (report.platform === "google_forms" && hasDirect) {
     priorities.push(/Google Forms|국외이전|국외보관/);
-  }
-  if (report.platform === "naver_forms" || report.platform === "moaform") {
-    priorities.push(/외부 설문 SaaS|위탁 안내/);
   }
 
   priorities.push(
@@ -384,15 +439,31 @@ function buildOperatorTopFixes(
         pattern.test(`${fix.title} ${fix.reason} ${fix.action}`),
     );
     if (hit) selected.push(hit);
-    if (selected.length >= 3) return selected;
-  }
-
-  for (const fix of all) {
-    if (!selected.some((item) => item.title === fix.title)) {
-      selected.push(fix);
-    }
     if (selected.length >= 3) break;
   }
 
-  return selected;
+  for (const fix of all) {
+    if (selected.length >= 3) break;
+    if (!selected.some((item) => item.title === fix.title)) {
+      selected.push(fix);
+    }
+  }
+
+  // 상황별 문구가 있고 매칭이 부족하면 안내성 fix로 채움
+  while (selected.length < 3 && situationTitles[selected.length]) {
+    const title = situationTitles[selected.length];
+    if (!selected.some((item) => item.action === title || item.title === title)) {
+      selected.push({
+        priority: "recommended",
+        category: "basic_notice",
+        title: title.replace(/하세요\.$/, ""),
+        reason: "응답 판단 기준에 따른 우선 개선사항입니다.",
+        action: title,
+      });
+    } else {
+      break;
+    }
+  }
+
+  return selected.slice(0, 3);
 }

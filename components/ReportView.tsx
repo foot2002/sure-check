@@ -1,18 +1,12 @@
-import { ClipboardCheck } from "lucide-react";
-import { DebugPanel } from "@/components/DebugPanel";
+import { Sparkles } from "lucide-react";
 import { ShareActions } from "@/components/ShareActions";
-import { CollectedDataVisual } from "@/components/report/CollectedDataVisual";
-import { CompactEvidenceAccordion } from "@/components/report/CompactEvidenceAccordion";
-import { CopyableNoticeTemplates } from "@/components/report/CopyableNoticeTemplates";
-import { KeyReasonsGrid } from "@/components/report/KeyReasonsGrid";
-import { OperatorFixDashboard } from "@/components/report/OperatorFixDashboard";
-import { ReportVisualSummary } from "@/components/report/ReportVisualSummary";
-import { RespondentChecklist } from "@/components/report/RespondentChecklist";
+import { DetailedEvidenceSection } from "@/components/report/DetailedEvidenceSection";
+import { DeveloperDiagnosticsSection } from "@/components/report/DeveloperDiagnosticsSection";
+import { OperatorImprovementPanel } from "@/components/report/OperatorImprovementPanel";
+import { UserSafetyReport } from "@/components/report/UserSafetyReport";
 import { InfoCallout } from "@/components/report/ui/InfoCallout";
-import { ReportIconBadge } from "@/components/report/ui/ReportIconBadge";
 import { TrustNoticePanel } from "@/components/report/ui/TrustNoticePanel";
 import { composeAudienceReport } from "@/lib/reporting/composeAudienceReport";
-import { isExtractionLimitedReport } from "@/lib/scan/limitedReport";
 import type { ScanReport } from "@/lib/types/scan";
 
 interface ReportViewProps {
@@ -20,19 +14,20 @@ interface ReportViewProps {
 }
 
 export function ReportView({ report }: ReportViewProps) {
-  const limited = isExtractionLimitedReport(report);
   const audienceReport = composeAudienceReport(report);
 
   return (
-    <div className="report-readable space-y-10 md:space-y-12">
-      <header className="flex items-center gap-4 border-b border-border-subtle pb-5">
-        <ReportIconBadge icon={ClipboardCheck} tone="navy" size="lg" />
+    <div className="report-readable report-shell space-y-12 md:space-y-16">
+      <header className="flex items-center gap-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-400 to-teal-700 text-white shadow-md">
+          <Sparkles className="h-6 w-6" aria-hidden />
+        </span>
         <div>
-          <p className="text-xs uppercase tracking-[0.12em] text-brand">
-            Privacy Risk Report
+          <p className="text-sm font-bold tracking-[0.12em] text-teal-700">
+            SURE Check
           </p>
-          <h1 className="text-xl tracking-tight text-foreground md:text-2xl">
-            <span className="font-bold">개인정보 위험 진단 리포트</span>
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">
+            설문 안전유형 리포트
           </h1>
         </div>
       </header>
@@ -47,27 +42,14 @@ export function ReportView({ report }: ReportViewProps) {
         </InfoCallout>
       )}
 
-      <ReportVisualSummary report={report} audienceReport={audienceReport} />
+      <UserSafetyReport audienceReport={audienceReport} />
 
-      <KeyReasonsGrid reasons={audienceReport.keyReasons} />
+      <OperatorImprovementPanel audienceReport={audienceReport} />
 
-      {!limited && (
-        <>
-          <CollectedDataVisual summary={audienceReport.collectedDataSummary} />
-          <OperatorFixDashboard audienceReport={audienceReport} />
-          <DebugPanel report={report} />
-          <RespondentChecklist audienceReport={audienceReport} />
-          <CopyableNoticeTemplates templates={audienceReport.copyableTemplates} />
-        </>
-      )}
-
-      {limited && <DebugPanel report={report} />}
+      <DetailedEvidenceSection report={report} audienceReport={audienceReport} />
 
       <div className="report-secondary space-y-6">
-        <CompactEvidenceAccordion
-          report={report}
-          audienceReport={audienceReport}
-        />
+        <DeveloperDiagnosticsSection report={report} />
         <ShareActions report={report} />
         <TrustNoticePanel report={report} />
       </div>

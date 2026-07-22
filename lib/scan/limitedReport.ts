@@ -54,7 +54,16 @@ export function isExtractionLimitedReport(report: ScanReport): boolean {
 export function generateExtractionLimitedReport(
   scanId: string,
   formUrl: string,
-  sourceForm?: Pick<NormalizedForm, "title" | "platform" | "extractedFromHtml" | "limitedReason">,
+  sourceForm?: Pick<
+    NormalizedForm,
+    | "title"
+    | "platform"
+    | "extractedFromHtml"
+    | "limitedReason"
+    | "operatorType"
+    | "metadata"
+    | "notices"
+  >,
   options?: LimitedReportOptions,
 ): ScanReport {
   const now = new Date().toISOString();
@@ -69,6 +78,7 @@ export function generateExtractionLimitedReport(
     options?.guidance ?? EXTRACTION_LIMITED_GUIDANCE,
   ];
   const summary = options?.summary ?? EXTRACTION_LIMITED_SUMMARY;
+  const isMoaform = platform === "moaform";
 
   const report: ScanReport = {
     scanId,
@@ -90,10 +100,15 @@ export function generateExtractionLimitedReport(
       detectedPersonalData: [],
       missingObligations: [],
       respondentGuidance: [options?.guidance ?? EXTRACTION_LIMITED_GUIDANCE],
-      operatorRecommendations: [
-        "Google Forms, 네이버폼, 모아폼 등 지원 플랫폼 사용을 권장합니다.",
-        "개인정보 처리방침·운영자 연락처를 설문 첫 화면에 표시하세요.",
-      ],
+      operatorRecommendations: isMoaform
+        ? [
+            "설문 첫 화면에 개인정보 수집 목적, 항목, 보유기간, 파기 기준, 담당자 안내가 보이도록 구성하세요.",
+            "개인정보를 수집하는 경우 외부 설문도구 이용, 수탁자, 위탁업무, 보유·파기 기준을 안내하세요.",
+          ]
+        : [
+            "Google Forms, 네이버폼, 모아폼 등 지원 플랫폼 사용을 권장합니다.",
+            "개인정보 처리방침·운영자 연락처를 설문 첫 화면에 표시하세요.",
+          ],
       evidenceItems: [],
       legalBasisSummary:
         "문항 자동 추출이 불가하여 개인정보 위험 점수를 산정하지 않았습니다. 본 결과는 참고 수준의 제한 안내입니다.",
@@ -105,7 +120,7 @@ export function generateExtractionLimitedReport(
         id: "limit_0",
         category: "override",
         severity: "info",
-        title: "진단 제한",
+        title: isMoaform ? "모아폼 문항 자동 확인 제한" : "진단 제한",
         description: limitedReason,
       },
     ],
@@ -113,6 +128,15 @@ export function generateExtractionLimitedReport(
       ...buildLimitedForm(formUrl, title, platform),
       limitedReason,
       extractedFromHtml: sourceForm?.extractedFromHtml ?? true,
+      operatorType: sourceForm?.operatorType ?? "미확인",
+      notices: sourceForm?.notices,
+      metadata: {
+        ...sourceForm?.metadata,
+        diagnosisScope: "limited",
+        extractionWarnings: [
+          ...(sourceForm?.metadata?.extractionWarnings ?? []),
+        ],
+      },
     },
     createdAt: now,
     completedAt: now,

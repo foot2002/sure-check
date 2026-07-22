@@ -12,6 +12,10 @@ import { classifyToolRisk } from "@/lib/analyzer/classifyToolRisk";
 import { deriveRequiredObligations } from "@/lib/analyzer/deriveRequiredObligations";
 import { generateReport } from "@/lib/analyzer/generateReport";
 import { generateExtractionLimitedReport } from "@/lib/scan/limitedReport";
+import {
+  MOAFORM_FAILURE_MESSAGES,
+  type MoaformFailureReason,
+} from "@/lib/extractors/moaformTypes";
 
 export function runAnalysis(form: NormalizedForm): AnalysisResult {
   const context = classifyContext(form);
@@ -66,8 +70,28 @@ export function analyzeForm(
   buildContext?: ReportBuildContext,
 ): ScanReport {
   if (form.isLimited && form.questions.length === 0) {
+    if (form.platform === "moaform") {
+      const code = (form.metadata?.failureReason ??
+        "MOAFORM_DYNAMIC_RENDERING") as MoaformFailureReason;
+      const messages =
+        MOAFORM_FAILURE_MESSAGES[code] ??
+        MOAFORM_FAILURE_MESSAGES.MOAFORM_DYNAMIC_RENDERING;
+      return generateExtractionLimitedReport(scanId, formUrl, form, {
+        buildContext,
+        limitedReason: form.limitedReason ?? messages.limitedReason,
+        summary: messages.summary,
+        guidance: messages.guidance,
+        limitationReasons: [
+          form.limitedReason ?? messages.limitedReason,
+          messages.summary,
+          messages.guidance,
+        ],
+      });
+    }
+
     return generateExtractionLimitedReport(scanId, formUrl, form, {
       buildContext,
+      limitedReason: form.limitedReason,
     });
   }
 

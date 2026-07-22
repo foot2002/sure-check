@@ -16,6 +16,8 @@ import {
   isMoaformFinalUrl,
   isMoaformUrl,
   MOAFORM_DIAGNOSIS_NOTICE,
+  MOAFORM_FAILURE_MESSAGES,
+  type MoaformFailureReason,
 } from "@/lib/extractors/moaformTypes";
 import {
   isNaverFormsFinalUrl,
@@ -202,19 +204,25 @@ function buildMoaformLimitedReport(
   buildContext: ReportBuildContext,
 ): ScanReport {
   const warnings = form.metadata?.extractionWarnings ?? [];
-  const limitedReason =
-    form.limitedReason ?? "모아폼 문항을 자동으로 확인하지 못했습니다.";
+  const code = (form.metadata?.failureReason ??
+    "MOAFORM_DYNAMIC_RENDERING") as MoaformFailureReason;
+  const messages =
+    code && MOAFORM_FAILURE_MESSAGES[code]
+      ? MOAFORM_FAILURE_MESSAGES[code]
+      : MOAFORM_FAILURE_MESSAGES.MOAFORM_DYNAMIC_RENDERING;
+  const limitedReason = form.limitedReason ?? messages.limitedReason;
 
   return generateExtractionLimitedReport(scanId, formUrl, form, {
     limitedReason,
-    limitationReasons: [limitedReason, ...warnings, EXTRACTION_LIMITED_GUIDANCE].filter(
-      (value, index, arr) => arr.indexOf(value) === index,
-    ),
-    summary: form.loginRequired
-      ? "모아폼에 로그인 또는 접근 권한이 필요하여 문항을 확인하지 못했습니다."
-      : form.metadata?.extractionWarnings?.some((warning) => warning.includes("종료"))
-        ? "모아폼 응답이 종료되어 진단이 제한되었습니다."
-        : `모아폼 공개 HTML에서 문항을 자동으로 확인하지 못했습니다. ${limitedReason}`,
+    limitationReasons: [
+      limitedReason,
+      messages.summary,
+      messages.guidance,
+      ...warnings,
+      EXTRACTION_LIMITED_GUIDANCE,
+    ].filter((value, index, arr) => arr.indexOf(value) === index),
+    summary: messages.summary,
+    guidance: messages.guidance,
     buildContext,
   });
 }

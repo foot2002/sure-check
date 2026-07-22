@@ -18,8 +18,8 @@ function toNormalizedQuestion(
   parsed: Awaited<ReturnType<typeof parseMoaformDocument>>["questions"][number],
 ): NormalizedQuestion {
   const categories = parsed.detectedCategories as DetectedCategory[];
-  const personalDataTypes = categories.map(
-    (category) => getDetectedCategoryDisplayLabel(category, parsed.questionText),
+  const personalDataTypes = categories.map((category) =>
+    getDetectedCategoryDisplayLabel(category, parsed.questionText),
   );
   const hasPersonalData = categories.some(isPersonalDataCategory);
 
@@ -86,6 +86,11 @@ export async function extractMoaform(
     [parsed.description, ...parsed.noticeTexts].filter(Boolean).join("\n"),
   );
 
+  const operatorHint = parsed.operatorHint;
+  const operatorLabel = operatorHint
+    ? `${operatorHint} (확인 필요)`
+    : "미확인";
+
   const extractionWarnings = [
     ...parsed.warnings,
     parsed.extractionMethod === "dom_fallback"
@@ -93,6 +98,9 @@ export async function extractMoaform(
       : undefined,
     parsed.closedForm ? "응답이 종료된 모아폼으로 보입니다." : undefined,
     parsed.loginRequired ? "로그인 또는 접근 권한이 필요할 수 있습니다." : undefined,
+    parsed.failureReason
+      ? `모아폼 제한 사유 코드: ${parsed.failureReason}`
+      : undefined,
   ].filter((warning): warning is string => Boolean(warning));
 
   const hasNoQuestions = normalizedQuestions.length === 0;
@@ -100,9 +108,9 @@ export async function extractMoaform(
 
   return {
     platform: "moaform",
-    title: parsed.title,
+    title: parsed.title || "모아폼 설문",
     url: input.finalUrl,
-    operatorType: "미확인",
+    operatorType: operatorLabel,
     questions: normalizedQuestions,
     pages,
     partialScan:
@@ -125,12 +133,22 @@ export async function extractMoaform(
       description: description.slice(0, 2000),
       privacyNotice: parsed.noticeTexts.join("\n").slice(0, 2000),
       privacyPolicyUrl: parsed.privacyPolicyUrls[0],
+      processor: operatorHint,
+      contactDepartment: operatorHint,
     },
     metadata: {
       noticeTexts: parsed.noticeTexts,
       privacyPolicyUrls: parsed.privacyPolicyUrls,
-      headings: pages.map((page) => page.title).filter((title): title is string => Boolean(title)),
+      headings: [
+        ...(parsed.pageMeta?.headings ?? []),
+        ...pages.map((page) => page.title).filter((title): title is string => Boolean(title)),
+      ],
       extractionWarnings,
+      failureReason: parsed.failureReason,
+      extractionMethod: parsed.extractionMethod,
+      operatorHint,
+      operatorCandidates: parsed.operatorCandidates,
+      diagnosisScope: isLimited ? "limited" : "full",
     },
     management: {
       officialAccount: null,

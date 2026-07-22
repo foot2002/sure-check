@@ -6,7 +6,7 @@ import type {
   Platform,
   RiskGrade,
 } from "@/lib/types/scan";
-import type { RespondentDecision } from "@/lib/reporting/reportMessages";
+import type { VerdictType } from "@/lib/reporting/verdictTypes";
 import {
   categoriesToDataLevel,
   detectCategories,
@@ -31,7 +31,8 @@ export type GoldenScenarioType =
   | "disability_sensitive"
   | "policy_opinion"
   | "child_facility_survey"
-  | "public_google_forms_pii";
+  | "public_google_forms_pii"
+  | "moaform_dynamic_limited";
 
 export interface GoldenGradeRange {
   minScore?: number;
@@ -61,7 +62,7 @@ export interface GoldenCase {
   scenarioType: GoldenScenarioType;
   sampleUrl?: string;
   sampleNormalizedForm?: NormalizedForm;
-  expectedDecision?: RespondentDecision | RespondentDecision[];
+  expectedDecision?: VerdictType | VerdictType[];
   expectedGradeRange?: GoldenGradeRange;
   expectedDataItems?: GoldenExpectedDataItems;
   expectedNotDataItems?: string[];
@@ -166,6 +167,14 @@ function form(input: {
     metadata: {
       noticeTexts: input.noticeTexts ?? [],
       headings: [],
+      ...(input.isLimited && input.platform === "moaform"
+        ? {
+            failureReason: "MOAFORM_DYNAMIC_RENDERING",
+            diagnosisScope: "limited" as const,
+            operatorHint: input.operatorType?.replace(/\s*\(확인 필요\)\s*$/, ""),
+            extractionMethod: "none",
+          }
+        : {}),
     },
   };
 }
@@ -193,7 +202,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
         "자유의견",
       ],
     }),
-    expectedDecision: "respond_with_caution",
+    expectedDecision: "RESPOND_WITH_CAUTION",
     expectedGradeRange: { minScore: 70, maxScore: 80, allowedGrades: ["caution"] },
     expectedDataItems: {
       quasiIdentifiers: ["연령대", "거주권역"],
@@ -205,7 +214,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       any: ["보유기간", "담당자", "수집 항목", "외부 설문 SaaS", "자유의견"],
     },
     forbiddenPhrases: ["경기도", "공공재단 성격 키워드", "민감정보 경고", "응답 보류", "직원 설문", "주의 후 응답", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["용인시박물관", "공공 문화시설", "자유의견", "주의가 필요합니다"],
+    requiredPhrases: ["용인시박물관", "공공 문화시설", "자유의견", "일부 주의가 필요합니다"],
     notes: "응답 선택지의 지역명은 residence_area 판단에는 쓰되 공공부문 근거에는 쓰지 않는다.",
   },
   {
@@ -223,7 +232,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "서울특별시청에서 민원 서비스 개선을 위해 실시하는 설문입니다.",
       questions: ["이름", "연락처", "이메일", "민원 만족도", "개선 의견"],
     }),
-    expectedDecision: ["check_before_responding", "hold_response"],
+    expectedDecision: ["CHECK_NOTICE_BEFORE_INPUT", "DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 70, allowedGrades: ["risk", "high_risk"] },
     expectedDataItems: {
       directIdentifiers: ["이름", "연락처", "이메일"],
@@ -266,7 +275,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
         "자유의견",
       ],
     }),
-    expectedDecision: "respond_with_caution",
+    expectedDecision: "RESPOND_WITH_CAUTION",
     expectedGradeRange: { minScore: 70, maxScore: 80, allowedGrades: ["caution"] },
     expectedDataItems: {
       quasiIdentifiers: ["자녀 연령대", "거주권역"],
@@ -276,7 +285,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     expectedContext: "public_sector",
     expectedOperatorFixes: { any: ["자유의견", "보유기간", "담당자", "외부 설문 SaaS"] },
     forbiddenPhrases: ["성별", "민감한 아동정보", "아동 개인정보 고위험", "응답 보류", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["자녀 연령대", "거주권역", "자유의견", "주의가 필요합니다"],
+    requiredPhrases: ["자녀 연령대", "거주권역", "자유의견", "일부 주의가 필요합니다"],
   },
   {
     id: "golden_public_library_policy",
@@ -299,7 +308,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
         "서비스 개선사항",
       ],
     }),
-    expectedDecision: ["respond_with_caution", "check_before_responding"],
+    expectedDecision: ["RESPOND_WITH_CAUTION", "CHECK_NOTICE_BEFORE_INPUT"],
     expectedGradeRange: { minScore: 60, maxScore: 80, allowedGrades: ["caution", "risk"] },
     expectedDataItems: {
       quasiIdentifiers: ["성별", "연령대"],
@@ -308,7 +317,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     expectedNotDataItems: ["건강정보", "민감정보", "직원/조직진단", "마케팅"],
     expectedContext: "public_sector",
     forbiddenPhrases: ["민감정보 입력", "직원/조직진단", "마케팅 동의", "응답 보류", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["프로그램 주제", "정책 방향", "주의가 필요합니다"],
+    requiredPhrases: ["프로그램 주제", "정책 방향", "일부 주의가 필요합니다"],
   },
   {
     id: "golden_event_contact",
@@ -326,7 +335,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       questions: ["전반적 만족도", "경품 응모용 연락처", "자유의견"],
       contextHints: { isEvent: true },
     }),
-    expectedDecision: ["respond_with_caution", "check_before_responding"],
+    expectedDecision: ["RESPOND_WITH_CAUTION", "CHECK_NOTICE_BEFORE_INPUT"],
     expectedGradeRange: { minScore: 40, maxScore: 75, allowedGrades: ["caution", "risk"] },
     expectedDataItems: {
       directIdentifiers: ["경품 응모용 연락처"],
@@ -353,7 +362,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "행사 참석자 확인을 위한 신청 설문입니다.",
       questions: ["이름", "연락처", "이메일", "참석 목적"],
     }),
-    expectedDecision: ["check_before_responding", "hold_response"],
+    expectedDecision: ["CHECK_NOTICE_BEFORE_INPUT", "DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 65, allowedGrades: ["risk", "high_risk"] },
     expectedDataItems: {
       directIdentifiers: ["이름", "연락처", "이메일"],
@@ -388,7 +397,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       questions: ["부서", "직급", "근속연수", "상사평가", "조직문화 만족도"],
       contextHints: { isEmployeeSurvey: true },
     }),
-    expectedDecision: "hold_response",
+    expectedDecision: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 60, allowedGrades: ["high_risk", "risk"] },
     expectedDataItems: {
       quasiIdentifiers: ["부서", "직급", "근속연수"],
@@ -401,7 +410,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       "직원",
       "원자료",
       "소수집단",
-      "응답하지 않는 것이 좋습니다",
+      "응답하지 말",
       "ISMS-P",
       "보안 인증",
       "강력히 권고",
@@ -422,7 +431,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "건강지원 서비스 제공을 위한 신청 설문입니다.",
       questions: ["현재 건강상태", "앓고 있는 질병", "장애 여부", "치료 이력", "선호하는 건강 프로그램 주제"],
     }),
-    expectedDecision: "hold_response",
+    expectedDecision: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 60, allowedGrades: ["high_risk", "risk"] },
     expectedDataItems: {
       sensitiveItems: ["민감정보(건강)"],
@@ -434,7 +443,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     forbiddenPhrases: ["불법", "반드시 써야"],
     requiredPhrases: [
       "민감정보",
-      "응답하지 않는 것이 좋습니다",
+      "응답하지 말",
       "ISMS-P",
       "CSAP",
       "보안 인증",
@@ -456,14 +465,14 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "본인확인과 지급 처리를 위한 정보 제출 설문입니다.",
       questions: ["주민등록번호", "여권번호", "운전면허번호", "신분증 첨부", "계좌번호"],
     }),
-    expectedDecision: "hold_response",
+    expectedDecision: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 55, allowedGrades: ["high_risk"] },
     expectedDataItems: {
       highRiskItems: ["주민등록번호", "여권번호", "운전면허번호", "신분증", "계좌번호"],
     },
     expectedOperatorFixes: { any: ["보유기간", "ISMS-P", "보안 인증"] },
     forbiddenPhrases: ["불법"],
-    requiredPhrases: ["고위험정보", "개인정보 노출 위험이 있습니다", "ISMS-P", "보안 인증"],
+    requiredPhrases: ["고위험정보", "응답하지 말", "ISMS-P", "보안 인증"],
   },
   {
     id: "golden_generic_no_questions",
@@ -480,13 +489,49 @@ export const GOLDEN_CASES: GoldenCase[] = [
       isLimited: true,
       limitedReason: "설문 문항 또는 입력 필드를 자동으로 확인하지 못했습니다.",
     }),
-    expectedDecision: "check_before_responding",
+    expectedDecision: "LIMITED_DIAGNOSIS",
     expectedIsLimited: true,
     expectedGradeRange: { allowedGrades: [] },
     expectedDataItems: {},
     expectedNotDataItems: ["이름", "연락처", "성별", "민감정보", "고위험정보"],
     forbiddenPhrases: ["고위험", "응답 보류", "민감정보 입력"],
     requiredPhrases: ["진단 제한", "점수 산정 불가"],
+  },
+  {
+    id: "golden_moaform_dynamic_limited",
+    name: "Moaform dynamic rendering limited diagnosis",
+    description:
+      "모아폼 문항 추출에 실패했을 때(세션/JSON/DOM 모두 실패) 제한 진단(판단불가형)으로 안전하게 처리합니다.",
+    platform: "moaform",
+    scenarioType: "moaform_dynamic_limited",
+    sampleUrl: "https://answer.moaform.com/answers/M1Q1nB",
+    sampleNormalizedForm: form({
+      platform: "moaform",
+      url: "https://answer.moaform.com/answers/M1Q1nB",
+      title: "2026 서울시 소상공인 온라인 유통 MD 상담 참여 신청서",
+      description: "모아폼 문항 추출 실패 시 제한 진단 샘플입니다.",
+      questions: [],
+      isLimited: true,
+      limitedReason:
+        "모아폼 페이지는 확인했지만, 설문 문항을 자동으로 읽지 못했습니다.",
+      operatorType: "서울시 소상공인정책과 (확인 필요)",
+    }),
+    expectedDecision: "LIMITED_DIAGNOSIS",
+    expectedIsLimited: true,
+    expectedGradeRange: { allowedGrades: [] },
+    expectedDataItems: {},
+    expectedNotDataItems: ["이름", "연락처", "민감정보", "고위험정보"],
+    expectedOperatorFixes: {
+      any: ["모아폼 문항 자동 확인 제한", "외부 설문도구"],
+    },
+    forbiddenPhrases: ["불법", "응답해도 무리가 낮습니다", "개인정보 없음"],
+    requiredPhrases: [
+      "이 설문은 안전성을 판단할 수 없습니다",
+      "판단불가형",
+      "점수 산정 불가",
+      "Moaform",
+      "문항 자동",
+    ],
   },
   {
     id: "golden_health_program_preference",
@@ -508,14 +553,14 @@ export const GOLDEN_CASES: GoldenCase[] = [
         },
       ],
     }),
-    expectedDecision: ["can_respond", "respond_with_caution"],
+    expectedDecision: ["SAFE_TO_RESPOND", "RESPOND_WITH_CAUTION"],
     expectedGradeRange: { minScore: 70, maxScore: 95, allowedGrades: ["safe", "caution"] },
     expectedDataItems: {
       generalOpinions: ["프로그램 주제"],
     },
     expectedNotDataItems: ["민감정보", "건강정보"],
     forbiddenPhrases: ["민감정보 또는 민감 맥락 확인 필요", "응답자에게 부담이 큰 정보"],
-    requiredPhrases: ["프로그램 주제", "비교적 안전합니다"],
+    requiredPhrases: ["프로그램 주제", "응답해도 무리가 낮습니다"],
   },
   {
     id: "golden_health_status_sensitive",
@@ -531,12 +576,12 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "건강지원 서비스 신청 설문입니다.",
       questions: ["현재 건강상태는 어떻습니까?"],
     }),
-    expectedDecision: "hold_response",
+    expectedDecision: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 60, allowedGrades: ["risk", "high_risk"] },
     expectedDataItems: {
       sensitiveItems: ["민감정보(건강)"],
     },
-    requiredPhrases: ["민감정보", "응답하지 않는 것이 좋습니다", "ISMS-P", "보안 인증"],
+    requiredPhrases: ["민감정보", "응답하지 말", "ISMS-P", "보안 인증"],
   },
   {
     id: "golden_disability_sensitive",
@@ -552,12 +597,12 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "편의지원 제공을 위한 신청 설문입니다.",
       questions: ["장애 여부를 선택해 주세요."],
     }),
-    expectedDecision: "hold_response",
+    expectedDecision: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
     expectedGradeRange: { minScore: 0, maxScore: 60, allowedGrades: ["risk", "high_risk"] },
     expectedDataItems: {
       sensitiveItems: ["민감정보(건강)"],
     },
-    requiredPhrases: ["민감정보", "응답하지 않는 것이 좋습니다", "ISMS-P", "보안 인증"],
+    requiredPhrases: ["민감정보", "응답하지 말", "ISMS-P", "보안 인증"],
   },
   {
     id: "golden_policy_opinion",
@@ -573,13 +618,13 @@ export const GOLDEN_CASES: GoldenCase[] = [
       description: "서비스 개선과 정책 방향 수립을 위한 의견 조사입니다.",
       questions: ["도서관 정책 방향은 무엇이라고 생각하십니까?"],
     }),
-    expectedDecision: ["can_respond", "respond_with_caution"],
+    expectedDecision: ["SAFE_TO_RESPOND", "RESPOND_WITH_CAUTION"],
     expectedGradeRange: { minScore: 70, maxScore: 95, allowedGrades: ["safe", "caution"] },
     expectedDataItems: {
       generalOpinions: ["정책 방향"],
     },
     expectedNotDataItems: ["민감정보", "건강정보"],
     forbiddenPhrases: ["민감정보 또는 민감 맥락 확인 필요", "응답자에게 부담이 큰 정보"],
-    requiredPhrases: ["정책 방향", "비교적 안전합니다"],
+    requiredPhrases: ["정책 방향", "응답해도 무리가 낮습니다"],
   },
 ];

@@ -683,136 +683,187 @@ npm run dev -- -p 8080
 
 ## 리포트 구조 개선
 
-하나의 `ScanReport`를 화면에서 다음 3개 관점으로 재구성합니다. 기존 extractor, 룰엔진, Debug Panel, Validation Lab은 유지하며, DB·Supabase·Playwright·Worker는 아직 연결하지 않습니다.
+하나의 `ScanReport`를 화면에서 **응답 판단 중심**으로 재구성합니다. 기존 extractor, 룰엔진, Debug Panel, Validation Lab은 유지하며, DB·Supabase·Playwright·Worker는 연결하지 않습니다.
 
-## 개인/민감정보 포함 여부 기반 분기형 리포트 구조
+## 사용자용 MBTI식 설문 안전유형 리포트와 운영자용 개선 리포트 구조
 
-리포트는 먼저 “이 설문이 어떤 개인정보 유형을 포함하는지”를 판정한 뒤, 그 결과에 따라 응답자 행동 문구와 운영자 보완 우선순위를 다르게 표시합니다. 특정 설문명 예외처리가 아니라 수집정보 유형, 문항 맥락, 고지 상태, 도구 경로를 조합해 판단합니다.
+결과 리포트는 **사용자용**과 **운영자용**으로 분리됩니다. Extractor·룰엔진·Debug Panel은 유지하며 DB·Supabase·Playwright는 연결하지 않습니다.
 
-### 최상위 분류
+## 설문 안전유형 이름 변경 기준
 
-| 유형 | 기준 | 상단 행동 문구 |
-|------|------|----------------|
-| 개인정보 거의 없음 | 직접식별정보·준식별정보·민감정보·고위험정보가 거의 없고 만족도/선호도/의견 중심 | 화면 기준으로 응답해도 무리가 낮습니다. |
-| 준식별정보만 있음 | 성별, 연령대, 거주권역, 자녀 연령대, 부서/직급 등은 있으나 이름·연락처·이메일 없음 | 응답은 가능해 보입니다. 다만 개인정보를 추가로 쓰지 마세요. |
-| 직접식별정보 있음 | 이름, 연락처, 이메일, 상세주소, 생년월일 중 하나 이상 있음 | 고지 확인 전에는 이름·연락처 입력을 미루세요. |
-| 민감정보 또는 고위험정보 있음 | 건강상태, 질병, 장애, 고충, 괴롭힘, 인사평가, 주민등록번호, 계좌번호, 신분증 등 | 고지 확인 전에는 응답하지 않는 것이 좋습니다. |
-| 진단 제한 | 문항 없음, 로그인/접근 제한, 동적 로딩, HTML 분석 실패, URL 차단 등 | 이 링크만으로는 응답 안전성을 판단하기 어렵습니다. |
+- 유형명에는 `공공`/`기업`/`주체불명`을 붙이지 않는다.
+- 유형명은 사용자 행동 중심으로 단순화한다.
+- 설문주체는 별도 배지로 표시한다.
+- 도구 판단도 별도 배지로 표시한다.
+- 최종 유형명은 아래 **6개만** 사용한다.
 
-### 화면 순서
+| 유형 | 의미 | 최종 판단 |
+|------|------|-----------|
+| 안심응답형 | 개인정보 거의 없음 | 응답해도 무리가 낮습니다 |
+| 개인정보 주의형 | 준식별정보만 | 응답 가능, 개인정보 추가 금지 |
+| 고지확인형 | 직접식별정보 | 고지문 확인 전 입력 금지 |
+| 보안확인형 | 개인정보 + 외부도구/인증 확인 | 도구·관리체계 확인 필요 |
+| 응답중지형 | 민감/고위험/신고검토 | 응답하지 않는 것이 좋음 |
+| 판단불가형 | 진단 제한 | 안전성 판단 불가 |
 
-1. 개인/민감정보 포함 여부 판단
-2. 응답자 행동 판단
-3. 판단 핵심 근거
-4. 이 설문이 요구하는 정보
-5. 운영자 우선 개선사항
-6. 개선 문구 복사
-7. 추가 응답자 체크리스트
-8. 세부 판단 근거 및 방법
-9. Debug Panel
+잘못된 예: `공공 레드플래그형`, `기업 이름표확인형`, `주체불명 블랙박스형`  
+올바른 예: 유형 `응답중지형` + 배지 `설문 주체: 공공기관`
 
-### 운영자 우선 개선사항
+### 사용자용 화면
 
-운영자 섹션은 먼저 “운영자가 먼저 고칠 3가지”를 보여주고, 전체 보완사항은 그룹별 접힘 카드로 제공합니다.
+1. 설문 안전유형 카드 (유형명 · 메인 문장 · 배지 · 행동)
+2. 이 설문을 어떻게 해야 하나요?
+3. 판단 핵심 근거 최대 3개
 
-- 공공기관 + 개인정보/민감정보: CSAP 또는 공공 보안검증 도구 검토, 국외이전/위탁 안내, 기관 공식 계정과 접근권한 확인
-- 준식별정보만 있는 공공 만족도 조사: 보유기간과 파기 기준, 담당부서 또는 문의처, 네이버폼/모아폼 이용 안내
-- 직접식별정보가 있는 Google Forms: 국외 보관·이전 안내, 수집 항목, 보유기간, 파기 기준
-- 직원/조직진단: 원자료 제공 범위, 익명성 기준, 소수집단 비공개 기준, 고충·인사평가 문항 접근권한
-- 경품 설문: 경품 연락처와 설문응답 분리, 발송 후 파기, 선택 응모 안내
+### 운영자용 개선 리포트
 
-### 표현 원칙
+1. 운영자가 먼저 고칠 3가지
+2. 도구 / 고지문 / 문항 / 운영·관리 탭
+3. 법적 체크 결과
+4. 개선 문구 복사
 
-- “응답 보류입니다”, “위험 신호가 감지되었습니다”처럼 모호한 표현을 본문에서 줄입니다.
-- 응답자에게는 “무엇을 해야 하는지”를 먼저 말합니다.
-- “법률 위반 확정”처럼 단정하지 않습니다.
-- “고지 확인 전에는 응답하지 않는 것이 좋습니다”, “개인정보를 추가로 쓰지 마세요”, “이름·연락처 입력을 미루세요”처럼 행동 중심 문구를 사용합니다.
+도구 판단 배지 예:
 
-### 1. 응답자용 판단 리포트
+- 문제 낮음 / 외부도구 안내 참고
+- 외부도구 안내 및 보유·파기 기준 보완 권고
+- CSAP 인증 도구 사용 강력 권고
+- ISMS-P·보안인증도구 확인 권고
 
-상단에 **응답 판단** 카드를 표시합니다.
+### 관련 코드
 
-| 판단 | 의미 |
+```
+lib/reporting/safetyType.ts
+lib/reporting/buildOperatorImprovementReport.ts
+components/report/SafetyTypeCard.tsx
+components/report/UserSafetyReport.tsx
+components/report/OperatorImprovementPanel.tsx
+```
+
+
+## 운영자용 핵심 개선 리포트: 문제·근거·조치 구조
+
+운영자용 리포트는 긴 나열이 아니라 **핵심 문제 Top 3~5**만 먼저 보여줍니다.
+
+각 핵심 문제는 아래 필드로 구성합니다.
+
+| 필드 | 내용 |
 |------|------|
-| 응답 가능 | 개인정보 위험 신호가 낮음 |
-| 주의 후 응답 | D2 준식별정보 또는 일부 고지 확인 필요 |
-| 확인 후 응답 | 이름·연락처·이메일 등 직접식별정보 또는 외부 도구 확인 필요 |
-| 응답 보류 권고 | 민감정보, 고위험정보, 익명성 모순, 직원 고충/조직진단 등 응답 전 추가 확인 필요 |
+| 문제 | 한 줄 문제명 |
+| 왜 문제인가 | 1문장 |
+| 근거 | 법·정책 태그 최대 3개 |
+| 바로 고칠 방법 | 1~2문장 조치 |
+| 심각도 | 위반 소지 큼 / 확인 필요 / 개선 권고 / 문제 낮음 |
 
-“응답 금지” 또는 법률 위반 확정 표현은 사용하지 않습니다. 진단 제한 상태에서는 응답 판단 대신 **진단 제한 / 점수 산정 불가**를 표시합니다.
+법·정책 태그는 `lib/reporting/legalBasisRegistry.ts`에서 관리합니다.
 
-### 2. 운영자용 보완 리포트
+- 개인정보보호법 제15·16·21·23·24·26·28조의8·29조
+- 클라우드컴퓨팅법 / CSAP
+- 행정·공공기관 클라우드 이용 기준
+- 국정원 보안성 검토 기준 (공공+개인정보+외부도구 확인 필요 시)
+- ISMS-P 관리체계
 
-운영자가 바로 수정할 수 있도록 다음 그룹으로 보완사항을 정리합니다.
+같은 의미의 finding은 `buildCoreOperatorProblems.ts`에서 하나로 묶습니다.
+도구/고지문/문항/운영관리 상세와 법 설명은 **세부 개선사항 보기**, **법·정책 근거 설명** 접힘 영역으로 이동합니다.
+법률 위반 확정 표현은 사용하지 않습니다.
 
-- 필수 보완: 수집 목적, 수집 항목, 보유기간, 파기, 거부권, 담당자 등
-- 권장 보완: 고지문 가독성, 응답자 안내 보완
-- 도구·위탁 보완: 네이버폼/모아폼 위탁 안내, Google Forms 국외이전/국외보관 안내
-- 설문 설계 보완: 불필요한 개인정보 삭제, 경품정보와 설문응답 분리, 민감문항 최소화
-- 공공기관 보완: 공공부문 외부 SaaS 사용 시 위탁, 기관 계정, 보유·파기, 보안검증 확인
-- 직원/조직진단 보완: 익명성 기준, 원자료 제공 범위, 소수집단 비공개 기준, 불이익 없음 안내
 
-운영자 섹션에는 복사 가능한 개선 문구도 제공합니다.
+## 모아폼 동적 로딩 / SPA 추출 기준
 
-### 3. 상세 근거/개발자 리포트
+모아폼(`answer.moaform.com`, `moaform.com`, `surveyl.ink`)은 다음 순서로 문항을 추출합니다.
 
-기존 상세 findings, 근거 문항, 법적 기준 요약, analyzer trace는 **상세 근거 보기** accordion 안으로 이동했습니다. 기본적으로 접힌 상태이며, Debug Panel은 가장 아래에서 기존처럼 별도 접힌 카드로 유지합니다.
+1. HTML 임베디드 JSON
+2. **공개 SPA 세션** (`/start` → `/gateway` JWT → `/form2` → `/next2` 페이지 순회, 빈 답변만 사용·최종 제출 없음)
+3. 레거시 `.json` 공개 엔드포인트
+4. DOM fallback
 
-### 리포팅 코드 구조
+일부 설문은 로그인·비밀번호·로직 분기로 문항이 막히면 정적/세션 추출만으로는 문항이 0개일 수 있습니다.
 
-```
-lib/reporting/
-  composeAudienceReport.ts   # ScanReport → AudienceReport 합성
-  respondentDecision.ts      # 응답자 판단 기준
-  operatorActions.ts         # 운영자 보완사항/템플릿 생성
-  reportMessages.ts          # AudienceReport 타입, 라벨, 템플릿
+### 제한 진단 원칙
 
-components/report/
-  DecisionHero.tsx
-  RiskScoreVisual.tsx
-  RiskDimensionBars.tsx
-  KeyReasonsGrid.tsx
-  CollectedDataVisual.tsx
-  RespondentChecklist.tsx
-  OperatorFixDashboard.tsx
-  FixPriorityCard.tsx
-  CopyableNoticeTemplates.tsx
-  CompactEvidenceAccordion.tsx
-  ReportVisualSummary.tsx
-```
+- 문항을 못 읽으면 **분석 실패가 아니라 제한 진단**으로 처리합니다.
+- `failureReason` 예: `MOAFORM_DYNAMIC_RENDERING`, `MOAFORM_QUESTIONS_NOT_FOUND`, `MOAFORM_ACCESS_RESTRICTED`, `MOAFORM_CLOSED_OR_PRIVATE`, `MOAFORM_UNSUPPORTED_STRUCTURE`, `MOAFORM_FETCH_FAILED`
+- 사용자 안전유형: **판단불가형**
+- 점수·개인정보/민감정보 여부: **산정·추정하지 않음**
+- 사용도구: Moaform, 진단범위: 제한 진단
+- 제목·운영주체는 metadata/title/visible text에서 가능하면 표시하되, 불확실하면 `(확인 필요)`로 표기합니다.
 
-## 시각적 리포팅 UX 고도화
+### TODO — Playwright Worker
 
-리포트는 일반 사용자가 첫 화면에서 응답 여부를 판단하고, 운영자는 우선 보완사항을 바로 확인할 수 있도록 다음 순서로 표시합니다.
+모아폼 일부 설문은 JavaScript 렌더링 후 문항이 표시되므로, 정밀 분석을 위해 Playwright Worker 기반 렌더링 fallback이 필요합니다.
 
-1. **DecisionHero**: 응답 판단, 점수 게이지, 핵심 이유, 진단 범위
-2. **KeyReasonsGrid**: 판단 핵심 근거 최대 4개 카드
-3. **CollectedDataVisual**: 직접식별정보, 준식별정보, 민감정보/민감 맥락, 고위험정보 칩
-4. **RespondentChecklist**: 응답 전 확인할 점, 입력하지 않는 것이 좋은 정보
-5. **OperatorFixDashboard**: 필수/권장/도구·위탁/공공기관/직원설문/설문설계 보완사항
-6. **CopyableNoticeTemplates**: 상황별 고지문 템플릿 복사
-7. **CompactEvidenceAccordion**: 중복 제거된 상세 근거, 기본 접힘
-8. **DebugPanel**: 개발자 진단 정보, 가장 아래에 기본 접힘
+- Vercel API route 안에서 Playwright를 바로 실행하지 않습니다.
+- 추후 Worker 또는 별도 서버에서 처리합니다.
+- Supabase/Queue 도입 후 비동기 분석으로 확장합니다.
 
-### 중복 근거 정리
+관련 코드: `lib/extractors/moaformTypes.ts`, `lib/extractors/moaformParser.ts`, `lib/extractors/MoaformExtractor.ts`, `lib/scan/resolveScanReport.ts`
 
-`lib/reporting/dedupeFindings.ts`에서 유사 finding을 묶어 사용자 리포트에 반복 노출되지 않게 합니다.
+## 16Personalities 참고 스타일 기반 SURE Check 리포트 디자인 기준
 
-- 보유기간 누락, 파기 시점 누락 → **보유·파기 안내 부족**
-- 수탁자 누락, 위탁업무 누락 → **외부 설문 SaaS 위탁 안내 부족**
-- 국외이전 국가/수탁자/보유기간 누락 → **국외이전/국외보관 안내 부족**
-- 익명성 기준, 원자료 제공 범위, 소수집단 기준 누락 → **직원 설문 익명성·원자료 제공 기준 부족**
-- 담당자, 처리자, 문의처 누락 → **담당자/처리자 안내 부족**
+SURE Check 결과 리포트는 16Personalities와 같은 **친근한 성격유형 리포트 감성**을 참고하되, 로고·캐릭터·색상·문구를 복제하지 않습니다.
 
-일반 리포트에는 raw question id를 표시하지 않습니다. raw id와 원본 JSON은 Debug Panel에서만 확인합니다.
+### 디자인 원칙
 
-### 문구 원칙
+- Friendly / Trustworthy / Personality-report / Spacious / Rounded
+- 사용자용: 쉽고 재미있는 설문 안전유형 카드
+- 운영자용: 차분한 실무 개선 리포트
+- 개인정보 진단 서비스로서의 신뢰감 유지
 
-- “불법”, “위반 확정”처럼 단정하지 않습니다.
-- “위험 신호”, “확인 필요”, “보완 권고”, “위반 소지”처럼 자동 진단의 한계를 드러내는 표현을 사용합니다.
-- 민감정보가 탐지되지 않으면 민감정보 경고를 표시하지 않습니다.
-- 직원/조직진단 맥락이 아니면 직원 설문 보완사항을 표시하지 않습니다.
-- 마케팅 맥락이 아니면 마케팅 동의 누락을 표시하지 않습니다.
+### 타이포그래피
+
+- 기본 폰트: Pretendard (CDN 가변 폰트) → SUIT / Noto Sans KR / system-ui
+- Hero 유형명: text-4xl ~ text-5xl
+- 최종 판단: text-2xl ~ text-3xl
+- 섹션 제목: text-2xl
+- 본문: text-base ~ text-lg
+
+### 유형별 테마
+
+`components/report/ui/safetyTypeTheme.ts`에서 6종 안전유형별 pastel 팔레트·아이콘·CTA 색을 관리합니다.
+
+| 유형 | 톤 |
+|------|------|
+| 안심응답형 | soft green / teal |
+| 개인정보 주의형 | warm amber |
+| 고지확인형 | orange |
+| 보안확인형 | violet / indigo |
+| 응답중지형 | rose |
+| 판단불가형 | slate |
+
+### 레이아웃
+
+1. 설문 안전유형 Hero
+2. 이 설문을 어떻게 해야 하나요?
+3. 판단 핵심 근거 3개
+4. 설문 프로필 요약
+5. 운영자용 핵심 개선 리포트
+6. 세부 판단근거 (접힘)
+7. 개발자 진단 정보 (접힘)
+8. 공유 / 서비스 안내
+
+관련 코드: `SafetyTypeCard`, `UserSafetyReport`, `HowToRespondSection`, `OperatorImprovementPanel`, `app/globals.css`
+
+## 세부 판단근거와 개발자 진단 정보 분리 기준
+
+앞 섹션은 **판단**하고, `세부 판단근거`는 **증명**합니다. 개발자 정보는 별도로 숨깁니다.
+
+### 세부 판단근거 (기본 접힘)
+
+구성은 아래 5개 블록만 사용합니다.
+
+1. 수집정보 판단 근거 — 탐지 문항 기반 표
+2. 고지문 확인 결과 — 확인됨 / 일부 부족 / 미확인 / 해당 없음
+3. 설문주체·도구 판단 근거 — 주체·도구·CSAP/ISMS-P 필요 여부
+4. 적용 법·정책 기준 — badge/chip (클릭 시 짧은 설명)
+5. 진단 한계 — 3~5개 bullet
+
+반복 금지: 최종 판단 문장, 사용자 행동 권고, 운영자 Top 개선사항, CSAP/ISMS-P 장문 설명, finding 원문 전체 나열, raw question id.
+
+### 개발자 진단 정보 (기본 접힘)
+
+Analyzer Trace, NormalizedForm JSON, ScanReport JSON, raw question id는 `개발자 진단 정보`로 분리합니다. `?debug=1`이면 자동 펼침.
+
+관련 코드: `lib/reporting/buildDetailedEvidenceSummary.ts`, `components/report/DetailedEvidenceSection.tsx`, `components/report/DeveloperDiagnosticsSection.tsx`
+
 
 ## 아동 관련 시설 만족도 설문 처리 기준
 
