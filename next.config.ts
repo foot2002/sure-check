@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: [
+    "pdf-parse",
+    "mammoth",
+    "jszip",
+    "puppeteer-core",
+    "@sparticuz/chromium",
+  ],
 };
 
 export default nextConfig;

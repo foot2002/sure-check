@@ -9,18 +9,25 @@ interface DeveloperDiagnosticsSectionProps {
   report: ScanReport;
 }
 
-function readDebugOpen(): boolean {
+function readDebugFlag(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("debug") === "1";
 }
 
+/**
+ * 개발 환경에서만 ReportView가 마운트합니다.
+ * 공개 프로덕션 화면에는 렌더되지 않으며, 개발 환경에서도 ?debug=1일 때만 표시합니다.
+ */
 export function DeveloperDiagnosticsSection({
   report,
 }: DeveloperDiagnosticsSectionProps) {
-  const [open, setOpen] = useState(readDebugOpen);
+  const [visible] = useState(readDebugFlag);
+  const [open, setOpen] = useState(readDebugFlag);
+
+  if (!visible) return null;
 
   return (
-    <section className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[var(--report-shadow-soft)]">
+    <section className="overflow-hidden rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 shadow-none">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -28,15 +35,15 @@ export function DeveloperDiagnosticsSection({
         aria-expanded={open}
       >
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-600">
             <Code2 className="h-5 w-5" aria-hidden />
           </span>
           <div>
-            <p className="text-lg font-bold text-foreground md:text-xl">
-              개발자 진단 정보
+            <p className="text-lg font-bold text-slate-700 md:text-xl">
+              내부 개발 진단
             </p>
-            <p className="mt-1 text-base text-muted">
-              Analyzer Trace, NormalizedForm, ScanReport JSON, raw question id
+            <p className="mt-1 text-base text-slate-500">
+              개발 환경 + ?debug=1 전용. 공개 리포트에는 포함되지 않습니다.
             </p>
           </div>
         </div>
@@ -49,7 +56,7 @@ export function DeveloperDiagnosticsSection({
       </button>
 
       {open && (
-        <div className="border-t border-slate-100 px-5 py-5 md:px-7">
+        <div className="border-t border-slate-200 px-5 py-5 md:px-7">
           <DebugPanel report={report} embedded />
         </div>
       )}

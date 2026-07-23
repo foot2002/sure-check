@@ -8,18 +8,26 @@
     "start": "next start",
     "lint": "eslint app components lib --max-warnings 0",
     "build:public-institutions": "tsx scripts/build-public-institution-index.ts",
-    "test:public-institutions": "tsx scripts/test-public-institution-matcher.ts"
+    "test:public-institutions": "tsx scripts/test-public-institution-matcher.ts",
+    "test:evidence-package": "tsx scripts/test-evidence-package-reb-moaform.ts"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
     "cheerio": "^1.2.0",
+    "fast-xml-parser": "^5.10.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.23.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.10",
+    "pdf-parse": "^2.4.5",
+    "puppeteer-core": "^25.3.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

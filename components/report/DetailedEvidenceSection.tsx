@@ -82,6 +82,18 @@ export function DetailedEvidenceSection({
           </EvidenceBlock>
 
           <EvidenceBlock title="고지문 확인 결과">
+            {report.form.metadata?.source?.kind === "file" &&
+            !report.form.hasPrivacyNotice ? (
+              <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm leading-relaxed text-muted">
+                <p className="font-semibold text-foreground">
+                  파일에서 개인정보 수집·이용 고지문을 확인하지 못했습니다.
+                </p>
+                <p className="mt-1">
+                  업로드한 파일에 고지문이 포함되어 있지 않으면 보유기간, 파기
+                  기준, 담당자 안내 등이 ‘미확인’으로 진단될 수 있습니다.
+                </p>
+              </div>
+            ) : null}
             {evidence.noticeChecks.length === 0 ? (
               <p className="text-sm text-muted">
                 {evidence.isLimited

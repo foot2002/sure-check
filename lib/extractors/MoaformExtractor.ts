@@ -18,10 +18,12 @@ function toNormalizedQuestion(
   parsed: Awaited<ReturnType<typeof parseMoaformDocument>>["questions"][number],
 ): NormalizedQuestion {
   const categories = parsed.detectedCategories as DetectedCategory[];
-  const personalDataTypes = categories.map((category) =>
+  const personalCategories = categories.filter(isPersonalDataCategory);
+  const semanticCategories = categories.filter((c) => !isPersonalDataCategory(c));
+  const personalDataTypes = personalCategories.map((category) =>
     getDetectedCategoryDisplayLabel(category, parsed.questionText),
   );
-  const hasPersonalData = categories.some(isPersonalDataCategory);
+  const hasPersonalData = personalCategories.length > 0;
 
   return {
     id: parsed.id,
@@ -31,7 +33,11 @@ function toNormalizedQuestion(
     required: parsed.required,
     hasPersonalData,
     personalDataTypes: personalDataTypes.length > 0 ? personalDataTypes : undefined,
-    dataRiskLevel: hasPersonalData ? categoriesToDataLevel(categories) : "D1",
+    semanticCategories:
+      semanticCategories.length > 0 ? semanticCategories : undefined,
+    dataRiskLevel: hasPersonalData
+      ? categoriesToDataLevel(personalCategories)
+      : "D1",
     detectedCategories: categories,
     riskTags: parsed.riskTags as QuestionRiskTag[],
     auxiliaryText: parsed.description,
@@ -82,6 +88,19 @@ export async function extractMoaform(
   const pages = buildPages(normalizedQuestions);
   const noticeFlags = detectNoticeFlags(parsed.noticeTexts, parsed.description);
 
+  const privacyConsentTexts = normalizedQuestions
+    .filter(
+      (q) =>
+        q.type === "privacy_consent" ||
+        q.riskTags?.includes("privacy_consent"),
+    )
+    .map((q) => [q.questionText, q.auxiliaryText].filter(Boolean).join("\n"))
+    .filter(Boolean);
+
+  const privacyNoticeRaw = collapseWhitespace(
+    [...privacyConsentTexts, ...parsed.noticeTexts].filter(Boolean).join("\n"),
+  ).slice(0, 8000);
+
   const description = collapseWhitespace(
     [parsed.description, ...parsed.noticeTexts].filter(Boolean).join("\n"),
   );
@@ -125,19 +144,22 @@ export async function extractMoaform(
     loginRequired: parsed.loginRequired,
     branchDetected: parsed.branchDetected,
     extractedFromHtml: true,
-    hasPrivacyNotice: noticeFlags.hasPrivacyNotice,
-    hasConsent: noticeFlags.hasConsent,
+    hasPrivacyNotice: noticeFlags.hasPrivacyNotice || privacyConsentTexts.length > 0,
+    hasConsent: noticeFlags.hasConsent || privacyConsentTexts.length > 0,
     hasRetentionNotice: noticeFlags.hasRetentionNotice,
     hasOverseasTransferNotice: noticeFlags.hasOverseasTransferNotice,
     notices: {
       description: description.slice(0, 2000),
-      privacyNotice: parsed.noticeTexts.join("\n").slice(0, 2000),
+      privacyNotice: privacyNoticeRaw,
       privacyPolicyUrl: parsed.privacyPolicyUrls[0],
+      // 기관명만으로 담당문의처를 확인됨 처리하지 않음
       processor: operatorHint,
-      contactDepartment: operatorHint,
     },
     metadata: {
-      noticeTexts: parsed.noticeTexts,
+      noticeTexts:
+        privacyConsentTexts.length > 0
+          ? [...privacyConsentTexts, ...parsed.noticeTexts]
+          : parsed.noticeTexts,
       privacyPolicyUrls: parsed.privacyPolicyUrls,
       headings: [
         ...(parsed.pageMeta?.headings ?? []),

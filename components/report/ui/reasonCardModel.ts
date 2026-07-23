@@ -38,8 +38,8 @@ const KEYWORD_RULES: Array<{
     Icon: Clock,
   },
   {
-    pattern: /고지|안내문|동의/,
-    title: "고지문 확인 필요",
+    pattern: /고지|안내문|동의|보유기간|담당자/,
+    title: "수집·보관 안내 확인",
     Icon: FileWarning,
   },
   {

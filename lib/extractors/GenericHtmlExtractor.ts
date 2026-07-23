@@ -110,12 +110,14 @@ function dedupeQuestions(candidates: QuestionCandidate[]): QuestionCandidate[] {
 
 function toNormalizedQuestion(candidate: QuestionCandidate): NormalizedQuestion {
   const categories = candidate.detectedCategories as DetectedCategory[];
-  const personalDataTypes = categories.map(
+  const personalCategories = categories.filter(isPersonalDataCategory);
+  const semanticCategories = categories.filter((c) => !isPersonalDataCategory(c));
+  const personalDataTypes = personalCategories.map(
     (category) => getDetectedCategoryDisplayLabel(category, candidate.questionText),
   );
-  const hasPersonalData = categories.some(isPersonalDataCategory);
+  const hasPersonalData = personalCategories.length > 0;
   const dataRiskLevel = hasPersonalData
-    ? categoriesToDataLevel(categories)
+    ? categoriesToDataLevel(personalCategories)
     : "D1";
 
   return {
@@ -126,6 +128,8 @@ function toNormalizedQuestion(candidate: QuestionCandidate): NormalizedQuestion 
     required: candidate.required,
     hasPersonalData,
     personalDataTypes: personalDataTypes.length > 0 ? personalDataTypes : undefined,
+    semanticCategories:
+      semanticCategories.length > 0 ? semanticCategories : undefined,
     dataRiskLevel,
     detectedCategories: categories,
     riskTags: candidate.riskTags as QuestionRiskTag[],

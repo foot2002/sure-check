@@ -1,6 +1,6 @@
 import type { ScanReport } from "@/lib/types/scan";
 import type { CollectedDataSummary, PrivacyDataType } from "@/lib/reporting/reportMessages";
-import { classifyPrivacyDataType, missingNoticeLabels } from "@/lib/reporting/respondentDecision";
+import { classifyPrivacyDataType } from "@/lib/reporting/respondentDecision";
 import {
   classifySurveySubject,
   type SurveySubjectType,
@@ -11,6 +11,10 @@ import {
   type LegalBasisId,
 } from "@/lib/reporting/legalBasisRegistry";
 import { isCsapCertifiedTool } from "@/lib/reporting/toolRegistry";
+import {
+  buildNoticeCorpus,
+  evaluateCorpusNoticeChecks,
+} from "@/lib/reporting/noticeCorpusChecks";
 
 export type NoticeCheckStatus =
   | "confirmed"
@@ -182,24 +186,11 @@ export function groupDetectedDataEvidence(
   return rows;
 }
 
-function noticeStatusFromMissing(
-  missing: boolean,
-  applicable: boolean,
-  partial = false,
-): NoticeCheckStatus {
-  if (!applicable) return "not_applicable";
-  if (partial) return "partial";
-  if (missing) return "missing";
-  return "confirmed";
-}
-
 export function buildNoticeCheckEvidence(
   report: ScanReport,
   privacyType: PrivacyDataType,
   summary: CollectedDataSummary,
-): { rows: NoticeCheckRow[]; extraMissing: number } {
-  const missing = missingNoticeLabels(report);
-  const hasMissing = (pattern: RegExp) => missing.some((label) => pattern.test(label));
+): { rows: NoticeCheckRow[]; allRows: NoticeCheckRow[]; extraMissing: number } {
   const hasPii =
     privacyType === "direct_identifier" ||
     privacyType === "sensitive_or_high_risk" ||
@@ -214,124 +205,56 @@ export function buildNoticeCheckEvidence(
     (report.platform === "naver_forms" ||
       report.platform === "moaform" ||
       report.platform === "google_forms");
+  const needsCoreNotice =
+    hasPii || privacyType === "quasi_only" || privacyType === "minimal";
 
-  const checks: Array<{
-    item: string;
-    applicable: boolean;
-    missing: boolean;
-    partial?: boolean;
-    evidenceMissing: string;
-    evidenceOk: string;
-  }> = [
-    {
-      item: "수집 목적",
-      applicable: hasPii || privacyType === "quasi_only",
-      missing: hasMissing(/목적/),
-      evidenceMissing: "수집 목적 문구를 찾지 못함",
-      evidenceOk: "수집 목적 관련 문구 확인",
-    },
-    {
-      item: "수집 항목",
-      applicable: hasPii || privacyType === "quasi_only",
-      missing: hasMissing(/항목/),
-      partial:
-        hasPii &&
-        !hasMissing(/항목/) &&
-        summary.directIdentifiers.length > 0 &&
-        !report.form.hasPrivacyNotice,
-      evidenceMissing: "안내문에 수집 항목 명시가 부족함",
-      evidenceOk: "수집 항목 안내 확인",
-    },
-    {
-      item: "보유기간",
-      applicable: hasPii || privacyType === "quasi_only" || privacyType === "minimal",
-      missing: hasMissing(/보유/),
-      evidenceMissing: "보유기간 문구를 찾지 못함",
-      evidenceOk: "보유기간 관련 문구 확인",
-    },
-    {
-      item: "파기 기준",
-      applicable: hasPii || privacyType === "quasi_only",
-      missing: hasMissing(/파기/),
-      evidenceMissing: "파기 기준 문구를 찾지 못함",
-      evidenceOk: "파기 기준 관련 문구 확인",
-    },
-    {
-      item: "동의 거부권 및 불이익",
-      applicable: hasPii,
-      missing: hasMissing(/거부|불이익/),
-      evidenceMissing: "동의 거부권·불이익 안내를 찾지 못함",
-      evidenceOk: "동의 거부권 관련 문구 확인",
-    },
-    {
-      item: "담당부서/문의처",
-      applicable: true,
-      missing: hasMissing(/담당|처리자|문의/),
-      evidenceMissing: "담당부서·문의처 문구를 찾지 못함",
-      evidenceOk: "담당부서·문의처 관련 문구 확인",
-    },
-    {
-      item: "위탁/수탁자 안내",
-      applicable: needsTrustee,
-      missing:
-        hasMissing(/위탁|수탁/) ||
-        !(
-          Boolean(report.form.notices?.trustee) ||
-          Boolean(report.form.management?.trusteeDisclosed)
-        ),
-      evidenceMissing: "외부도구 위탁·수탁자 안내를 찾지 못함",
-      evidenceOk: "위탁·수탁자 안내 확인",
-    },
-    {
-      item: "국외 보관·이전 안내",
-      applicable: needsOverseas,
-      missing:
-        hasMissing(/국외|이전/) || !Boolean(report.form.notices?.overseasTransfer),
-      evidenceMissing: "국외 보관·이전 안내를 찾지 못함",
-      evidenceOk: "국외이전 안내 확인",
-    },
-    {
-      item: "민감정보 별도 동의",
-      applicable: hasSensitive,
-      missing: hasSensitive && (hasMissing(/민감|별도\s*동의/) || !report.form.notices?.sensitiveConsent),
-      evidenceMissing: "민감정보 별도 동의 문구를 찾지 못함",
-      evidenceOk: "민감정보 별도 동의 관련 문구 확인",
-    },
-    {
-      item: "원자료 접근권한",
-      applicable: hasPii,
-      missing:
-        hasPii &&
-        (report.debug?.managementItems.some(
-          (item) =>
-            /접근|원자료|다운로드/i.test(item.label) && item.status !== "confirmed",
-        ) ??
-          true),
-      evidenceMissing: "원자료 접근권한 기준을 찾지 못함",
-      evidenceOk: "원자료 접근권한 관련 신호 확인",
-    },
-  ];
-
-  const rows: NoticeCheckRow[] = checks.map((check) => {
-    const status = noticeStatusFromMissing(
-      check.missing,
-      check.applicable,
-      check.partial,
-    );
-    return {
-      item: check.item,
-      status,
-      statusLabel: STATUS_LABEL[status],
-      evidence:
-        status === "not_applicable"
-          ? "해당 없음"
-          : status === "confirmed"
-            ? check.evidenceOk
-            : check.evidenceMissing,
-    };
+  const corpusResults = evaluateCorpusNoticeChecks(report, {
+    needsTrustee,
+    needsOverseas,
+    checkRawAccess: hasPii,
   });
 
-  const actionable = rows.filter((row) => row.status !== "not_applicable");
+  const rowsFromCorpus: NoticeCheckRow[] = corpusResults
+    .filter((result) => {
+      if (result.key === "contact" || result.key === "trustee") return true;
+      if (result.key === "overseas") return needsOverseas;
+      if (result.key === "raw_access") return hasPii;
+      if (result.key === "refusal") return hasPii;
+      if (result.key === "destruction") {
+        return hasPii || privacyType === "quasi_only";
+      }
+      if (result.key === "retention") return needsCoreNotice;
+      return hasPii || privacyType === "quasi_only";
+    })
+    .map((result) => {
+      const status: NoticeCheckStatus = result.confirmed ? "confirmed" : "missing";
+      return {
+        item: result.item,
+        status,
+        statusLabel: STATUS_LABEL[status],
+        evidence: result.evidence,
+      };
+    });
+
+  if (hasSensitive) {
+    const sensitiveOk =
+      Boolean(report.form.notices?.sensitiveConsent) ||
+      /민감정보.{0,20}별도\s*동의|별도\s*동의/.test(
+        buildNoticeCorpus(report.form),
+      );
+    rowsFromCorpus.push({
+      item: "민감정보 별도 동의",
+      status: sensitiveOk ? "confirmed" : "missing",
+      statusLabel: sensitiveOk ? "확인됨" : "미확인",
+      evidence: sensitiveOk
+        ? "민감정보 별도 동의 관련 문구 확인"
+        : "민감정보 별도 동의 문구를 찾지 못함",
+    });
+  }
+
+  const actionable = rowsFromCorpus.filter(
+    (row) => row.status !== "not_applicable",
+  );
   const priority = (status: NoticeCheckStatus) => {
     if (status === "missing") return 0;
     if (status === "partial") return 1;
@@ -340,13 +263,14 @@ export function buildNoticeCheckEvidence(
   const sorted = [...actionable].sort(
     (a, b) => priority(a.status) - priority(b.status),
   );
-  const primary = sorted.slice(0, 5);
+  const primary = sorted.slice(0, 8);
   const restMissing = sorted
-    .slice(5)
+    .slice(8)
     .filter((row) => row.status === "missing" || row.status === "partial");
 
   return {
     rows: primary,
+    allRows: sorted,
     extraMissing: restMissing.length,
   };
 }

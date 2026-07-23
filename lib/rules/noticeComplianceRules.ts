@@ -30,14 +30,44 @@ function checkField(
 }
 
 function noticeCorpus(form: NormalizedForm): string {
+  const consentBlocks = form.questions
+    .filter(
+      (q) =>
+        q.type === "privacy_consent" ||
+        q.riskTags?.includes("privacy_consent"),
+    )
+    .map((q) => [q.questionText ?? q.label, q.auxiliaryText].filter(Boolean).join(" "));
+
   return [
     form.notices?.description,
     form.notices?.purpose,
+    form.notices?.items,
+    form.notices?.retention,
+    form.notices?.destruction,
+    form.notices?.refusalRight,
+    form.notices?.refusalDisadvantage,
     form.notices?.privacyNotice,
+    form.notices?.consentText,
+    form.notices?.trustee,
+    form.notices?.overseasTransfer,
+    form.notices?.processor,
+    form.notices?.contactDepartment,
     ...(form.metadata?.noticeTexts ?? []),
+    ...consentBlocks,
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function fieldOrCorpus(
+  form: NormalizedForm,
+  structured?: string,
+): string | undefined {
+  const corpus = noticeCorpus(form);
+  if (hasMeaningfulText(structured, 8)) {
+    return `${structured}\n${corpus}`;
+  }
+  return hasMeaningfulText(corpus, 8) ? corpus : structured;
 }
 
 function hasPurposeHint(form: NormalizedForm): boolean {
@@ -57,48 +87,88 @@ const FIELD_MAP: Partial<
   >
 > = {
   collection_purpose: (f) => ({
-    text: f.notices?.purpose ?? f.notices?.privacyNotice,
-    keywords: ["목적", "이용", "수집"],
+    text: fieldOrCorpus(f, f.notices?.purpose ?? f.notices?.privacyNotice),
+    keywords: [
+      "수집 목적",
+      "수집·이용 목적",
+      "이용 목적",
+      "활용 목적",
+      "처리 목적",
+      "조사 목적",
+      "경품 지급",
+      "목적",
+    ],
   }),
   collection_items: (f) => ({
-    text: f.notices?.items ?? f.notices?.privacyNotice,
-    keywords: ["항목", "이름", "연락", "수집"],
+    text: fieldOrCorpus(f, f.notices?.items ?? f.notices?.privacyNotice),
+    keywords: [
+      "수집 항목",
+      "개인정보 항목",
+      "처리 항목",
+      "성명",
+      "이름",
+      "휴대폰",
+      "연락처",
+      "이메일",
+      "항목",
+    ],
   }),
   retention_period: (f) => ({
-    text: f.notices?.retention,
-    keywords: ["보유", "기간", "일", "개월"],
+    text: fieldOrCorpus(f, f.notices?.retention),
+    keywords: [
+      "보유기간",
+      "보유·이용 기간",
+      "이용기간",
+      "보관기간",
+      "행사 종료",
+      "조사 종료",
+      "경품 발송 완료",
+      "목적 달성",
+      "보유",
+      "기간",
+    ],
   }),
   consent_refusal_right: (f) => ({
-    text: f.notices?.refusalRight,
-    keywords: ["거부", "거절", "동의"],
+    text: fieldOrCorpus(f, f.notices?.refusalRight),
+    keywords: ["동의 거부", "거부권", "거부할 권리", "거부 시", "거부", "거절"],
   }),
   refusal_disadvantage: (f) => ({
-    text: f.notices?.refusalDisadvantage,
-    keywords: ["불이익", "제한", "거부"],
+    text: fieldOrCorpus(f, f.notices?.refusalDisadvantage),
+    keywords: ["불이익", "제한", "경품지급 제한", "경품 지급 제한", "서비스 이용 제한"],
   }),
   destruction_timing: (f) => ({
-    text: f.notices?.destruction,
-    keywords: ["파기", "삭제", "폐기"],
+    text: fieldOrCorpus(f, f.notices?.destruction),
+    keywords: ["파기", "삭제", "폐기", "지체없이", "즉시 파기"],
   }),
   processor_contact: (f) => ({
-    text: f.notices?.processor ?? f.notices?.contactDepartment,
-    keywords: ["담당", "처리자", "연락", "문의"],
+    text: fieldOrCorpus(
+      f,
+      f.notices?.contactDepartment ?? f.notices?.processor,
+    ),
+    keywords: [
+      "담당부서",
+      "담당자",
+      "문의처",
+      "개인정보 보호책임자",
+      "개인정보 담당자",
+      "처리자",
+    ],
   }),
   trustee: (f) => ({
-    text: f.notices?.trustee,
-    keywords: ["수탁", "위탁", "naver", "moaform", "wiseon", "google"],
+    text: fieldOrCorpus(f, f.notices?.trustee),
+    keywords: ["수탁자", "위탁업무", "처리위탁", "위탁"],
   }),
   trustee_task: (f) => ({
-    text: f.notices?.trusteeTask ?? f.notices?.trustee,
-    keywords: ["위탁", "업무", "저장", "관리"],
+    text: fieldOrCorpus(f, f.notices?.trusteeTask ?? f.notices?.trustee),
+    keywords: ["위탁 업무", "처리 업무", "위탁업무", "보관", "파기"],
   }),
   trustee_oversight: (f) => ({
-    text: f.notices?.trustee ?? f.notices?.privacyNotice,
+    text: fieldOrCorpus(f, f.notices?.trustee ?? f.notices?.privacyNotice),
     keywords: ["관리", "감독", "계약", "수탁"],
   }),
   overseas_transfer: (f) => ({
-    text: f.notices?.overseasTransfer,
-    keywords: ["국외", "이전", "해외", "미국"],
+    text: fieldOrCorpus(f, f.notices?.overseasTransfer),
+    keywords: ["국외이전", "국외 보관", "해외 이전", "해외 보관", "이전 국가"],
   }),
   overseas_items: (f) => ({
     text: f.notices?.overseasTransfer,
@@ -186,16 +256,16 @@ const FIELD_MAP: Partial<
     minLength: 5,
   }),
   contact_department: (f) => ({
-    text: f.notices?.contactDepartment,
-    keywords: ["부서", "문의", "연락", "팀"],
+    text: fieldOrCorpus(f, f.notices?.contactDepartment),
+    keywords: ["담당부서", "문의처", "개인정보 보호책임자", "담당자"],
   }),
   result_disclosure_prevention: (f) => ({
-    text: f.notices?.privacyNotice,
+    text: fieldOrCorpus(f, f.notices?.privacyNotice),
     keywords: ["공개", "방지", "비공개"],
   }),
   purpose_destruction: (f) => ({
-    text: f.notices?.destruction ?? f.notices?.retention,
-    keywords: ["파기", "목적", "달성"],
+    text: fieldOrCorpus(f, f.notices?.destruction ?? f.notices?.retention),
+    keywords: ["파기", "목적 달성", "지체없이"],
   }),
 };
 

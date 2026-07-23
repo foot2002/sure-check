@@ -1,5 +1,6 @@
 import type { RiskGrade } from "@/lib/types/scan";
 import type { PrivacyDataType } from "@/lib/reporting/reportMessages";
+import type { SafetyTypeId } from "@/lib/reporting/safetyType";
 
 /** 최종 응답 판단 등급 (일반 사용자 행동 기준) */
 export type VerdictType =
@@ -78,63 +79,64 @@ export const VERDICT_COPY: Record<
   }
 > = {
   SAFE_TO_RESPOND: {
-    headline: "이 설문은 응답해도 무리가 낮습니다.",
-    actionLabel: "자유의견에 개인정보만 쓰지 마세요.",
+    headline: "이 설문은 응답해도 무리가 없습니다.",
+    actionLabel: "자유의견에 개인정보만 쓰지 않으면 응답해도 괜찮습니다.",
     actionDescription:
-      "화면에서 확인되는 범위에서는 개인정보·민감정보 위험이 낮습니다.",
+      "이름, 연락처, 이메일처럼 개인을 직접 알아볼 수 있는 정보는 확인되지 않았습니다.",
     statusBadge: "응답 가능",
     howToRespond:
-      "응답해도 무리가 낮습니다. 다만 자유의견에는 개인정보를 쓰지 마세요.",
+      "응답해도 무리가 없습니다. 다만 자유의견에는 개인정보를 쓰지 마세요.",
   },
   RESPOND_WITH_CAUTION: {
-    headline: "이 설문은 개인정보·민감정보는 없으나, 일부 주의가 필요합니다.",
+    headline: "응답은 가능하지만, 이름·연락처 등 개인정보는 쓰지 마세요.",
     actionLabel:
-      "응답은 가능해 보입니다. 다만 개인정보를 추가로 쓰지 마세요.",
+      "자유의견에는 이름, 연락처, 건강상태, 구체적인 개인 사정을 쓰지 않는 것이 좋습니다.",
     actionDescription:
-      "준식별정보 또는 일부 고지 확인이 필요할 수 있습니다.",
-    statusBadge: "주의 필요",
+      "성별, 연령대, 거주지역처럼 다른 정보와 결합될 수 있는 항목이 포함되어 있습니다.",
+    statusBadge: "개인정보 없이 응답",
     howToRespond:
-      "응답은 가능해 보입니다. 이름, 연락처, 건강상태 같은 개인정보를 추가로 쓰지 마세요.",
+      "응답은 가능하지만, 이름·연락처 등 개인정보는 쓰지 마세요.",
   },
   CHECK_NOTICE_BEFORE_INPUT: {
     headline:
-      "이 설문은 개인정보를 수집합니다. 고지문 확인 전에는 입력하지 마세요.",
+      "수집 목적과 보관·파기 안내가 없으면 개인정보를 입력하지 마세요.",
     actionLabel:
-      "수집 목적, 보유기간, 파기 기준, 담당자를 확인한 뒤 응답하세요.",
+      "수집 목적, 보유기간, 파기 기준, 담당자 안내를 확인한 뒤 응답하세요.",
     actionDescription:
-      "이름·연락처·이메일 등 직접식별정보가 포함되어 있습니다.",
-    statusBadge: "고지 확인 후 응답",
+      "이 설문은 이름, 연락처, 이메일 등 개인을 직접 알아볼 수 있는 정보를 수집합니다.",
+    statusBadge: "안내 없으면 입력 금지",
     howToRespond:
-      "개인정보를 수집합니다. 수집 목적, 보유기간, 파기 기준, 담당자를 확인한 뒤 응답하세요.",
+      "개인정보를 왜 수집하는지, 언제까지 보관하는지, 언제 파기하는지, 담당자가 누구인지 안내되어 있는지 확인하세요. 이 안내가 보이지 않으면 입력하지 않는 것이 좋습니다.",
   },
   DO_NOT_RESPOND: {
     headline: "이 설문은 응답하지 않는 것이 좋습니다.",
     actionLabel:
-      "민감정보 또는 고위험 개인정보가 포함될 수 있으므로 운영기관에 먼저 확인하세요.",
+      "개인정보를 입력하지 말고 운영기관에 공식 처리 기준을 확인하세요.",
     actionDescription:
       "민감정보·고위험정보 또는 식별·불이익 우려가 큰 맥락이 확인됩니다.",
-    statusBadge: "응답하지 않기",
+    statusBadge: "응답 거부·신고 검토",
     howToRespond:
-      "민감정보 또는 고위험 개인정보가 포함될 수 있습니다. 처리 기준이 명확하지 않다면 응답하지 않는 것이 좋습니다.",
+      "개인정보를 입력하지 말고 운영기관에 공식 처리 기준을 확인하세요. 설명이 불충분하거나 처리 기준이 불명확하면 응답하지 말고 신고를 검토하세요.",
   },
   REPORT_OR_INQUIRE: {
-    headline: "이 설문은 운영기관 문의 또는 신고 검토가 필요합니다.",
+    headline: "이 설문은 응답하지 않는 것이 좋습니다.",
     actionLabel:
-      "개인정보 처리 기준이 불명확하면 응답하지 말고 운영기관에 문의하거나 신고를 검토하세요.",
+      "개인정보를 입력하지 말고 운영기관에 문의하거나 신고를 검토하세요.",
     actionDescription:
-      "민감·고위험정보 수집과 고지 부족 등이 함께 확인됩니다.",
-    statusBadge: "문의·신고 검토",
+      "개인정보 처리 기준이 불명확한 상태에서 민감정보 또는 고위험정보를 수집하고 있습니다.",
+    statusBadge: "응답 거부·신고 검토",
     howToRespond:
-      "개인정보 처리 기준이 불명확한 상태에서 민감정보 또는 고위험정보를 수집하고 있습니다. 운영기관에 문의하거나 신고를 검토하세요.",
+      "개인정보를 입력하지 말고 운영기관에 공식 처리 기준을 확인하세요. 설명이 불충분하면 응답하지 말고 신고를 검토하세요.",
   },
   LIMITED_DIAGNOSIS: {
-    headline: "이 설문은 안전성을 판단할 수 없습니다.",
+    headline: "문항 분석이 안 되어 판단이 어렵습니다.",
     actionLabel:
-      "개인정보를 입력하기 전 설문 안내문과 운영기관을 직접 확인하세요.",
-    actionDescription: "설문 문항을 자동으로 확인하지 못했습니다.",
-    statusBadge: "판단 불가",
+      "실제 설문 화면에서 운영기관, 수집 항목, 보유기간, 파기 기준, 담당자 안내를 직접 확인해 주세요.",
+    actionDescription:
+      "설문 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.",
+    statusBadge: "문항 분석 불가",
     howToRespond:
-      "문항을 확인하지 못했습니다. 개인정보를 입력하기 전 운영기관과 고지문을 직접 확인하세요.",
+      "문항 분석이 안 되어 판단이 어렵습니다. 실제 설문 화면에서 운영기관과 안내문을 직접 확인해 주세요.",
   },
 };
 
@@ -149,14 +151,14 @@ export const VERDICT_STYLES: Record<VerdictType, string> = {
 
 export const VERDICT_LABELS: Record<VerdictType, string> = {
   SAFE_TO_RESPOND: "응답 가능",
-  RESPOND_WITH_CAUTION: "주의 필요",
-  CHECK_NOTICE_BEFORE_INPUT: "고지 확인 후 응답",
-  DO_NOT_RESPOND: "응답하지 않기",
-  REPORT_OR_INQUIRE: "문의·신고 검토",
-  LIMITED_DIAGNOSIS: "판단 불가",
+  RESPOND_WITH_CAUTION: "개인정보 없이 응답",
+  CHECK_NOTICE_BEFORE_INPUT: "안내 없으면 입력 금지",
+  DO_NOT_RESPOND: "응답 거부·신고 검토",
+  REPORT_OR_INQUIRE: "응답 거부·신고 검토",
+  LIMITED_DIAGNOSIS: "문항 분석 불가",
 };
 
-/** UI 비교 체크리스트용 행동 옵션 */
+/** @deprecated HOW_TO_RESPOND_OPTIONS — use SAFETY_TYPE_ACTION_OPTIONS */
 export const HOW_TO_RESPOND_OPTIONS: Array<{
   id: string;
   label: string;
@@ -164,32 +166,70 @@ export const HOW_TO_RESPOND_OPTIONS: Array<{
 }> = [
   {
     id: "just_respond",
-    label: "그냥 응답 가능",
+    label: "응답 가능",
     verdicts: ["SAFE_TO_RESPOND"],
   },
   {
     id: "respond_without_pii",
-    label: "개인정보를 쓰지 않고 응답",
+    label: "개인정보 없이 응답",
     verdicts: ["RESPOND_WITH_CAUTION"],
   },
   {
     id: "check_notice",
-    label: "고지문 확인 후 응답",
+    label: "안내 없으면 입력 금지",
     verdicts: ["CHECK_NOTICE_BEFORE_INPUT"],
   },
   {
-    id: "do_not_respond",
-    label: "응답하지 않기",
-    verdicts: ["DO_NOT_RESPOND"],
+    id: "official_check",
+    label: "공식 확인 후 응답",
+    verdicts: [],
   },
   {
-    id: "report_inquire",
-    label: "운영기관 문의 또는 신고 검토",
-    verdicts: ["REPORT_OR_INQUIRE"],
+    id: "do_not_respond",
+    label: "응답 거부·신고 검토",
+    verdicts: ["DO_NOT_RESPOND", "REPORT_OR_INQUIRE"],
   },
   {
     id: "limited",
-    label: "판단 불가",
+    label: "문항 분석 불가",
     verdicts: ["LIMITED_DIAGNOSIS"],
+  },
+];
+
+/** 사용자용 응답 판단 6종 체크리스트 */
+export const SAFETY_TYPE_ACTION_OPTIONS: Array<{
+  id: string;
+  label: string;
+  typeIds: SafetyTypeId[];
+}> = [
+  {
+    id: "safe_respond",
+    label: "응답 가능",
+    typeIds: ["SAFE_RESPOND"],
+  },
+  {
+    id: "pii_caution",
+    label: "개인정보 없이 응답",
+    typeIds: ["PII_CAUTION"],
+  },
+  {
+    id: "notice_check",
+    label: "안내 없으면 입력 금지",
+    typeIds: ["NOTICE_CHECK"],
+  },
+  {
+    id: "security_check",
+    label: "공식 확인 후 응답",
+    typeIds: ["SECURITY_CHECK"],
+  },
+  {
+    id: "stop_response",
+    label: "응답 거부·신고 검토",
+    typeIds: ["STOP_RESPONSE"],
+  },
+  {
+    id: "judgment_unknown",
+    label: "문항 분석 불가",
+    typeIds: ["JUDGMENT_UNKNOWN"],
   },
 ];

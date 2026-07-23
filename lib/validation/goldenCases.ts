@@ -214,7 +214,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
       any: ["보유기간", "담당자", "수집 항목", "외부 설문 SaaS", "자유의견"],
     },
     forbiddenPhrases: ["경기도", "공공재단 성격 키워드", "민감정보 경고", "응답 보류", "직원 설문", "주의 후 응답", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["용인시박물관", "공공 문화시설", "자유의견", "일부 주의가 필요합니다"],
+    requiredPhrases: ["용인시박물관", "공공 문화시설", "자유의견", "개인정보는 쓰지 마세요"],
     notes: "응답 선택지의 지역명은 residence_area 판단에는 쓰되 공공부문 근거에는 쓰지 않는다.",
   },
   {
@@ -285,7 +285,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     expectedContext: "public_sector",
     expectedOperatorFixes: { any: ["자유의견", "보유기간", "담당자", "외부 설문 SaaS"] },
     forbiddenPhrases: ["성별", "민감한 아동정보", "아동 개인정보 고위험", "응답 보류", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["자녀 연령대", "거주권역", "자유의견", "일부 주의가 필요합니다"],
+    requiredPhrases: ["자녀 연령대", "거주권역", "자유의견", "개인정보는 쓰지 마세요"],
   },
   {
     id: "golden_public_library_policy",
@@ -317,7 +317,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     expectedNotDataItems: ["건강정보", "민감정보", "직원/조직진단", "마케팅"],
     expectedContext: "public_sector",
     forbiddenPhrases: ["민감정보 입력", "직원/조직진단", "마케팅 동의", "응답 보류", "강력히 권고합니다", "CSAP 인증 도구 사용을 강력히"],
-    requiredPhrases: ["프로그램 주제", "정책 방향", "일부 주의가 필요합니다"],
+    requiredPhrases: ["프로그램 주제", "정책 방향", "개인정보는 쓰지 마세요"],
   },
   {
     id: "golden_event_contact",
@@ -501,7 +501,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     id: "golden_moaform_dynamic_limited",
     name: "Moaform dynamic rendering limited diagnosis",
     description:
-      "모아폼 문항 추출에 실패했을 때(세션/JSON/DOM 모두 실패) 제한 진단(판단불가형)으로 안전하게 처리합니다.",
+      "모아폼 문항 추출에 실패했을 때(세션/JSON/DOM 모두 실패) 문항 분석 불가로 안전하게 처리합니다.",
     platform: "moaform",
     scenarioType: "moaform_dynamic_limited",
     sampleUrl: "https://answer.moaform.com/answers/M1Q1nB",
@@ -524,10 +524,17 @@ export const GOLDEN_CASES: GoldenCase[] = [
     expectedOperatorFixes: {
       any: ["모아폼 문항 자동 확인 제한", "외부 설문도구"],
     },
-    forbiddenPhrases: ["불법", "응답해도 무리가 낮습니다", "개인정보 없음"],
-    requiredPhrases: [
-      "이 설문은 안전성을 판단할 수 없습니다",
+    forbiddenPhrases: [
+      "불법",
+      "응답해도 무리가 낮습니다",
+      "개인정보 없음",
+      "위반 소지가 큽니다",
+      "CSAP 위반",
       "판단불가형",
+    ],
+    requiredPhrases: [
+      "문항 분석이 안 되어 판단이 어렵습니다",
+      "문항 분석 불가",
       "점수 산정 불가",
       "Moaform",
       "문항 자동",
@@ -560,7 +567,7 @@ export const GOLDEN_CASES: GoldenCase[] = [
     },
     expectedNotDataItems: ["민감정보", "건강정보"],
     forbiddenPhrases: ["민감정보 또는 민감 맥락 확인 필요", "응답자에게 부담이 큰 정보"],
-    requiredPhrases: ["프로그램 주제", "응답해도 무리가 낮습니다"],
+    requiredPhrases: ["프로그램 주제", "개인정보는 쓰지 마세요"],
   },
   {
     id: "golden_health_status_sensitive",
@@ -625,6 +632,6 @@ export const GOLDEN_CASES: GoldenCase[] = [
     },
     expectedNotDataItems: ["민감정보", "건강정보"],
     forbiddenPhrases: ["민감정보 또는 민감 맥락 확인 필요", "응답자에게 부담이 큰 정보"],
-    requiredPhrases: ["정책 방향", "응답해도 무리가 낮습니다"],
+    requiredPhrases: ["정책 방향", "개인정보는 쓰지 마세요"],
   },
 ];

@@ -1,5 +1,5 @@
 import { DecisionHero } from "@/components/report/DecisionHero";
-import { HowToRespondSection } from "@/components/report/HowToRespondSection";
+import { UserEvidenceCards } from "@/components/report/UserEvidenceCards";
 import type { AudienceReport } from "@/lib/reporting/reportMessages";
 import type { ScanReport } from "@/lib/types/scan";
 
@@ -15,10 +15,9 @@ export function ReportVisualSummary({
   return (
     <div className="space-y-8">
       <DecisionHero report={report} audienceReport={audienceReport} />
-      <HowToRespondSection
-        decision={audienceReport.decisionSummary}
+      <UserEvidenceCards
+        cards={audienceReport.userEvidenceCards}
         tone={audienceReport.safetyType.tone}
-        actionHint={audienceReport.safetyType.action}
       />
     </div>
   );

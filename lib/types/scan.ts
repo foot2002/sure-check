@@ -144,6 +144,17 @@ export interface FormMetadata {
   operatorHint?: string;
   operatorCandidates?: string[];
   diagnosisScope?: "full" | "limited" | "partial";
+  /** URL 진단 또는 파일 업로드 진단 출처 */
+  source?: {
+    kind: "url" | "file";
+    fileName?: string;
+    fileExtension?: string;
+    mimeType?: string;
+    extractionStatus?: "success" | "partial" | "failed";
+    extractionLimitations?: string[];
+    detectedToolFromText?: string;
+    textLength?: number;
+  };
 }
 
 export interface NormalizedPage {
@@ -158,7 +169,10 @@ export interface NormalizedQuestion {
   type: string;
   required: boolean;
   hasPersonalData: boolean;
+  /** 실제 개인정보·민감정보·고위험 유형만 */
   personalDataTypes?: string[];
+  /** 일반 설문 의미 분류 (정책 의견, 만족도 등) — 개인정보 유형 아님 */
+  semanticCategories?: string[];
   dataRiskLevel?: "D0" | "D1" | "D2" | "D3" | "D4" | "D5";
   detectedCategories?: DetectedCategory[];
   riskTags?: QuestionRiskTag[];
@@ -220,6 +234,7 @@ export interface ReportSections {
 }
 
 import type { AnalyzerTrace, ScanDebugInfo } from "@/lib/types/debug";
+import type { ReportEvidenceModel } from "@/lib/evidence/evidenceTypes";
 
 export interface ScanReport {
   scanId: string;
@@ -242,6 +257,11 @@ export interface ScanReport {
   limitationReasons?: string[];
   debug?: ScanDebugInfo;
   analyzerTrace?: AnalyzerTrace;
+  /**
+   * 신고용 증빙 ZIP 생성용 구조화 데이터.
+   * 공개 UI에는 raw JSON으로 노출하지 않습니다.
+   */
+  evidence?: ReportEvidenceModel;
 }
 
 export interface ScanJob {

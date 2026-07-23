@@ -18,10 +18,12 @@ function toNormalizedQuestion(
   parsed: ReturnType<typeof parseGoogleFormsHtml>["questions"][number],
 ): NormalizedQuestion {
   const categories = parsed.detectedCategories as DetectedCategory[];
-  const personalDataTypes = categories.map(
+  const personalCategories = categories.filter(isPersonalDataCategory);
+  const semanticCategories = categories.filter((c) => !isPersonalDataCategory(c));
+  const personalDataTypes = personalCategories.map(
     (category) => getDetectedCategoryDisplayLabel(category, parsed.questionText),
   );
-  const hasPersonalData = categories.some(isPersonalDataCategory);
+  const hasPersonalData = personalCategories.length > 0;
 
   return {
     id: parsed.id,
@@ -31,7 +33,11 @@ function toNormalizedQuestion(
     required: parsed.required,
     hasPersonalData,
     personalDataTypes: personalDataTypes.length > 0 ? personalDataTypes : undefined,
-    dataRiskLevel: hasPersonalData ? categoriesToDataLevel(categories) : "D1",
+    semanticCategories:
+      semanticCategories.length > 0 ? semanticCategories : undefined,
+    dataRiskLevel: hasPersonalData
+      ? categoriesToDataLevel(personalCategories)
+      : "D1",
     detectedCategories: categories,
     riskTags: parsed.riskTags as QuestionRiskTag[],
     auxiliaryText: parsed.description,

@@ -23,7 +23,7 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
         aria-hidden
       />
 
-      <div className="relative space-y-7 p-6 md:p-10">
+      <div className="relative space-y-6 p-6 md:space-y-8 md:p-10">
         <div className="flex flex-wrap items-start gap-5 md:gap-7">
           <span
             className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.5rem] shadow-lg md:h-24 md:w-24 ${theme.iconBg} ${theme.iconFg}`}
@@ -39,7 +39,7 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
             <p
               className={`text-sm font-bold tracking-[0.08em] md:text-base ${theme.accent}`}
             >
-              설문 안전유형
+              응답 판단
             </p>
             <h1
               className={`mt-2 text-4xl font-extrabold leading-tight tracking-tight md:text-5xl ${theme.text}`}
@@ -51,13 +51,20 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
             >
               {safetyType.headline}
             </p>
-            <p className="mt-4 max-w-3xl text-base leading-relaxed text-muted md:text-lg">
-              {safetyType.description}
-            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2.5">
+          <span
+            className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold ${theme.badge}`}
+          >
+            진단 방식: {safetyType.diagnosisMethodLabel}
+          </span>
+          {safetyType.fileNameLabel ? (
+            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
+              파일명: {safetyType.fileNameLabel}
+            </span>
+          ) : null}
           <span
             className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold ${theme.badge}`}
           >
@@ -92,15 +99,41 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
           </span>
         </div>
 
-        <div
-          className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
-        >
-          <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
-            바로 해야 할 행동
-          </p>
-          <p className={`mt-1.5 text-lg font-bold leading-snug md:text-xl ${theme.text}`}>
-            {safetyType.action}
-          </p>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div
+            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
+          >
+            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+              왜 문제인가요?
+            </p>
+            <p className="mt-2 text-base leading-relaxed text-foreground md:text-lg">
+              {safetyType.whyProblem}
+            </p>
+          </div>
+
+          <div
+            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
+          >
+            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+              {safetyType.legalOrLimitTitle}
+            </p>
+            <p className="mt-2 text-base leading-relaxed text-foreground md:text-lg">
+              {safetyType.legalOrLimitBody}
+            </p>
+          </div>
+
+          <div
+            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
+          >
+            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+              어떻게 해야 하나요?
+            </p>
+            <p
+              className={`mt-2 text-base font-bold leading-snug md:text-lg ${theme.text}`}
+            >
+              {safetyType.howToAct}
+            </p>
+          </div>
         </div>
       </div>
     </section>

@@ -118,15 +118,15 @@ function scoreEvaluationLabel(
   if (verdict === "LIMITED_DIAGNOSIS" || score == null) return "판단 불가";
   switch (verdict) {
     case "SAFE_TO_RESPOND":
-      return "응답해도 무리가 낮음";
+      return "응답해도 무리가 없음";
     case "RESPOND_WITH_CAUTION":
-      return "일부 주의 필요";
+      return "개인정보 없이 응답";
     case "CHECK_NOTICE_BEFORE_INPUT":
-      return "고지 확인 후 응답";
+      return "안내 없으면 입력 금지";
     case "DO_NOT_RESPOND":
       return "응답하지 않는 것이 좋음";
     case "REPORT_OR_INQUIRE":
-      return "문의·신고 검토";
+      return "응답 거부·신고 검토";
   }
 }
 

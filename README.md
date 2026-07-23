@@ -700,35 +700,199 @@ npm run dev -- -p 8080
 
 하나의 `ScanReport`를 화면에서 **응답 판단 중심**으로 재구성합니다. 기존 extractor, 룰엔진, Debug Panel, Validation Lab은 유지하며, DB·Supabase·Playwright·Worker는 연결하지 않습니다.
 
-## 사용자용 MBTI식 설문 안전유형 리포트와 운영자용 개선 리포트 구조
+## 설문 파일 업로드 진단 기능
+
+URL 진단과 별도로 **설문 파일 진단** 탭을 제공합니다. 기존 Analyzer·리포트 UI는 재사용하며, 파일에서 문항 텍스트를 추출해 `NormalizedForm`으로 변환합니다.
+
+### 지원 파일 (1차)
+
+- DOCX (`mammoth`)
+- XLSX (`xlsx`)
+- 텍스트 PDF (`pdf-parse`) — OCR/스캔본 미지원
+- HWPX (`jszip` + `fast-xml-parser`)
+- HWP·이미지·스캔 PDF는 지원하지 않으며 안내 문구를 표시합니다.
+
+### 보안·제한
+
+- 최대 10MB
+- 서버 영구 저장 없음 (요청 메모리에서만 처리)
+- 확장자 + MIME 검사, 파일명 sanitize
+- 응답 결과 데이터로 의심되는 XLSX는 진단 중단
+- 공개 화면에 raw 텍스트/JSON/Analyzer Trace 미표시
+
+### API
+
+`POST /api/scan/file` (`multipart/form-data`, field: `file`)  
+→ 기존 `ScanReport` JSON 반환 → `ReportView` 재사용
+
+### 관련 코드
+
+```
+lib/file-extractors/
+app/api/scan/file/route.ts
+components/FileScanForm.tsx
+app/page.tsx
+```
+
+## 리포트 대상별 구역: 응답자용·기관/기업용·부록 구조
+
+결과 리포트는 대상별로 **3개 구역**으로 나눕니다.
+
+| 구역 | 대상 | 포함 섹션 |
+|------|------|-----------|
+| 응답자용 | 일반 시민·고객·응답자 | 1. 나의 응답 판단 · 2. 판단 핵심 근거 · 3. 설문 프로필 요약 |
+| 신고 검토 CTA | 응답 거부·신고 검토인 경우만 | 신고 검토 안내 · 신고용 증빙자료 다운로드 · KISA 신고센터 이동 |
+| 기관·기업 담당자용 | 설문 운영자 | 4. 운영자용 핵심 개선 리포트 · 5. 개선 문구 복사 · 6. 세부 판단근거 |
+| 부록 | 원문 확인 | 7. 설문/문항 정보 보기 |
+
+구역 상단에 `응답자용` / `기관·기업 담당자용` / `부록` 라벨과 제목·설명을 둡니다. 기관 구역 시작에는 “여기부터는 설문 운영자용입니다.” 안내를 표시합니다.
+
+### 신고용 증빙자료 다운로드 및 KISA 신고센터 이동 기능
+
+응답 판단이 **응답 거부·신고 검토**일 때만, 응답자용 구역과 기관·기업 담당자용 구역 **사이**에 신고 검토 CTA를 표시합니다.
+
+- **신고용 증빙자료 다운로드**: 브라우저에서 ZIP을 생성합니다(서버 저장 없음). 요약서·신고서 초안·탐지 문항 CSV·고지문 확인·법·정책 근거·원본 추출 요약·SHA-256 해시·manifest를 포함합니다.
+- **수동 캡처 추가**: PNG/JPG/PDF 최대 5개(파일당 5MB). 메모리에서만 ZIP에 포함합니다.
+- **KISA 개인정보침해 신고센터로 이동**: `NEXT_PUBLIC_KISA_REPORT_URL`(기본 `https://privacy.kisa.or.kr`)로 새 탭을 엽니다.
+- 문구는 “신고기관의 사실관계 확인을 돕기 위한 참고자료”이며, 최종 위법 여부는 개인정보보호위원회 또는 KISA의 검토·조사 결과에 따릅니다. “위반 확정” 표현은 쓰지 않습니다.
+- 문항 분석 불가·단순 개선 권고 등에서는 CTA를 표시하지 않습니다.
+
+관련 코드: `components/report/EvidenceActionPanel.tsx`, `lib/evidence/*`
+
+환경변수 예시(`.env.example`):
+
+```bash
+NEXT_PUBLIC_KISA_REPORT_URL=https://privacy.kisa.or.kr
+```
+
+### 신고용 증빙자료 자동 화면 캡처 기능
+
+`응답 거부·신고 검토`가 나온 **링크 진단** 결과에 대해, 신고 CTA가 열리면 `/api/evidence/capture`로 공개 설문 화면을 자동 캡처합니다.
+
+- 엔진: `puppeteer-core` + `@sparticuz/chromium`(서버리스) / 로컬은 Chrome·Edge 또는 `PUPPETEER_EXECUTABLE_PATH`
+- 첫 공개 페이지 `fullPage` PNG 캡처(1440×1200). 입력 없이 “다음” 이동 가능한 페이지만 최대 5장 추가
+- 임의 응답 입력·제출·로그인 우회·CAPTCHA 우회 금지. 필수응답 차단 시 limitation 기록 후 중단
+- 성공 시 ZIP `08_화면캡처/auto_screenshot_01_first_public_page.png` 등 포함 + SHA-256·manifest `screenCaptureEvidence`
+- 실패해도 진단·ZIP 다운로드는 유지. README·요약서·manifest에 `captureLimitations` 기록
+- 수동 캡처는 “추가 캡처 첨부”로 보조 유지
+- SSRF: 기존 `safeUrlCheck` 적용
+
+관련 코드: `app/api/evidence/capture/route.ts`, `lib/evidence/captureSurveyScreenshots.ts`, `EvidenceActionPanel`
+
+### 신고용 증빙자료 고지문 확인 및 증빙 정확도 보정
+
+고지문이 실제로 있는데도 “미확인”으로 나오던 문제를 보정했습니다.
+
+- 고지문 코퍼스에 `privacy_consent` 전문·안내문 원문을 포함해 목적/항목/보유/파기/거부권을 키워드로 재확인
+- 확인된 고지 항목은 신고 사유·신고서 초안에서 “미확인”으로 쓰지 않음
+- `operatorName`은 “공공기관” 일반값이 아니라 실제 기관명(예: 한국부동산원) 우선
+- Q0 개인정보 고지문은 문항 목록에서 제외하고 `privacyNotice`로 분리
+- 정책 의견·서비스 의견 등은 `semanticCategories`로 두고 `personalDataTypes`에서 제외
+- 원본 추출자료 placeholder 제거, 실제 고지문·문항 excerpt 포함
+- 문항 수: `totalQuestionCount` / `detectedPersonalDataQuestionCount` 분리
+- 고정 테스트: `npm run test:evidence-package`
+
+### 순서 고정
+
+1 → 2 → 3 → (신고 CTA, 조건부) → 4 → 5 → 6 → 7 순으로 렌더링합니다.  
+`설문/문항 정보 보기`는 세부 판단근거보다 아래(부록)에 둡니다.
+
+### 공개 화면에서 제외
+
+- 개발자 진단 정보, Analyzer Trace, NormalizedForm/ScanReport JSON, raw question id
+- 프로덕션 공개 화면에서는 해당 섹션 자체를 렌더하지 않습니다.
+- 내부 확인은 `NODE_ENV === "development"` 이고 URL에 `?debug=1`일 때만 가능합니다.
+
+### 부록 표시 기준
+
+- 기본 접힘
+- JSON이 아닌 표/카드(설문 기본정보, 안내문 원문, 문항 목록·필수여부·선택지·분류)
+- “판단 결과가 아니라 참고용 자료”임을 명시
+
+관련 코드: `ReportView`, `ReportAudienceZone`, `SurveySourceAppendix`, `UserSafetyReport`, `OperatorImprovementPanel`, `DetailedEvidenceSection`
+
+## 사용자용 응답 판단 리포트와 운영자용 개선 리포트 구조
 
 결과 리포트는 **사용자용**과 **운영자용**으로 분리됩니다. Extractor·룰엔진·Debug Panel은 유지하며 DB·Supabase·Playwright는 연결하지 않습니다.
 
-## 설문 안전유형 이름 변경 기준
+## 자연스러운 한국어 사용자 응답 판단 문구 체계
 
-- 유형명에는 `공공`/`기업`/`주체불명`을 붙이지 않는다.
-- 유형명은 사용자 행동 중심으로 단순화한다.
-- 설문주체는 별도 배지로 표시한다.
-- 도구 판단도 별도 배지로 표시한다.
-- 최종 유형명은 아래 **6개만** 사용한다.
+사용자용 메인 판단명은 아래 **6개만** 사용합니다. “~형” 표현은 쓰지 않습니다.
 
-| 유형 | 의미 | 최종 판단 |
-|------|------|-----------|
-| 안심응답형 | 개인정보 거의 없음 | 응답해도 무리가 낮습니다 |
-| 개인정보 주의형 | 준식별정보만 | 응답 가능, 개인정보 추가 금지 |
-| 고지확인형 | 직접식별정보 | 고지문 확인 전 입력 금지 |
-| 보안확인형 | 개인정보 + 외부도구/인증 확인 | 도구·관리체계 확인 필요 |
-| 응답중지형 | 민감/고위험/신고검토 | 응답하지 않는 것이 좋음 |
-| 판단불가형 | 진단 제한 | 안전성 판단 불가 |
+| 응답 판단 | 의미 | 메인 문구 |
+|-----------|------|-----------|
+| 응답 가능 | 개인정보 거의 없음 | 이 설문은 응답해도 무리가 없습니다. |
+| 개인정보 없이 응답 | 준식별정보만 | 응답은 가능하지만, 이름·연락처 등 개인정보는 쓰지 마세요. |
+| 안내 없으면 입력 금지 | 직접식별정보 + 안내 확인 | 수집 목적과 보관·파기 안내가 없으면 개인정보를 입력하지 마세요. |
+| 공식 확인 후 응답 | 운영기관·공식성 불명확 | 공식 설문인지 확인한 뒤 응답하세요. |
+| 응답 거부·신고 검토 | 민감/고위험·공공+개인정보+외부도구 등 | 이 설문은 응답하지 않는 것이 좋습니다. |
+| 문항 분석 불가 | 문항을 읽지 못함 | 문항 분석이 안 되어 판단이 어렵습니다. |
 
-잘못된 예: `공공 레드플래그형`, `기업 이름표확인형`, `주체불명 블랙박스형`  
-올바른 예: 유형 `응답중지형` + 배지 `설문 주체: 공공기관`
+### 사용자용 상단 4블록
+
+1. **응답 판단** — 라벨 + 메인 문구 + 배지(주체·수집정보·도구·도구 판단)
+2. **왜 문제인가요?**
+3. **법적 위험** 또는 **판단 한계**
+4. **어떻게 해야 하나요?**
+
+도구 판단은 배지로만 표시하며, 메인 판단명으로 “보안 기준 확인 필요” 등을 쓰지 않습니다.
+
+## 사용자 리포트 중복 제거 및 판단 핵심 근거 강화 기준
+
+사용자용 화면에서 Hero와 중복되던 **「응답 판단 한눈에 보기」** 섹션은 제거합니다.
+
+### 사용자 리포트 흐름
+
+1. 나의 응답 판단 Hero (응답 판단 / 왜 문제인가요 / 법적 위험·판단 한계 / 어떻게 해야 하나요)
+2. 판단 핵심 근거 (구체 카드, 최대 4개)
+3. 설문 프로필 요약 (짧게)
+4. 운영자용 핵심 개선 리포트
+5. 세부 판단근거 / 개발자 진단 정보
+
+영어 섹션명(`User Response Judgment` 등)은 사용자 화면에 쓰지 않습니다.
+
+### 판단 핵심 근거 카드 구조
+
+각 카드는 아래를 포함합니다.
+
+- 제목
+- 현재 확인된 사실
+- 왜 문제인지
+- 관련 기준 (chip)
+- 필요한 조치
+- (해당 시) 실제 탐지 항목 칩, 써야 할 도구 vs 현재 사용도구
+
+우선순위(상위 4개만 표시):
+
+1. 공공기관 개인정보 + 외부 미인증/CSAP 확인 불가 도구
+2. 민감정보·고위험정보
+3. 직접식별정보 수집
+4. 보유기간·파기 미확인
+5. 국외 보관·이전 안내 미확인 (해외 SaaS만)
+6. 외부 설문도구 위탁 안내 미확인 (국내 SaaS)
+7. 운영기관 불명확
+8. 자유의견 개인정보 입력 주의
+
+문항 분석 불가일 때는 위험 확정 없이 분석 한계 카드만 표시합니다.
+
+관련 코드: `lib/reporting/buildUserEvidenceCards.ts`, `components/report/UserEvidenceCards.tsx`
+
+### 금지·권장 표현
+
+금지 예: `응답해도 무리가 낮습니다`, `~형`, `보안 기준 확인 필요`(메인 판단명), `고지문 확인 필요`(메인 판단명), `불법입니다`, `CSAP 위반입니다`
+
+권장 예: `응답해도 무리가 없습니다`, `위반 소지가 큽니다`, `문항 분석이 안 되어 판단이 어렵습니다`
+
+문항을 읽지 못한 경우에는 개인정보·민감정보·위반 소지를 추정하지 않습니다.
+
+잘못된 예: `공공 레드플래그형`, `기업 이름표확인형`  
+올바른 예: 응답 판단 `응답 거부·신고 검토` + 배지 `설문 주체: 공공기관`
 
 ### 사용자용 화면
 
-1. 설문 안전유형 카드 (유형명 · 메인 문장 · 배지 · 행동)
-2. 이 설문을 어떻게 해야 하나요?
-3. 판단 핵심 근거 최대 3개
+1. 응답 판단 Hero 카드 (4블록)
+2. 판단 핵심 근거 (구체 카드, 최대 4개)
+3. 설문 프로필 요약
 
 ### 운영자용 개선 리포트
 
@@ -748,8 +912,10 @@ npm run dev -- -p 8080
 
 ```
 lib/reporting/safetyType.ts
+lib/reporting/buildUserEvidenceCards.ts
 lib/reporting/buildOperatorImprovementReport.ts
 components/report/SafetyTypeCard.tsx
+components/report/UserEvidenceCards.tsx
 components/report/UserSafetyReport.tsx
 components/report/OperatorImprovementPanel.tsx
 ```
@@ -797,7 +963,8 @@ components/report/OperatorImprovementPanel.tsx
 
 - 문항을 못 읽으면 **분석 실패가 아니라 제한 진단**으로 처리합니다.
 - `failureReason` 예: `MOAFORM_DYNAMIC_RENDERING`, `MOAFORM_QUESTIONS_NOT_FOUND`, `MOAFORM_ACCESS_RESTRICTED`, `MOAFORM_CLOSED_OR_PRIVATE`, `MOAFORM_UNSUPPORTED_STRUCTURE`, `MOAFORM_FETCH_FAILED`
-- 사용자 안전유형: **판단불가형**
+- 사용자 응답 판단: **문항 분석 불가**
+- 메인 문구: **문항 분석이 안 되어 판단이 어렵습니다.**
 - 점수·개인정보/민감정보 여부: **산정·추정하지 않음**
 - 사용도구: Moaform, 진단범위: 제한 진단
 - 제목·운영주체는 metadata/title/visible text에서 가능하면 표시하되, 불확실하면 `(확인 필요)`로 표기합니다.
@@ -819,43 +986,42 @@ SURE Check 결과 리포트는 16Personalities와 같은 **친근한 성격유�
 ### 디자인 원칙
 
 - Friendly / Trustworthy / Personality-report / Spacious / Rounded
-- 사용자용: 쉽고 재미있는 설문 안전유형 카드
+- 사용자용: 쉽고 직관적인 응답 판단 카드
 - 운영자용: 차분한 실무 개선 리포트
 - 개인정보 진단 서비스로서의 신뢰감 유지
 
 ### 타이포그래피
 
 - 기본 폰트: Pretendard (CDN 가변 폰트) → SUIT / Noto Sans KR / system-ui
-- Hero 유형명: text-4xl ~ text-5xl
+- Hero 판단명: text-4xl ~ text-5xl
 - 최종 판단: text-2xl ~ text-3xl
 - 섹션 제목: text-2xl
 - 본문: text-base ~ text-lg
 
-### 유형별 테마
+### 응답 판단별 테마
 
-`components/report/ui/safetyTypeTheme.ts`에서 6종 안전유형별 pastel 팔레트·아이콘·CTA 색을 관리합니다.
+`components/report/ui/safetyTypeTheme.ts`에서 6종 응답 판단별 pastel 팔레트·아이콘·CTA 색을 관리합니다.
 
-| 유형 | 톤 |
-|------|------|
-| 안심응답형 | soft green / teal |
-| 개인정보 주의형 | warm amber |
-| 고지확인형 | orange |
-| 보안확인형 | violet / indigo |
-| 응답중지형 | rose |
-| 판단불가형 | slate |
+| 응답 판단 | 톤 |
+|-----------|------|
+| 응답 가능 | soft green / teal |
+| 개인정보 없이 응답 | warm amber |
+| 안내 없으면 입력 금지 | orange |
+| 공식 확인 후 응답 | violet / indigo |
+| 응답 거부·신고 검토 | rose |
+| 문항 분석 불가 | slate |
 
 ### 레이아웃
 
-1. 설문 안전유형 Hero
-2. 이 설문을 어떻게 해야 하나요?
-3. 판단 핵심 근거 3개
-4. 설문 프로필 요약
-5. 운영자용 핵심 개선 리포트
-6. 세부 판단근거 (접힘)
-7. 개발자 진단 정보 (접힘)
-8. 공유 / 서비스 안내
+1. 응답 판단 Hero (응답 판단 / 왜 문제인가요 / 법적 위험·판단 한계 / 어떻게 해야 하나요)
+2. 판단 핵심 근거 (구체 카드)
+3. 설문 프로필 요약
+4. 운영자용 핵심 개선 리포트 · 개선 문구 복사 · 세부 판단근거
+5. 부록: 설문/문항 정보 보기
+6. 공유 / 서비스 안내
+7. (개발 환경 + ?debug=1만) 내부 개발 진단
 
-관련 코드: `SafetyTypeCard`, `UserSafetyReport`, `HowToRespondSection`, `OperatorImprovementPanel`, `app/globals.css`
+관련 코드: `SafetyTypeCard`, `UserSafetyReport`, `UserEvidenceCards`, `ReportAudienceZone`, `SurveySourceAppendix`, `OperatorImprovementPanel`, `app/globals.css`
 
 ## 세부 판단근거와 개발자 진단 정보 분리 기준
 

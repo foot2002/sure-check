@@ -4,12 +4,16 @@ import { useRef, useState } from "react";
 import { ReportView } from "@/components/ReportView";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { FileScanForm } from "@/components/FileScanForm";
 import { UrlScanForm } from "@/components/UrlScanForm";
 import {
   ClipboardList,
   FileSpreadsheet,
+  FileText,
+  FileType2,
   FormInput,
   Layers,
+  Sheet,
   Shield,
   Sparkles,
 } from "lucide-react";
@@ -22,11 +26,30 @@ const PLATFORMS = [
   { name: "기타 설문", desc: "베타 지원", icon: ClipboardList },
 ];
 
+const SUPPORTED_FILES = [
+  { name: "DOCX", desc: "워드 설문지", icon: FileType2 },
+  { name: "XLSX", desc: "엑셀 문항표", icon: Sheet },
+  { name: "PDF", desc: "텍스트 PDF", icon: FileText },
+  { name: "HWPX", desc: "한글 문서", icon: FileSpreadsheet },
+];
+
+type ScanMode = "url" | "file";
+
 export default function HomePage() {
+  const [mode, setMode] = useState<ScanMode>("url");
   const [report, setReport] = useState<ScanReport | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
+
+  function showReport(data: ScanReport) {
+    setReport(data);
+    setReportError(null);
+    setLoadingReport(false);
+    requestAnimationFrame(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   async function handleScanComplete(scanId: string) {
     setLoadingReport(true);
@@ -41,11 +64,7 @@ export default function HomePage() {
         return;
       }
       const data: ScanReport = await res.json();
-      setReport(data);
-
-      requestAnimationFrame(() => {
-        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      showReport(data);
     } catch {
       setReportError("리포트를 불러오는 중 오류가 발생했습니다.");
     } finally {
@@ -53,12 +72,16 @@ export default function HomePage() {
     }
   }
 
+  function handleFileScanComplete(nextReport: ScanReport) {
+    showReport(nextReport);
+  }
+
   function handleScanStart() {
     setReport(null);
     setReportError(null);
   }
 
-  function handleUrlClear() {
+  function handleClear() {
     setReport(null);
     setReportError(null);
     setLoadingReport(false);
@@ -91,16 +114,63 @@ export default function HomePage() {
               <span className="font-bold text-brand">개인정보 괜찮을까요?</span>
             </h1>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted md:text-base">
-              구글폼·네이버폼·모아폼 링크를 넣으면 개인정보 수집 위험 신호를
-              자동으로 점검합니다.
+              구글폼·네이버폼·모아폼 링크를 넣거나, 설문지 파일을 업로드하면
+              개인정보 수집 위험 신호를 자동으로 점검합니다.
             </p>
 
             <section className="mt-8 rounded-2xl border border-border bg-surface p-5 shadow-[0_8px_32px_rgba(30,64,175,0.08)] md:p-7">
-              <UrlScanForm
-                onScanStart={handleScanStart}
-                onScanComplete={handleScanComplete}
-                onUrlClear={handleUrlClear}
-              />
+              <div
+                className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-[#f1f5f9] p-1"
+                role="tablist"
+                aria-label="진단 방식"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "url"}
+                  onClick={() => {
+                    setMode("url");
+                    handleClear();
+                  }}
+                  className={`rounded-lg px-3 py-2.5 text-sm font-bold transition ${
+                    mode === "url"
+                      ? "bg-white text-brand shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  설문 링크 진단
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "file"}
+                  onClick={() => {
+                    setMode("file");
+                    handleClear();
+                  }}
+                  className={`rounded-lg px-3 py-2.5 text-sm font-bold transition ${
+                    mode === "file"
+                      ? "bg-white text-brand shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  설문 파일 진단
+                </button>
+              </div>
+
+              {mode === "url" ? (
+                <UrlScanForm
+                  onScanStart={handleScanStart}
+                  onScanComplete={handleScanComplete}
+                  onUrlClear={handleClear}
+                />
+              ) : (
+                <FileScanForm
+                  onScanStart={handleScanStart}
+                  onScanComplete={handleFileScanComplete}
+                  onClear={handleClear}
+                />
+              )}
             </section>
           </div>
         </div>
@@ -130,14 +200,14 @@ export default function HomePage() {
 
           <section className="mb-10">
             <h2 className="mb-4 text-xs uppercase tracking-wider text-muted">
-              지원 플랫폼
+              {mode === "file" ? "지원 파일" : "지원 플랫폼"}
             </h2>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {PLATFORMS.map((p) => {
-                const Icon = p.icon;
+              {(mode === "file" ? SUPPORTED_FILES : PLATFORMS).map((item) => {
+                const Icon = item.icon;
                 return (
                   <div
-                    key={p.name}
+                    key={item.name}
                     className="report-summary-card flex flex-col items-center gap-3 px-3 py-5 text-center"
                   >
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#4f8df7] to-[#1e3a8a] text-white shadow-[0_8px_20px_rgba(30,58,138,0.22)]">
@@ -145,9 +215,9 @@ export default function HomePage() {
                     </div>
                     <div>
                       <p className="text-[13px] text-foreground">
-                        <span className="font-bold">{p.name}</span>
+                        <span className="font-bold">{item.name}</span>
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted">{p.desc}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{item.desc}</p>
                     </div>
                   </div>
                 );
@@ -165,8 +235,8 @@ export default function HomePage() {
                   <span className="font-bold">개인정보 처리 및 저장 안내</span>
                 </h2>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-                  입력하신 URL은 진단 목적으로만 사용됩니다. 회원가입 없이 이용
-                  가능하며, 현재 단계에서는 URL을 서버에 영구 저장하지 않습니다.
+                  입력하신 URL과 업로드 파일은 진단 목적으로만 사용되며, 서버에
+                  영구 저장하지 않습니다. 회원가입 없이 이용할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -175,9 +245,10 @@ export default function HomePage() {
                 <span className="font-bold text-foreground">
                   법률 자문이 아닌 자동 위험진단 —
                 </span>{" "}
-                본 서비스는 설문 화면에서 자동으로 확인 가능한 문항과 안내문을
-                기준으로 개인정보보호 위험 신호를 분석합니다. 실제 법 위반 여부는
-                수집·이용·보관·위탁·파기 방식에 따라 달라질 수 있습니다.
+                본 서비스는 설문 화면 또는 업로드한 설문 양식에서 자동으로 확인
+                가능한 문항과 안내문을 기준으로 개인정보보호 위험 신호를
+                분석합니다. 실제 법 위반 여부는 수집·이용·보관·위탁·파기 방식에
+                따라 달라질 수 있습니다.
               </p>
             </div>
           </section>

@@ -384,7 +384,8 @@ function buildQuestionFromBlock(
     combined,
     asString(block.shape),
   );
-  const detectedCategories = detectCategories(combined);
+  const detectedCategories =
+    questionType === "privacy_consent" ? [] : detectCategories(combined);
   const riskTags: string[] = [];
 
   if (questionType === "file_upload") riskTags.push("file_upload");

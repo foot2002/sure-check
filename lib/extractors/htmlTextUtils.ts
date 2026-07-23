@@ -18,17 +18,17 @@ export function extractSentencesWithKeywords(
   keywords: string[],
 ): string[] {
   const sentences = text
-    .split(/(?<=[.!?。])\s+|[\n\r]+/)
+    .split(/(?<=[.!?。])\s+|[\n\r]+|￭|•|·\s*(?=[가-힣A-Za-z])/)
     .map(collapseWhitespace)
     .filter((s) => s.length >= 8);
 
   const found: string[] = [];
   for (const sentence of sentences) {
     if (keywords.some((k) => sentence.includes(k))) {
-      found.push(sentence.slice(0, 300));
+      found.push(sentence.slice(0, 2500));
     }
   }
-  return [...new Set(found)].slice(0, 12);
+  return [...new Set(found)].slice(0, 30);
 }
 
 export function mapInputType(

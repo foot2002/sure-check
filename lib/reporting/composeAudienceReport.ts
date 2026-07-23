@@ -29,6 +29,10 @@ import { buildOperatorActions } from "@/lib/reporting/operatorActions";
 import { buildOperatorImprovementReport } from "@/lib/reporting/buildOperatorImprovementReport";
 import { buildSafetyTypeProfile } from "@/lib/reporting/safetyType";
 import {
+  buildUserEvidenceCards,
+  evidenceCardsToPrimaryReasons,
+} from "@/lib/reporting/buildUserEvidenceCards";
+import {
   buildPublicSectorCsapAssessment,
   shouldElevateToolRiskForCsap,
 } from "@/lib/reporting/publicSectorCsap";
@@ -362,7 +366,7 @@ function buildRespondentReasons(
     );
   }
   if (missing.length > 0) {
-    reasons.push(`고지 확인 필요 항목이 있습니다: ${missing.slice(0, 3).join(", ")}.`);
+    reasons.push(`수집·보관 안내를 확인하세요: ${missing.slice(0, 3).join(", ")}.`);
   }
 
   if (reasons.length === 0) {
@@ -497,7 +501,7 @@ function buildRiskDimensions(
       },
       {
         id: "management",
-        title: "관리·운영 확인 필요",
+        title: "관리·운영 점검",
         level: "limited",
         label: "제한",
         description: "운영 관리 항목을 확인하지 못했습니다.",
@@ -618,7 +622,7 @@ function buildRiskDimensions(
     },
     {
       id: "management" as const,
-      title: "관리·운영 확인 필요",
+      title: "관리·운영 점검",
       score: managementScore,
       description:
         managementCount > 0
@@ -723,7 +727,7 @@ function buildKeyReasons(
     reasons.push({
       id: "notice",
       category: "notice",
-      title: grouped[0]?.title ?? "개인정보 고지 확인 필요",
+      title: grouped[0]?.title ?? "개인정보 안내 보완",
       description: `${missing.slice(0, 3).join(", ")} 항목을 확인하세요.`,
       severity: missing.length >= 5 ? "high" : "medium",
       evidence: missing.slice(0, 2),
@@ -784,6 +788,11 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     "limited",
   );
   const safetyType = buildSafetyTypeProfile(report, emptySummary, verdict, false);
+  const userEvidenceCards = buildUserEvidenceCards(
+    report,
+    emptySummary,
+    safetyType.typeId,
+  );
   const operatorImprovement = buildOperatorImprovementReport(
     report,
     emptySummary,
@@ -791,12 +800,18 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     [],
   );
 
-  // Moaform-specific copy overrides (do not invent PII judgments)
+  // Moaform-specific copy overrides (do not invent PII / legal judgments)
   if (isMoaform) {
-    safetyType.description =
-      "모아폼 페이지는 확인했지만, 실제 설문 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.";
-    safetyType.action =
-      "개인정보를 입력하기 전 운영기관, 수집 목적, 보유기간, 담당자, 개인정보 고지문을 직접 확인하세요.";
+    safetyType.whyProblem =
+      "설문 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.";
+    safetyType.description = safetyType.whyProblem;
+    safetyType.headline = "문항 분석이 안 되어 판단이 어렵습니다.";
+    safetyType.legalOrLimitTitle = "판단 한계";
+    safetyType.legalOrLimitBody =
+      "이 설문이 개인정보나 민감정보를 수집하는지 확인할 수 없습니다.";
+    safetyType.howToAct =
+      "실제 설문 화면에서 운영기관, 수집 항목, 보유기간, 파기 기준, 담당자 안내를 직접 확인해 주세요.";
+    safetyType.action = safetyType.howToAct;
     safetyType.toolBadge = "Moaform";
     safetyType.dataBadge = "확인 불가";
     if (
@@ -808,12 +823,15 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     decisionSummary.primaryReasons = [
       "모아폼 페이지는 확인됨",
       "문항 자동 추출 제한",
-      "개인정보 입력 전 고지문 직접 확인 필요",
+      "설문 화면에서 안내문 직접 확인 필요",
     ];
-    decisionSummary.actionDescription =
-      "모아폼 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 충분히 읽지 못했습니다.";
-    privacyAssessment.conclusion = "이 설문은 안전성을 판단할 수 없습니다.";
-    privacyAssessment.inclusionSummary = safetyType.description;
+    decisionSummary.actionDescription = safetyType.howToAct;
+    decisionSummary.headline = safetyType.headline;
+    privacyAssessment.conclusion = "문항 분석이 안 되어 판단이 어렵습니다.";
+    privacyAssessment.inclusionSummary = safetyType.whyProblem;
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  } else {
+    decisionSummary.primaryReasons = evidenceCardsToPrimaryReasons(userEvidenceCards);
     privacyAssessment.quickActions = decisionSummary.primaryReasons;
   }
 
@@ -904,9 +922,9 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
           {
             id: "moaform_manual_check",
             category: "management",
-            title: "고지문 직접 확인 필요",
+            title: "설문 화면에서 직접 확인",
             description:
-              "개인정보 입력 전 운영기관과 고지문을 직접 확인하세요.",
+              "실제 설문 화면에서 운영기관, 수집 항목, 보유기간, 파기 기준, 담당자 안내를 직접 확인해 주세요.",
             severity: "limited",
             evidence: [],
             extraCount: 0,
@@ -922,6 +940,7 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     toolGovernanceSummary,
     safetyType,
     operatorImprovement,
+    userEvidenceCards,
   };
 }
 
@@ -982,33 +1001,13 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
     operatorActions.operatorTopFixes,
     operatorActions.copyableTemplates,
   );
-
-  // 공공 + 개인정보일 때 핵심 이유에 CSAP 한 줄 반영
-  if (
-    (privacyType === "direct_identifier" || privacyType === "sensitive_or_high_risk") &&
-    report.debug?.publicSectorDetected
-  ) {
-    const csapReason =
-      "공공기관 개인정보 설문은 CSAP 인증 도구 사용을 강력히 권고합니다.";
-    decisionSummary.primaryReasons = [
-      csapReason,
-      ...decisionSummary.primaryReasons.filter((r) => r !== csapReason),
-    ].slice(0, 3);
-    privacyAssessment.quickActions = decisionSummary.primaryReasons;
-  }
-
-  if (
-    safetyType.typeId === "SECURITY_CHECK" &&
-    report.platform === "google_forms"
-  ) {
-    const overseas =
-      "Google Forms 사용 시 국외 보관·이전 안내 확인이 필요합니다.";
-    decisionSummary.primaryReasons = [
-      ...decisionSummary.primaryReasons.filter((r) => r !== overseas),
-      overseas,
-    ].slice(0, 3);
-    privacyAssessment.quickActions = decisionSummary.primaryReasons;
-  }
+  const userEvidenceCards = buildUserEvidenceCards(
+    report,
+    collectedDataSummary,
+    safetyType.typeId,
+  );
+  decisionSummary.primaryReasons = evidenceCardsToPrimaryReasons(userEvidenceCards);
+  privacyAssessment.quickActions = decisionSummary.primaryReasons;
 
   const detailsSummary = [
     report.findings.length > 0 ? `상세 finding ${report.findings.length}건` : "",
@@ -1044,5 +1043,6 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
     toolGovernanceSummary,
     safetyType,
     operatorImprovement,
+    userEvidenceCards,
   };
 }

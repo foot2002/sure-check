@@ -11,6 +11,7 @@ import {
 } from "@/lib/reporting/verdictTypes";
 import type { SafetyTypeProfile } from "@/lib/reporting/safetyType";
 import type { OperatorImprovementReport } from "@/lib/reporting/buildOperatorImprovementReport";
+import type { UserEvidenceCard } from "@/lib/reporting/buildUserEvidenceCards";
 
 export type {
   DecisionSummary,
@@ -24,6 +25,7 @@ export type {
 
 export type { SafetyTypeProfile, SafetyTypeId, SurveySubjectType } from "@/lib/reporting/safetyType";
 export type { OperatorImprovementReport, OperatorImprovementItem, OperatorToolImprovement, CertificationExplainCard } from "@/lib/reporting/buildOperatorImprovementReport";
+export type { UserEvidenceCard, UserEvidenceCardKind } from "@/lib/reporting/buildUserEvidenceCards";
 
 /** @deprecated use VerdictType */
 export type RespondentDecision = VerdictType;
@@ -191,6 +193,8 @@ export interface AudienceReport {
   toolGovernanceSummary: ToolGovernanceSummary;
   safetyType: SafetyTypeProfile;
   operatorImprovement: OperatorImprovementReport;
+  /** 사용자용 판단 핵심 근거 카드 (최대 4개) */
+  userEvidenceCards: UserEvidenceCard[];
 }
 
 export const RESPONDENT_DECISION_LABELS = VERDICT_LABELS;
