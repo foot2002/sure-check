@@ -1,21 +1,40 @@
 @font-face {
-  font-family: "Pretendard";
-  font-weight: 45 920;
+  font-family: "GmarketSansLight";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff")
+    format("woff");
+  font-weight: 300;
   font-style: normal;
   font-display: swap;
-  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/woff2/PretendardVariable.woff2")
-    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "GmarketSansMedium";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff")
+    format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GmarketSansBold";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff")
+    format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 @import "tailwindcss";
 
 :root {
-  --background: #f7fafa;
+  --background: #f8fafc;
   --foreground: #0f172a;
   --surface: #ffffff;
-  --muted: #5b6b7c;
+  --muted: #475569;
+  --muted-soft: #64748b;
   --border: #e2e8f0;
-  --border-subtle: #eef2f6;
+  --border-subtle: #e5e7eb;
 
   --brand: #0f766e;
   --brand-hover: #0d9488;
@@ -23,16 +42,30 @@
   --brand-muted: #99f6e4;
   --brand-deep: #134e4a;
 
-  --accent: #0d9488;
-  --accent-light: #ccfbf1;
+  --accent: #0f766e;
+  --accent-light: #ecfdf5;
 
   --safe: #059669;
   --caution: #d97706;
-  --risk: #ea580c;
-  --high-risk: #e11d48;
+  --risk: #e11d48;
+  --high-risk: #be123c;
 
-  --report-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
-  --report-shadow-soft: 0 4px 18px rgba(15, 23, 42, 0.04);
+  --report-radius: 1rem;
+  --report-radius-lg: 1.25rem;
+  --report-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --report-shadow-soft: none;
+  --report-max: 72rem; /* ~1152px */
+  --report-section-gap: 4rem;
+
+  --font-gmarket-light: "GmarketSansLight", "Noto Sans KR", system-ui,
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    sans-serif;
+  --font-gmarket-medium: "GmarketSansMedium", "Noto Sans KR", system-ui,
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    sans-serif;
+  --font-gmarket-bold: "GmarketSansBold", "Noto Sans KR", system-ui,
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    sans-serif;
 }
 
 @theme inline {
@@ -47,22 +80,79 @@
   --color-brand-light: var(--brand-light);
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
-  --font-sans: "Pretendard", "SUIT", "Noto Sans KR", system-ui, -apple-system,
-    BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-  --font-report: "Pretendard", "SUIT", "Noto Sans KR", system-ui, -apple-system,
-    BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-sans: var(--font-gmarket-light);
+  --font-report: var(--font-gmarket-light);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: 17px;
-  font-weight: 500;
-  line-height: 1.7;
+  font-family: var(--font-gmarket-light);
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* Gmarket is face-per-weight: map Tailwind weight utilities to the right file */
+.font-thin,
+.font-extralight,
+.font-light,
+.font-normal {
+  font-family: var(--font-gmarket-light);
+  font-weight: 300;
+}
+
+.font-medium,
+.font-semibold {
+  font-family: var(--font-gmarket-medium);
+  font-weight: 500;
+}
+
+.font-bold,
+.font-extrabold,
+.font-black {
+  font-family: var(--font-gmarket-bold);
+  font-weight: 700;
+}
+
+/* Semantic title helpers */
+.font-title-sm {
+  font-family: var(--font-gmarket-medium);
+  font-weight: 500;
+}
+
+.font-title-lg {
+  font-family: var(--font-gmarket-bold);
+  font-weight: 700;
+}
+
+/* Large titles → Bold */
+h1,
+h2,
+h1.font-bold,
+h1.font-semibold,
+h2.font-bold,
+h2.font-semibold {
+  font-family: var(--font-gmarket-bold);
+  font-weight: 700;
+}
+
+/* Small titles → Medium (even when Tailwind font-bold is present) */
+h3,
+h4,
+h5,
+h6,
+h3.font-bold,
+h3.font-semibold,
+h4.font-bold,
+h4.font-semibold,
+h5.font-bold,
+h6.font-bold {
+  font-family: var(--font-gmarket-medium);
+  font-weight: 500;
 }
 
 ::selection {
@@ -78,14 +168,14 @@ body {
 
 @layer components {
   .report-readable {
-    --muted: #5b6b7c;
-    font-family: var(--font-report);
-    font-weight: 500;
-    letter-spacing: -0.015em;
+    --muted: #475569;
+    font-family: var(--font-gmarket-light);
+    font-weight: 300;
+    letter-spacing: -0.01em;
   }
 
   .report-readable .text-muted {
-    color: #5b6b7c;
+    color: #475569;
   }
 
   .report-readable .text-foreground {
@@ -96,86 +186,116 @@ body {
   .report-readable li,
   .report-readable dd,
   .report-readable td {
-    color: #5b6b7c;
-    font-weight: 500;
-    line-height: 1.75;
+    color: #475569;
+    font-family: var(--font-gmarket-light);
+    font-weight: 300;
+    line-height: 1.6;
   }
 
   .report-readable h1,
-  .report-readable h2,
+  .report-readable h2 {
+    color: #0f172a;
+    font-family: var(--font-gmarket-bold);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
   .report-readable h3,
   .report-readable h4,
   .report-readable dt {
     color: #0f172a;
-    font-weight: 700;
-    letter-spacing: -0.025em;
+    font-family: var(--font-gmarket-medium);
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
 
-  .report-shell {
-    border-radius: 2rem;
-    background:
-      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(45, 212, 191, 0.12), transparent),
-      radial-gradient(ellipse 60% 40% at 90% 0%, rgba(147, 197, 253, 0.14), transparent),
-      #f7fafa;
-    padding: 1.25rem;
+  /* Independent SaaS report blocks — not one big paper page */
+  .report-stack {
+    margin-inline: auto;
+    max-width: var(--report-max);
+    display: flex;
+    flex-direction: column;
+    gap: var(--report-section-gap);
   }
 
   @media (min-width: 768px) {
-    .report-shell {
-      padding: 2rem;
+    .report-stack {
+      gap: 4.5rem;
     }
   }
 
-  .report-hero-card {
-    border-radius: 1.75rem;
+  .report-block {
+    border-radius: var(--report-radius-lg);
     border: 1px solid var(--border);
-    background: linear-gradient(160deg, #ffffff 0%, #f0fdfa 55%, #ecfeff 100%);
+    background: #ffffff;
+    padding: 1.5rem;
     box-shadow: var(--report-shadow);
   }
 
-  .report-summary-card {
-    border-radius: 1.5rem;
-    border: 1px solid var(--border-subtle);
+  @media (min-width: 768px) {
+    .report-block {
+      padding: 1.75rem;
+    }
+  }
+
+  /* Legacy alias — no nested paper shell */
+  .report-shell {
+    margin-inline: auto;
+    max-width: var(--report-max);
+  }
+
+  .report-toolbar-btn {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
     background: #ffffff;
-    box-shadow: var(--report-shadow-soft);
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #334155;
     transition:
-      box-shadow 0.2s ease,
-      border-color 0.2s ease,
-      transform 0.2s ease;
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .report-toolbar-btn:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
+
+  .report-toolbar-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .report-toolbar-btn-primary {
+    border-color: #99f6e4;
+    background: #f0fdfa;
+    color: #134e4a;
+  }
+
+  .report-toolbar-btn-primary:hover:not(:disabled) {
+    background: #ccfbf1;
+  }
+
+  .report-hero-card,
+  .report-summary-card,
+  .report-evidence-card,
+  .report-callout-card,
+  .report-callout-card-strong,
+  .report-soft-card {
+    border-radius: var(--report-radius);
+    border: 1px solid var(--border);
+    background: #ffffff;
+    box-shadow: var(--report-shadow);
   }
 
   .report-summary-card:hover {
-    border-color: #cce7e2;
-    box-shadow: var(--report-shadow);
-    transform: translateY(-1px);
-  }
-
-  .report-evidence-card {
-    border-radius: 1.5rem;
-    border: 1px solid var(--border-subtle);
-    background: #ffffff;
-    box-shadow: var(--report-shadow-soft);
-  }
-
-  .report-callout-card {
-    border-radius: 1.5rem;
-    border: 1px solid #ccfbf1;
-    background: linear-gradient(145deg, #ffffff 0%, #f0fdfa 100%);
-    box-shadow: var(--report-shadow-soft);
-  }
-
-  .report-callout-card-strong {
-    border-radius: 1.5rem;
-    border: 1px solid #99f6e4;
-    background: linear-gradient(145deg, #ffffff 0%, #f0fdfa 50%, #ccfbf1 100%);
-    box-shadow: var(--report-shadow);
-  }
-
-  .report-soft-card {
-    border-radius: 1.5rem;
-    border: 1px solid var(--border-subtle);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: var(--report-shadow-soft);
+    border-color: #cbd5e1;
   }
 
   .report-btn-primary {
@@ -184,18 +304,17 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border-radius: 9999px;
-    padding: 0.65rem 1.25rem;
-    font-size: 0.95rem;
-    font-weight: 700;
-    transition:
-      background-color 0.2s ease,
-      transform 0.15s ease,
-      box-shadow 0.2s ease;
+    border-radius: 0.75rem;
+    padding: 0.65rem 1.15rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    background: var(--brand);
+    color: #ffffff;
+    transition: background-color 0.15s ease;
   }
 
   .report-btn-primary:hover {
-    transform: translateY(-1px);
+    background: var(--brand-hover);
   }
 
   .report-btn-secondary {
@@ -204,16 +323,16 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border-radius: 9999px;
+    border-radius: 0.75rem;
     border: 1px solid var(--border);
     background: #ffffff;
     padding: 0.65rem 1.15rem;
-    font-size: 0.95rem;
+    font-size: 0.9375rem;
     font-weight: 600;
     color: var(--foreground);
     transition:
-      background-color 0.2s ease,
-      border-color 0.2s ease;
+      background-color 0.15s ease,
+      border-color 0.15s ease;
   }
 
   .report-btn-secondary:hover {
@@ -224,18 +343,19 @@ body {
   .report-step-badge {
     display: inline-flex;
     align-items: center;
-    border-radius: 9999px;
-    background: var(--brand);
-    padding: 0.3rem 0.85rem;
+    border-radius: 0.375rem;
+    background: #f1f5f9;
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.55rem;
     font-size: 0.75rem;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: 0.02em;
+    font-weight: 600;
+    color: #334155;
+    letter-spacing: 0.01em;
   }
 
   .report-card-divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, #e2e8f0 12%, #e2e8f0 88%, transparent);
+    background: var(--border);
   }
 
   .report-secondary {
@@ -245,5 +365,565 @@ body {
   .report-secondary h2,
   .report-secondary h3 {
     font-weight: 700;
+  }
+
+  /* Surface cards: white on tinted section shells — no left accent bar */
+  .report-severity-panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--report-radius);
+    border: 1px solid var(--border);
+    background: #ffffff;
+    box-shadow: var(--report-shadow);
+  }
+
+  .report-inner-card {
+    border-radius: var(--report-radius);
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .report-inner-muted {
+    border-radius: 0.75rem;
+    border: 1px solid #e8edf3;
+    background: #f8fafc;
+  }
+
+  /* Hairline between subsection blocks inside a tinted zone */
+  .report-section-rule {
+    height: 1px;
+    width: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(15, 23, 42, 0.12) 8%,
+      rgba(15, 23, 42, 0.16) 50%,
+      rgba(15, 23, 42, 0.12) 92%,
+      transparent 100%
+    );
+  }
+
+  .report-subsection-ruled {
+    margin-top: 1.75rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.1);
+  }
+
+  @media (min-width: 768px) {
+    .report-subsection-ruled {
+      margin-top: 2rem;
+      padding-top: 2rem;
+    }
+  }
+
+  /* Dark navy expand CTA — must look clickable */
+  .report-expand-trigger {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: 0.875rem;
+    border: 1px solid #152a4a;
+    background: #1e3a5f;
+    padding: 1rem 1.15rem;
+    text-align: left;
+    font-family: var(--font-gmarket-bold);
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .report-expand-trigger:hover {
+    background: #254a73;
+    border-color: #1e3a5f;
+  }
+
+  .report-expand-trigger[aria-expanded="true"] {
+    background: #172e4c;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .report-expand-trigger-compact {
+    padding: 0.85rem 1rem;
+  }
+
+  .report-expand-trigger-icon {
+    display: flex;
+    height: 2.5rem;
+    width: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+
+  /* Soft utility expand — optional actions, not content panels */
+  .report-expand-trigger-soft {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: 0.875rem;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    font-family: var(--font-gmarket-medium);
+    color: #1e293b;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .report-expand-trigger-soft:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+
+  .report-expand-trigger-soft[aria-expanded="true"] {
+    background: #f1f5f9;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .report-expand-trigger-icon-soft {
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+  }
+
+  .report-expand-panel {
+    border: 1px solid #d8dee8;
+    border-top: 0;
+    border-bottom-left-radius: 0.875rem;
+    border-bottom-right-radius: 0.875rem;
+    background: #ffffff;
+  }
+
+  /*
+   * Expand-panel detail system
+   * Overrides .report-readable's tight tracking so detail text stays readable.
+   * One table markup; mobile reflows rows into cards (no duplicate lists).
+   */
+  .report-detail-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 1.05rem 1.1rem 1.2rem;
+    letter-spacing: 0.02em;
+    line-height: 1.7;
+  }
+
+  @media (min-width: 768px) {
+    .report-detail-stack {
+      padding: 1.15rem 1.3rem 1.35rem;
+    }
+  }
+
+  .report-detail-block {
+    min-width: 0;
+    padding: 1rem 0;
+  }
+
+  .report-detail-block:first-child {
+    padding-top: 0.15rem;
+  }
+
+  .report-detail-block:last-child {
+    padding-bottom: 0.15rem;
+  }
+
+  .report-detail-block + .report-detail-block {
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .report-detail-heading {
+    margin: 0 0 0.75rem;
+    font-family: var(--font-gmarket-medium);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+  }
+
+  .report-detail-label {
+    display: block;
+    font-family: var(--font-gmarket-medium);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: #64748b;
+  }
+
+  .report-detail-body {
+    margin: 0;
+    font-family: var(--font-gmarket-light);
+    font-size: 0.875rem;
+    line-height: 1.75;
+    letter-spacing: 0.02em;
+    font-weight: 300;
+    color: #334155;
+  }
+
+  .report-detail-body-strong {
+    margin: 0;
+    font-family: var(--font-gmarket-medium);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+  }
+
+  .report-detail-note {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    letter-spacing: 0.02em;
+    color: #64748b;
+  }
+
+  .report-detail-field {
+    margin: 0;
+  }
+
+  .report-detail-field + .report-detail-field {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed #e8edf3;
+  }
+
+  .report-detail-field .report-detail-body,
+  .report-detail-field .report-detail-body-strong {
+    margin-top: 0.35rem;
+  }
+
+  .report-detail-kv {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  @media (min-width: 640px) {
+    .report-detail-kv {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .report-detail-kv-item {
+    min-width: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .report-detail-kv-item .report-detail-body,
+  .report-detail-kv-item .report-detail-body-strong {
+    margin-top: 0.35rem;
+    overflow-wrap: anywhere;
+  }
+
+  .report-detail-tile {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .report-detail-tile-white {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #ffffff;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .report-detail-action {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #f1f5f9;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .report-detail-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    overflow: hidden;
+  }
+
+  .report-detail-list > li {
+    position: relative;
+    padding: 0.7rem 0.85rem 0.7rem 1.35rem;
+    font-size: 0.875rem;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    color: #334155;
+  }
+
+  .report-detail-list > li + li {
+    border-top: 1px solid #e8edf3;
+  }
+
+  .report-detail-list > li::before {
+    content: "·";
+    position: absolute;
+    left: 0.7rem;
+    color: #94a3b8;
+  }
+
+  .report-detail-table-shell {
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #ffffff;
+  }
+
+  .report-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+  }
+
+  .report-detail-table th {
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-family: var(--font-gmarket-medium);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: #475569;
+    white-space: nowrap;
+  }
+
+  .report-detail-table td {
+    padding: 0.8rem 0.9rem;
+    border-bottom: 1px solid #eef2f7;
+    vertical-align: top;
+    font-family: var(--font-gmarket-light);
+    font-weight: 300;
+    line-height: 1.7;
+    color: #334155;
+  }
+
+  .report-detail-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .report-detail-table tbody tr:nth-child(even) td {
+    background: #fafbfc;
+  }
+
+  .report-detail-table td:first-child {
+    width: 22%;
+    min-width: 6.5rem;
+    font-family: var(--font-gmarket-medium);
+    font-weight: 500;
+    color: #0f172a;
+  }
+
+  .report-detail-clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    cursor: help;
+  }
+
+  .report-detail-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .report-detail-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    background: #f8fafc;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+    color: #334155;
+    text-align: left;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .report-detail-chip:hover {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+  }
+
+  .report-detail-chip[aria-pressed="true"] {
+    border-color: #94a3b8;
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+
+  /* Mobile: one table → stacked cards (no second copy of the data) */
+  @media (max-width: 767px) {
+    .report-detail-table thead {
+      display: none;
+    }
+
+    .report-detail-table,
+    .report-detail-table tbody,
+    .report-detail-table tr,
+    .report-detail-table td {
+      display: block;
+      width: 100%;
+    }
+
+    .report-detail-table tbody {
+      padding: 0.55rem;
+    }
+
+    .report-detail-table tr {
+      margin-bottom: 0.55rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.625rem;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .report-detail-table tr:last-child {
+      margin-bottom: 0;
+    }
+
+    .report-detail-table tbody tr:nth-child(even) td {
+      background: transparent;
+    }
+
+    .report-detail-table td {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px dashed #e8edf3;
+    }
+
+    .report-detail-table td:last-child {
+      border-bottom: 0;
+    }
+
+    .report-detail-table td:first-child {
+      width: 100%;
+      min-width: 0;
+      padding-top: 0.7rem;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .report-detail-table td::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: 0.2rem;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #64748b;
+    }
+
+    .report-detail-table td:first-child::before {
+      display: none;
+    }
+  }
+
+  /* Refined small feature cards (Top 3, evidence tiles, templates) */
+  .report-feature-card {
+    display: flex;
+    flex-direction: column;
+    border-radius: 1.25rem;
+    border: 1px solid #e8edf3;
+    background: #ffffff;
+    padding: 1.15rem 1.2rem 1.25rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  }
+
+  .report-feature-card-soft {
+    display: flex;
+    flex-direction: column;
+    border-radius: 1.25rem;
+    border: 1px solid #cfe8dc;
+    background: #f3faf6;
+    padding: 1.15rem 1.2rem 1.25rem;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .report-feature-divider {
+    height: 1px;
+    margin: 0.9rem 0;
+    background: #e8edf3;
+  }
+
+  .report-feature-icon {
+    display: inline-flex;
+    height: 2.5rem;
+    width: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: #ffffff;
+  }
+
+  .report-feature-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+  }
+
+  .report-badge-neutral {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.375rem;
+    border: 1px solid var(--border);
+    background: #f8fafc;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .report-badge-legal {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.375rem;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1e3a8a;
   }
 }

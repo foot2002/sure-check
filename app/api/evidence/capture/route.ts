@@ -1,15 +1,49 @@
 import { NextResponse } from "next/server";
+import type { CapturePriorityQuestion } from "@/lib/evidence/buildCapturePriority";
 import { captureSurveyScreenshots } from "@/lib/evidence/captureSurveyScreenshots";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 interface CaptureRequestBody {
   surveyUrl?: string;
   finalUrl?: string;
   diagnosisId?: string;
+  priorityQuestions?: CapturePriorityQuestion[];
+}
+
+function sanitizePriorityQuestions(
+  raw: unknown,
+): CapturePriorityQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set([
+    "sensitive",
+    "high",
+    "direct",
+    "quasi",
+    "personal",
+  ]);
+  const out: CapturePriorityQuestion[] = [];
+  for (const item of raw.slice(0, 40)) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const questionText =
+      typeof row.questionText === "string" ? row.questionText.trim() : "";
+    const risk = typeof row.risk === "string" ? row.risk : "";
+    const pageIndex =
+      typeof row.pageIndex === "number" && Number.isFinite(row.pageIndex)
+        ? Math.max(0, Math.floor(row.pageIndex))
+        : 0;
+    if (!questionText || !allowed.has(risk)) continue;
+    out.push({
+      pageIndex,
+      questionText: questionText.slice(0, 160),
+      risk: risk as CapturePriorityQuestion["risk"],
+    });
+  }
+  return out;
 }
 
 export async function POST(request: Request) {
@@ -21,6 +55,7 @@ export async function POST(request: Request) {
       typeof body.finalUrl === "string" ? body.finalUrl.trim() : "";
     const diagnosisId =
       typeof body.diagnosisId === "string" ? body.diagnosisId.trim() : "";
+    const priorityQuestions = sanitizePriorityQuestions(body.priorityQuestions);
 
     if (!surveyUrl && !finalUrl) {
       return NextResponse.json(
@@ -57,6 +92,7 @@ export async function POST(request: Request) {
     const result = await captureSurveyScreenshots({
       surveyUrl,
       finalUrl: finalUrl || safety.normalizedUrl,
+      priorityQuestions,
     });
 
     return NextResponse.json({

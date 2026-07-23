@@ -17,31 +17,33 @@ export function SectionHeader({
   className = "",
 }: SectionHeaderProps) {
   return (
-    <div className={`mb-6 ${className}`}>
-      <div className="flex items-start gap-4">
+    <div className={`mb-5 ${className}`}>
+      <div className="flex items-start gap-3">
         {step != null && (
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3b5bdb] to-[#1e3a8a] text-lg font-bold text-white shadow-[0_8px_20px_rgba(30,58,138,0.28)]">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700">
             {step}
           </span>
         )}
         {Icon && step == null && (
-          <ReportIconBadge icon={Icon} tone="blue" size="lg" />
+          <ReportIconBadge icon={Icon} tone="slate" size="md" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            {step != null && <span className="report-step-badge">Step {step}</span>}
-            <h2 className="text-lg tracking-tight text-foreground md:text-xl">
+          <div className="mb-0.5 flex flex-wrap items-center gap-2">
+            {step != null && (
+              <span className="report-step-badge">{step}단계</span>
+            )}
+            <h2 className="text-lg font-bold tracking-tight text-slate-900 md:text-xl">
               {title}
             </h2>
           </div>
           {description && (
-            <p className="mt-1.5 max-w-3xl text-[15px] leading-relaxed text-muted md:text-base">
+            <p className="mt-1 max-w-3xl text-[15px] leading-relaxed text-slate-600">
               {description}
             </p>
           )}
         </div>
       </div>
-      <div className="report-card-divider mt-5" />
+      <div className="report-card-divider mt-4" />
     </div>
   );
 }

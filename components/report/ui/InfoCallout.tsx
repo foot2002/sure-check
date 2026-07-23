@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, Info, ShieldCheck } from "lucide-react";
-import { ReportIconBadge } from "@/components/report/ui/ReportIconBadge";
 
 interface InfoCalloutProps {
   title: string;
@@ -11,25 +10,25 @@ interface InfoCalloutProps {
 
 const variantStyles = {
   info: {
-    box: "border-[#bfdbfe] bg-gradient-to-br from-[#eff6ff] to-white",
-    title: "text-[#172554]",
-    body: "text-[#475569]",
+    shell: "border-slate-200 bg-white",
+    title: "text-slate-900",
+    body: "text-slate-600",
+    iconWrap: "border-slate-200 bg-slate-50 text-blue-800",
     icon: Info,
-    tone: "blue" as const,
   },
   warning: {
-    box: "border-[#fde68a] bg-gradient-to-br from-[#fffbeb] to-white",
-    title: "text-[#92400e]",
-    body: "text-[#a16207]",
+    shell: "border-amber-200 bg-amber-50/80",
+    title: "text-slate-900",
+    body: "text-slate-600",
+    iconWrap: "border-amber-200 bg-white text-amber-800",
     icon: AlertTriangle,
-    tone: "amber" as const,
   },
   trust: {
-    box: "border-[#c7d7f5] bg-gradient-to-br from-[#f8fbff] to-white",
-    title: "text-[#172554]",
-    body: "text-[#475569]",
+    shell: "border-slate-200 bg-white",
+    title: "text-slate-900",
+    body: "text-slate-600",
+    iconWrap: "border-slate-200 bg-slate-50 text-teal-800",
     icon: ShieldCheck,
-    tone: "navy" as const,
   },
 };
 
@@ -43,14 +42,16 @@ export function InfoCallout({
   const Icon = icon ?? styles.icon;
 
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm md:p-5 ${styles.box}`}>
-      <div className="flex gap-4">
-        <ReportIconBadge icon={Icon} tone={styles.tone} size="md" />
+    <div className={`rounded-xl border p-4 md:p-5 ${styles.shell}`}>
+      <div className="flex gap-3.5">
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${styles.iconWrap}`}
+        >
+          <Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
+        </span>
         <div className="min-w-0 flex-1">
-          <p className={`text-sm md:text-[15px] ${styles.title}`}>
-            <span className="font-bold">{title}</span>
-          </p>
-          <div className={`mt-1.5 text-sm leading-relaxed md:text-[15px] ${styles.body}`}>
+          <p className={`text-sm font-semibold ${styles.title}`}>{title}</p>
+          <div className={`mt-1 text-sm leading-relaxed ${styles.body}`}>
             {children}
           </div>
         </div>

@@ -48,38 +48,32 @@ export function TrustNoticePanel({ report }: TrustNoticePanelProps) {
           : "정밀 진단";
 
   return (
-    <section className="rounded-[1.75rem] border border-teal-100 bg-gradient-to-br from-white via-[#f0fdfa] to-[#ecfeff] p-6 shadow-[var(--report-shadow-soft)] md:p-7">
-      <div className="mb-5 flex flex-wrap items-center gap-2.5">
-        <h2 className="text-xl font-bold text-foreground md:text-2xl">
-          서비스 안내
-        </h2>
-        <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-sm font-semibold text-teal-800">
-          {platformLabel}
-        </span>
-        <span className="rounded-full border border-border-subtle bg-white/80 px-3 py-1 text-sm font-medium text-muted">
-          {scopeLabel}
-        </span>
+    <section className="rounded-[var(--report-radius)] border border-slate-200 bg-white p-5 md:p-6">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-bold text-slate-900 md:text-xl">서비스 안내</h2>
+        <span className="report-badge-neutral">{platformLabel}</span>
+        <span className="report-badge-neutral">{scopeLabel}</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {notices.map(({ icon: Icon, title, body }) => (
           <article
             key={title}
-            className="rounded-2xl border border-white/80 bg-white/90 p-4 shadow-sm md:p-5"
+            className="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
           >
             <div className="mb-2 flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
-                <Icon size={18} strokeWidth={2.25} />
+              <span className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600">
+                <Icon size={16} strokeWidth={2} aria-hidden />
               </span>
-              <h3 className="text-base font-bold text-foreground">{title}</h3>
+              <h3 className="text-[15px] font-bold text-slate-900">{title}</h3>
             </div>
-            <p className="text-base leading-relaxed text-muted">{body}</p>
+            <p className="text-sm leading-relaxed text-slate-600">{body}</p>
           </article>
         ))}
       </div>
 
       {report.sections.disclaimer && (
-        <p className="mt-5 rounded-2xl border border-teal-100 bg-white/80 px-4 py-3 text-center text-base leading-relaxed text-muted">
+        <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm leading-relaxed text-slate-600">
           {report.sections.disclaimer}
         </p>
       )}

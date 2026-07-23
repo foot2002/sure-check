@@ -93,17 +93,8 @@ export default function HomePage() {
 
       <main className="flex-1">
         <div className="relative overflow-hidden border-b border-border-subtle bg-surface">
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#dbeafe]/70 blur-3xl"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute -left-16 top-32 h-48 w-48 rounded-full bg-[#eff6ff]/90 blur-3xl"
-            aria-hidden
-          />
-
-          <div className="relative mx-auto max-w-5xl px-5 pb-12 pt-10 md:px-8 md:pb-16 md:pt-14">
-            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1 text-xs text-brand">
+          <div className="relative mx-auto max-w-[72rem] px-5 pb-8 pt-6 md:px-8 md:pb-10 md:pt-8">
+            <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
               <Sparkles size={12} strokeWidth={2.5} />
               무료 · 회원가입 없이 이용
             </div>
@@ -113,12 +104,12 @@ export default function HomePage() {
               <br />
               <span className="font-bold text-brand">개인정보 괜찮을까요?</span>
             </h1>
-            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted md:text-base">
+            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted md:text-base">
               구글폼·네이버폼·모아폼 링크를 넣거나, 설문지 파일을 업로드하면
               개인정보 수집 위험 신호를 자동으로 점검합니다.
             </p>
 
-            <section className="mt-8 rounded-2xl border border-border bg-surface p-5 shadow-[0_8px_32px_rgba(30,64,175,0.08)] md:p-7">
+            <section className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-[0_8px_32px_rgba(15,23,42,0.06)] md:p-7">
               <div
                 className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-[#f1f5f9] p-1"
                 role="tablist"
@@ -175,14 +166,11 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mx-auto max-w-5xl px-5 py-10 md:px-8 md:py-12">
+        <div className="mx-auto max-w-[72rem] px-5 py-8 md:px-8 md:py-10">
           {(loadingReport || report || reportError) && (
-            <section
-              ref={resultsRef}
-              className="mb-12 scroll-mt-20 rounded-2xl border border-border bg-surface p-5 shadow-[0_12px_40px_rgba(30,64,175,0.1)] md:p-8"
-            >
+            <section ref={resultsRef} className="mb-12 scroll-mt-20">
               {loadingReport && (
-                <div className="flex items-center justify-center gap-3 py-14">
+                <div className="flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white py-14">
                   <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-light border-t-brand" />
                   <span className="text-sm text-muted">결과를 불러오는 중</span>
                 </div>
@@ -199,7 +187,7 @@ export default function HomePage() {
           )}
 
           <section className="mb-10">
-            <h2 className="mb-4 text-xs uppercase tracking-wider text-muted">
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted">
               {mode === "file" ? "지원 파일" : "지원 플랫폼"}
             </h2>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -208,14 +196,14 @@ export default function HomePage() {
                 return (
                   <div
                     key={item.name}
-                    className="report-summary-card flex flex-col items-center gap-3 px-3 py-5 text-center"
+                    className="flex flex-col items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-4 text-center"
                   >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#4f8df7] to-[#1e3a8a] text-white shadow-[0_8px_20px_rgba(30,58,138,0.22)]">
-                      <Icon size={24} strokeWidth={1.75} />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
+                      <Icon size={20} strokeWidth={1.75} />
                     </div>
                     <div>
-                      <p className="text-[13px] text-foreground">
-                        <span className="font-bold">{item.name}</span>
+                      <p className="text-[13px] font-bold text-foreground">
+                        {item.name}
                       </p>
                       <p className="mt-0.5 text-[11px] text-muted">{item.desc}</p>
                     </div>
@@ -225,14 +213,14 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section className="space-y-5 rounded-2xl border border-border-subtle bg-surface p-5 shadow-sm md:p-6">
-            <div className="flex gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3b5bdb] to-[#1e3a8a] text-white shadow-[0_8px_20px_rgba(30,58,138,0.22)]">
-                <Shield size={24} strokeWidth={2} />
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 md:p-6">
+            <div className="flex gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
+                <Shield size={18} strokeWidth={2} />
               </div>
               <div>
-                <h2 className="text-sm text-foreground">
-                  <span className="font-bold">개인정보 처리 및 저장 안내</span>
+                <h2 className="text-sm font-bold text-foreground">
+                  개인정보 처리 및 저장 안내
                 </h2>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                   입력하신 URL과 업로드 파일은 진단 목적으로만 사용되며, 서버에
@@ -240,7 +228,7 @@ export default function HomePage() {
                 </p>
               </div>
             </div>
-            <div className="border-t border-border-subtle pt-5">
+            <div className="border-t border-slate-200 pt-4">
               <p className="text-[13px] leading-relaxed text-muted">
                 <span className="font-bold text-foreground">
                   법률 자문이 아닌 자동 위험진단 —

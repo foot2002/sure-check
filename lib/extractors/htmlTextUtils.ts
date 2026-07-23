@@ -204,8 +204,11 @@ const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
   { category: "birthdate", patterns: [/생년월일/, /생일/, /출생연도/] },
   { category: "affiliation", patterns: [/회사명/, /기관명/, /학교명/, /소속/] },
   { category: "department", patterns: [/부서/, /팀/] },
-  { category: "position", patterns: [/직급/, /직책/] },
-  { category: "tenure", patterns: [/근속\s*연수/, /근무\s*연수/, /재직\s*기간/] },
+  { category: "position", patterns: [/직급/, /직책/, /직군/] },
+  {
+    category: "tenure",
+    patterns: [/근속\s*연수/, /근속\s*기간/, /근무\s*연수/, /재직\s*기간/, /근속기간/],
+  },
   { category: "organization_identifier", patterns: [/사번/] },
   {
     category: "gender",
@@ -224,11 +227,11 @@ const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
   },
   {
     category: "respondent_age",
-    patterns: [/귀하.*연령/, /귀하.*나이/, /만\s*나이/],
+    patterns: [/귀하.*연령/, /귀하.*나이/, /만\s*나이/, /^\(?\d+\)?\s*연령/, /^연령\s*$/],
   },
   {
     category: "age_range",
-    patterns: [/연령/, /나이/, /연령대/],
+    patterns: [/연령대/, /나이대/, /연령/, /나이/],
   },
   {
     category: "residence_area",

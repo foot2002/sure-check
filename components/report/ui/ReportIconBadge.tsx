@@ -9,31 +9,31 @@ interface ReportIconBadgeProps {
 }
 
 const toneStyles: Record<IconTone, string> = {
-  navy: "bg-gradient-to-br from-[#3b5bdb] to-[#1e3a8a] shadow-[0_8px_20px_rgba(30,58,138,0.28)]",
-  blue: "bg-gradient-to-br from-[#4f8df7] to-[#2563eb] shadow-[0_8px_20px_rgba(37,99,235,0.24)]",
-  indigo: "bg-gradient-to-br from-[#6366f1] to-[#4338ca] shadow-[0_8px_20px_rgba(67,56,202,0.24)]",
-  sky: "bg-gradient-to-br from-[#38bdf8] to-[#0284c7] shadow-[0_8px_20px_rgba(2,132,199,0.22)]",
-  slate: "bg-gradient-to-br from-[#64748b] to-[#334155] shadow-[0_8px_20px_rgba(51,65,85,0.2)]",
-  amber: "bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-[0_8px_20px_rgba(217,119,6,0.22)]",
-  rose: "bg-gradient-to-br from-[#f43f5e] to-[#be123c] shadow-[0_8px_20px_rgba(190,18,60,0.22)]",
+  navy: "border-slate-200 bg-slate-50 text-blue-900",
+  blue: "border-slate-200 bg-slate-50 text-blue-800",
+  indigo: "border-slate-200 bg-slate-50 text-slate-700",
+  sky: "border-slate-200 bg-slate-50 text-sky-800",
+  slate: "border-slate-200 bg-slate-50 text-slate-600",
+  amber: "border-amber-200 bg-amber-50 text-amber-800",
+  rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 const sizeStyles = {
-  md: { wrap: "h-12 w-12", icon: 22 },
-  lg: { wrap: "h-14 w-14", icon: 26 },
-  xl: { wrap: "h-16 w-16", icon: 30 },
+  md: { wrap: "h-8 w-8", icon: 16 },
+  lg: { wrap: "h-9 w-9", icon: 18 },
+  xl: { wrap: "h-10 w-10", icon: 20 },
 };
 
 export function ReportIconBadge({
   icon: Icon,
   tone = "navy",
-  size = "lg",
+  size = "md",
 }: ReportIconBadgeProps) {
   const s = sizeStyles[size];
 
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-full text-white ${toneStyles[tone]} ${s.wrap}`}
+      className={`flex shrink-0 items-center justify-center rounded-md border ${toneStyles[tone]} ${s.wrap}`}
     >
       <Icon size={s.icon} strokeWidth={2} />
     </span>

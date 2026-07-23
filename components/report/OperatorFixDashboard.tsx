@@ -25,7 +25,7 @@ export function OperatorFixDashboard({
     <section>
       <SectionHeader
         icon={Wrench}
-        title="운영자가 먼저 고칠 3가지"
+        title="최우선 개선사항 Top 3"
         description={audienceReport.operatorSummary}
       />
 

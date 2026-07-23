@@ -66,7 +66,7 @@ export default function ReportPage() {
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 md:px-8 md:py-12">
+      <main className="mx-auto w-full max-w-[72rem] flex-1 px-5 py-6 md:px-8 md:py-8">
         {loading && (
           <div className="flex min-h-[40vh] items-center justify-center">
             <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-light border-t-brand" />

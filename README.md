@@ -770,8 +770,11 @@ NEXT_PUBLIC_KISA_REPORT_URL=https://privacy.kisa.or.kr
 `응답 거부·신고 검토`가 나온 **링크 진단** 결과에 대해, 신고 CTA가 열리면 `/api/evidence/capture`로 공개 설문 화면을 자동 캡처합니다.
 
 - 엔진: `puppeteer-core` + `@sparticuz/chromium`(서버리스) / 로컬은 Chrome·Edge 또는 `PUPPETEER_EXECUTABLE_PATH`
-- 첫 공개 페이지 `fullPage` PNG 캡처(1440×1200). 입력 없이 “다음” 이동 가능한 페이지만 최대 5장 추가
-- 임의 응답 입력·제출·로그인 우회·CAPTCHA 우회 금지. 필수응답 차단 시 limitation 기록 후 중단
+- 첫 공개 페이지부터 “다음”으로 이동하며 **전체 페이지** `fullPage` PNG 캡처(구글폼 `N/M페이지` 감지 시 M장까지, 최대 30장)
+- 구글폼 리커트(전혀 그렇지 않다~매우 그렇다) 등 의견 척도는 페이지 이동을 위해 최소 선택. 이름·연락처 등 신원 입력·최종 제출 금지
+- `3/22페이지`처럼 URL이 안 바뀌어도 진행 표시로 페이지 이동을 판별
+- 도달하지 못한 페이지는 limitation 기록 + 추가 캡처 첨부 안내
+- 문항의 정적 “필수” 라벨만으로는 중단하지 않음(실제 검증 오류 메시지가 새로 뜬 경우만 차단)
 - 성공 시 ZIP `08_화면캡처/auto_screenshot_01_first_public_page.png` 등 포함 + SHA-256·manifest `screenCaptureEvidence`
 - 실패해도 진단·ZIP 다운로드는 유지. README·요약서·manifest에 `captureLimitations` 기록
 - 수동 캡처는 “추가 캡처 첨부”로 보조 유지
@@ -896,7 +899,7 @@ NEXT_PUBLIC_KISA_REPORT_URL=https://privacy.kisa.or.kr
 
 ### 운영자용 개선 리포트
 
-1. 운영자가 먼저 고칠 3가지
+1. 최우선 개선사항 Top 3
 2. 도구 / 고지문 / 문항 / 운영·관리 탭
 3. 법적 체크 결과
 4. 개선 문구 복사
@@ -979,49 +982,62 @@ components/report/OperatorImprovementPanel.tsx
 
 관련 코드: `lib/extractors/moaformTypes.ts`, `lib/extractors/moaformParser.ts`, `lib/extractors/MoaformExtractor.ts`, `lib/scan/resolveScanReport.ts`
 
-## 16Personalities 참고 스타일 기반 SURE Check 리포트 디자인 기준
+## 전문 SaaS 리포트 디자인 고도화
 
-SURE Check 결과 리포트는 16Personalities와 같은 **친근한 성격유형 리포트 감성**을 참고하되, 로고·캐릭터·색상·문구를 복제하지 않습니다.
+이전의 “흰 박스 문서형” 리포트에서 한 단계 더 나아가, **공공기관·기업 담당자가 신뢰할 수 있는 개인정보 리스크 진단 SaaS 리포트** 톤으로 고도화했습니다. 진단·증빙·캡처·복사 로직은 변경하지 않습니다.
+
+### 이번 고도화 포인트
+
+- 상단 로고 축소 + 헤더에 `SURE Check / 개인정보 리스크 진단` 배치 → hero 입력 영역이 주인공
+- 결과 전체를 감싸던 큰 종이 박스 제거 → 응답자용 / 신고 검토 / 기관·기업 담당자용 / 부록을 **독립 report block**으로 분리
+- 섹션별 좌측 accent bar로 영역 구분 강화
+- `PlatformMark`로 Google Forms / 네이버폼 / 모아폼 / 파일 업로드 favicon-like 표시 (외부 상표 이미지 미사용)
+- 판단 핵심 근거를 **현재 / 권장 / 사실·문제·조치 / 법 badge** 구조형 카드로 정리
+- 설문 프로필을 아이콘 포함 compact summary strip으로 개선
+- 운영자용 상단 **최우선 개선사항 Top 3** + 상세 항목 accordion (상위 3개 기본 펼침)
+- 개선 문구 복사는 dashed 보조 영역 + 유형별 아이콘 + 전체 보기
+- 공유·복사·다운로드를 리포트 상단 compact toolbar로 이동
+- 신고 검토: 자동 캡처 status row + 클라이언트 timeout(90초) 상태 + 추가 캡처는 접힘 보조
+
+관련 코드: `PlatformMark`, `ReportView`, `ReportAudienceZone`, `UserEvidenceCards`, `UserSafetyReport`, `OperatorImprovementPanel`, `EvidenceActionPanel`, `ShareActions`, `SiteHeader`, `Logo`, `app/globals.css`
+
+## 전문 리포트형 디자인 시스템 개편
+
+SURE Check 결과 리포트는 **친근한 성격유형 리포트** 톤에서 벗어나, 공공기관·기업 담당자가 신뢰할 수 있는 **개인정보 리스크 진단 리포트 SaaS** 톤으로 정리했습니다. 진단 로직·URL/파일 진단·신고용 증빙·KISA 이동·자동 캡처는 유지하고, 디자인·레이아웃·한국어 문구 위계만 개편합니다.
 
 ### 디자인 원칙
 
-- Friendly / Trustworthy / Personality-report / Spacious / Rounded
-- 사용자용: 쉽고 직관적인 응답 판단 카드
-- 운영자용: 차분한 실무 개선 리포트
-- 개인정보 진단 서비스로서의 신뢰감 유지
+- off-white 페이지(`#F8FAFC`) + white surface + 얇은 border + 최소 shadow
+- 과한 그라데이션·큰 아이콘·카드 전체 분홍/빨강 칠하기·컬러 배지 남발 금지
+- 위험/주의는 **좌측 accent bar + 상태 badge + 핵심 문장**만 상태색으로 표현
+- 사용자 화면 섹션명은 한국어만 사용 (응답자용 진단 / 신고 검토 안내 / 기관·기업 담당자용 / 부록)
+- Analyzer Trace, NormalizedForm JSON, ScanReport JSON은 공개 화면에 표시하지 않음
 
-### 타이포그래피
+### 타이포그래피·색상
 
-- 기본 폰트: Pretendard (CDN 가변 폰트) → SUIT / Noto Sans KR / system-ui
-- Hero 판단명: text-4xl ~ text-5xl
-- 최종 판단: text-2xl ~ text-3xl
-- 섹션 제목: text-2xl
-- 본문: text-base ~ text-lg
+- 폰트: Pretendard → SUIT → Noto Sans KR → system-ui
+- 페이지 제목 32~40px, 섹션 24~28px, 카드 18~20px, 본문 15~16px, 배지 12~13px
+- Primary accent: teal `#0F766E` / 상태: rose·amber·emerald·slate 각 1계열
 
-### 응답 판단별 테마
+### 공통 스타일
 
-`components/report/ui/safetyTypeTheme.ts`에서 6종 응답 판단별 pastel 팔레트·아이콘·CTA 색을 관리합니다.
+`app/globals.css`의 report 토큰과 유틸을 사용합니다.
 
-| 응답 판단 | 톤 |
-|-----------|------|
-| 응답 가능 | soft green / teal |
-| 개인정보 없이 응답 | warm amber |
-| 안내 없으면 입력 금지 | orange |
-| 공식 확인 후 응답 | violet / indigo |
-| 응답 거부·신고 검토 | rose |
-| 문항 분석 불가 | slate |
+- radius: 16~20px 통일
+- `.report-severity-panel`: white surface + 좌측 4px accent
+- `.report-badge-neutral` / `.report-badge-legal`
+- `.report-btn-primary` / `.report-btn-secondary`
 
 ### 레이아웃
 
-1. 응답 판단 Hero (응답 판단 / 왜 문제인가요 / 법적 위험·판단 한계 / 어떻게 해야 하나요)
-2. 판단 핵심 근거 (구체 카드)
-3. 설문 프로필 요약
-4. 운영자용 핵심 개선 리포트 · 개선 문구 복사 · 세부 판단근거
-5. 부록: 설문/문항 정보 보기
-6. 공유 / 서비스 안내
-7. (개발 환경 + ?debug=1만) 내부 개발 진단
+1. 응답자용 진단 — 나의 응답 판단 · 판단 핵심 근거 · 설문 프로필 요약
+2. 신고 검토 안내 — `응답 거부·신고 검토`일 때만 (증빙 다운로드 · KISA · 자동 캡처)
+3. 기관·기업 담당자용 — 설문 개선 리포트 · 개선 문구 복사 · 세부 판단근거
+4. 부록 — 설문/문항 정보 보기
+5. 공유 / 서비스 안내
+6. (개발 환경 + `?debug=1`만) 내부 개발 진단
 
-관련 코드: `SafetyTypeCard`, `UserSafetyReport`, `UserEvidenceCards`, `ReportAudienceZone`, `SurveySourceAppendix`, `OperatorImprovementPanel`, `app/globals.css`
+관련 코드: `SafetyTypeCard`, `UserSafetyReport`, `UserEvidenceCards`, `EvidenceActionPanel`, `ReportAudienceZone`, `OperatorImprovementPanel`, `SurveySourceAppendix`, `app/globals.css`, `components/report/ui/*`
 
 ## 세부 판단근거와 개발자 진단 정보 분리 기준
 

@@ -1,20 +1,27 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   Camera,
+  CheckCircle2,
   Download,
   ExternalLink,
   ImagePlus,
   Loader2,
+  ShieldAlert,
+  TimerOff,
   X,
+  XCircle,
 } from "lucide-react";
+import { PlatformMark } from "@/components/report/ui/PlatformMark";
+import { ReportExpandTrigger } from "@/components/report/ui/ReportExpandTrigger";
 import type { AudienceReport } from "@/lib/reporting/reportMessages";
 import type { ScanReport } from "@/lib/types/scan";
 import {
   buildEvidencePackage,
   downloadBlob,
 } from "@/lib/evidence/buildEvidencePackage";
+import { buildCapturePriorityQuestions } from "@/lib/evidence/buildCapturePriority";
 import {
   buildReportEvidenceModel,
   shouldShowEvidenceActionPanel,
@@ -31,7 +38,15 @@ interface EvidenceActionPanelProps {
   audienceReport: AudienceReport;
 }
 
-type CaptureStatus = "idle" | "loading" | "success" | "failed" | "skipped";
+type CaptureStatus =
+  | "idle"
+  | "loading"
+  | "success"
+  | "failed"
+  | "timeout"
+  | "skipped";
+
+const CAPTURE_CLIENT_TIMEOUT_MS = 330_000;
 
 const KISA_REPORT_URL =
   process.env.NEXT_PUBLIC_KISA_REPORT_URL?.trim() ||
@@ -77,6 +92,7 @@ export function EvidenceActionPanel({
   const [manualFiles, setManualFiles] = useState<ManualEvidenceFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [captureStatus, setCaptureStatus] = useState<CaptureStatus>(() =>
     enableAutoCapture ? "loading" : "skipped",
   );
@@ -85,20 +101,37 @@ export function EvidenceActionPanel({
   >([]);
   const [captureLimitations, setCaptureLimitations] = useState<string[]>([]);
   const [showCaptureWaitPrompt, setShowCaptureWaitPrompt] = useState(false);
-  const captureStarted = useRef(false);
+
+  const priorityQuestions = useMemo(
+    () => buildCapturePriorityQuestions(report),
+    // 동일 진단 결과에서는 문항 우선순위가 바뀌지 않음
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- report.scanId
+    [report.scanId],
+  );
 
   useEffect(() => {
     if (!enableAutoCapture) return;
-    if (captureStarted.current) return;
-    captureStarted.current = true;
 
     let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+      if (cancelled) return;
+      setAutoScreenshots([]);
+      setCaptureStatus("timeout");
+      setCaptureLimitations([
+        "자동 화면 캡처 시간이 초과되었습니다.",
+        "문항 원문과 고지문 원문은 증빙자료에 포함됩니다. 필요하면 추가 캡처를 첨부하세요.",
+      ]);
+    }, CAPTURE_CLIENT_TIMEOUT_MS);
+
+    const surveyUrl =
+      report.debug?.inputUrl || report.formUrl || report.form.url || "";
+    const finalUrl =
+      report.debug?.finalUrl || report.form.url || report.formUrl || "";
+
     const run = async () => {
       try {
-        const surveyUrl =
-          report.debug?.inputUrl || report.formUrl || report.form.url || "";
-        const finalUrl =
-          report.debug?.finalUrl || report.form.url || report.formUrl || "";
         const response = await fetch("/api/evidence/capture", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,7 +139,9 @@ export function EvidenceActionPanel({
             surveyUrl,
             finalUrl,
             diagnosisId: report.scanId,
+            priorityQuestions,
           }),
+          signal: controller.signal,
         });
         const data = (await response.json()) as {
           success?: boolean;
@@ -129,6 +164,7 @@ export function EvidenceActionPanel({
         };
 
         if (cancelled) return;
+        window.clearTimeout(timeoutId);
 
         const limitations = data.limitations ?? [];
         setCaptureLimitations(limitations);
@@ -162,8 +198,13 @@ export function EvidenceActionPanel({
             ]);
           }
         }
-      } catch {
+      } catch (err) {
         if (cancelled) return;
+        window.clearTimeout(timeoutId);
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // timeout handler already updated status
+          return;
+        }
         setAutoScreenshots([]);
         setCaptureStatus("failed");
         setCaptureLimitations([
@@ -176,8 +217,18 @@ export function EvidenceActionPanel({
     void run();
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
     };
-  }, [enableAutoCapture, report]);
+  }, [
+    enableAutoCapture,
+    priorityQuestions,
+    report.scanId,
+    report.debug?.inputUrl,
+    report.debug?.finalUrl,
+    report.formUrl,
+    report.form.url,
+  ]);
 
   if (!shouldShowEvidenceActionPanel(audienceReport)) {
     return null;
@@ -250,221 +301,256 @@ export function EvidenceActionPanel({
     void runDownload(true);
   };
 
+  const sourceKind =
+    report.form.metadata?.source?.kind === "file" ? "file" : "url";
+
+  const captureIcon =
+    captureStatus === "loading" ? (
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+    ) : captureStatus === "success" ? (
+      <CheckCircle2 className="h-5 w-5" aria-hidden />
+    ) : captureStatus === "timeout" ? (
+      <TimerOff className="h-5 w-5" aria-hidden />
+    ) : captureStatus === "failed" ? (
+      <XCircle className="h-5 w-5" aria-hidden />
+    ) : (
+      <Camera className="h-5 w-5" aria-hidden />
+    );
+
   return (
     <section
       aria-labelledby="evidence-cta-title"
-      className="relative overflow-hidden rounded-[1.75rem] border-2 border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50/40 p-5 shadow-[var(--report-shadow)] md:p-8"
+      className="rounded-[1.25rem] border-[2.5px] border-rose-500 bg-[#FFF1F2] p-5 shadow-[0_1px_0_rgba(225,29,72,0.08)] md:p-7"
     >
-      <div
-        className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-rose-200/40 blur-3xl"
-        aria-hidden
-      />
-      <div className="relative space-y-5">
-        <div>
-          <p className="text-xs font-bold tracking-[0.14em] text-rose-700 md:text-sm">
-            신고 검토 안내
-          </p>
-          <h2
-            id="evidence-cta-title"
-            className="mt-2 text-2xl font-extrabold tracking-tight text-rose-950 md:text-3xl"
+      <header className="pb-5 md:pb-6">
+        <div className="flex items-start gap-4">
+          <span
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-rose-300 bg-white text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+            aria-hidden
           >
-            신고가 필요할 수 있는 설문입니다
-          </h2>
-          <p className="mt-3 text-[15px] leading-relaxed text-rose-950/80 md:text-base">
-            이 설문은 개인정보 수집 또는 처리 방식에 중대한 문제가 있을 수
-            있습니다. 응답하지 않고 신고를 검토하는 것이 좋습니다.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-rose-900/70 md:text-[15px]">
-            진단 결과, 탐지 문항, 고지문 확인 결과, 원본 추출자료, 자동 화면
-            캡처, 해시값을 포함한 증빙자료를 내려받을 수 있습니다.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-rose-900/70 md:text-[15px]">
-            화면 캡처는 응답값을 입력하지 않은 상태에서 자동으로 시도됩니다.
-            필수응답이 필요한 뒷페이지는 자동 캡처하지 않습니다.
-          </p>
-        </div>
-
-        {enableAutoCapture ? (
-          <div className="rounded-2xl border border-rose-100 bg-white/80 p-4 md:p-5">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-800">
-                {captureStatus === "loading" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
-                  <Camera className="h-4 w-4" aria-hidden />
-                )}
+            <ShieldAlert className="h-7 w-7" strokeWidth={2.25} />
+          </span>
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex rounded-md border border-rose-300 bg-rose-700 px-2.5 py-1 text-xs font-semibold tracking-wide text-white">
+                신고 검토 안내
               </span>
-              <div className="min-w-0 flex-1">
-                {captureStatus === "loading" ? (
-                  <>
-                    <p className="text-sm font-semibold text-rose-950">
-                      진단 당시 설문 화면을 자동으로 캡처하고 있습니다.
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-rose-800/75 md:text-sm">
-                      응답값 입력이나 제출은 하지 않습니다.
-                    </p>
-                  </>
-                ) : null}
-                {captureStatus === "success" ? (
-                  <>
-                    <p className="text-sm font-semibold text-rose-950">
-                      자동 화면 캡처 완료: {autoScreenshots.length}개
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-rose-800/75 md:text-sm">
-                      캡처 이미지는 신고용 증빙자료 ZIP에 함께 포함됩니다.
-                    </p>
-                    {captureLimitations.length > 0 ? (
-                      <ul className="mt-2 space-y-1 text-xs text-rose-800/80">
-                        {captureLimitations.map((item) => (
-                          <li key={item}>· {item}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </>
-                ) : null}
-                {captureStatus === "failed" ? (
-                  <>
-                    <p className="text-sm font-semibold text-rose-950">
-                      자동 화면 캡처를 완료하지 못했습니다.
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-rose-800/75 md:text-sm">
-                      설문 페이지 접근 제한, 로딩 시간 초과, 필수응답 차단 등의
-                      이유로 캡처가 제한될 수 있습니다. 문항 원문과 고지문
-                      원문은 증빙자료에 포함됩니다.
-                    </p>
-                    {captureLimitations[0] ? (
-                      <p className="mt-2 text-xs font-medium text-rose-800">
-                        자동 화면 캡처 실패: {captureLimitations.slice(0, 2).join(" ")}
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+              <PlatformMark
+                platform={report.platform}
+                source={sourceKind}
+                label={audienceReport.safetyType.toolBadge}
+                size="md"
+              />
             </div>
-          </div>
-        ) : null}
-
-        <div className="rounded-2xl border border-rose-100 bg-white/80 p-4 md:p-5">
-          <p className="text-sm font-semibold text-rose-950">추가 캡처 첨부</p>
-          <p className="mt-2 text-xs leading-relaxed text-rose-800/75 md:text-sm">
-            자동 캡처에 포함되지 않은 뒷페이지 문항이나 고지문 화면이 있다면
-            직접 캡처 파일을 추가할 수 있습니다.
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-rose-800/75 md:text-sm">
-            응답값을 입력한 화면이나 본인의 개인정보가 입력된 화면은 첨부하지
-            않는 것이 좋습니다. 가능하면 입력 전 화면을 캡처해 주세요.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <label
-              htmlFor={inputId}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-900 transition hover:bg-rose-100"
+            <h2
+              id="evidence-cta-title"
+              className="text-xl font-bold tracking-tight text-rose-950 md:text-2xl"
             >
-              <ImagePlus className="h-4 w-4" aria-hidden />
-              캡처 파일 추가
-            </label>
-            <input
-              id={inputId}
-              type="file"
-              accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
-              multiple
-              className="sr-only"
-              onChange={(e) => {
-                void onAddFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <span className="text-xs text-rose-800/70">
-              PNG·JPG·PDF · 최대 {MAX_MANUAL_EVIDENCE_FILES}개 · 파일당 5MB
-              이하 · 서버에 저장하지 않음
-            </span>
-          </div>
-          {manualFiles.length > 0 ? (
-            <ul className="mt-3 space-y-1.5">
-              {manualFiles.map((file, index) => (
-                <li
-                  key={`${file.fileName}-${index}`}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-rose-50/80 px-3 py-2 text-sm text-rose-950"
-                >
-                  <span className="truncate">{file.fileName}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(index)}
-                    className="inline-flex items-center gap-1 text-rose-700 hover:text-rose-900"
-                    aria-label={`${file.fileName} 제거`}
-                  >
-                    <X className="h-4 w-4" />
-                    제거
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-
-        {showCaptureWaitPrompt ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4">
-            <p className="text-sm font-semibold text-amber-950">
-              화면 캡처가 아직 진행 중입니다. 캡처를 포함하려면 잠시 후 다시
-              다운로드해 주세요.
+              신고가 필요할 수 있는 설문입니다
+            </h2>
+            <p className="max-w-3xl text-[15px] leading-relaxed text-rose-950/75">
+              개인정보 수집·처리 방식에 중대한 문제가 있을 수 있습니다. 응답하지
+              않고 신고를 검토하는 것이 좋습니다.
             </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setShowCaptureWaitPrompt(false)}
-                className="inline-flex items-center justify-center rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white"
-              >
-                캡처 완료 후 다운로드
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void runDownload(false);
-                }}
-                className="inline-flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-900"
-              >
-                캡처 없이 다운로드
-              </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="border-t-2 border-rose-200" aria-hidden />
+
+      <div className="space-y-4 pt-5 md:pt-6">
+      {enableAutoCapture ? (
+        <div className="flex items-start gap-3.5 rounded-xl border border-rose-200 bg-white px-4 py-3.5">
+          <span
+            className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${
+              captureStatus === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : captureStatus === "loading"
+                  ? "border-slate-200 bg-slate-50 text-slate-600"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
+            {captureIcon}
+          </span>
+          <div className="min-w-0 flex-1">
+            {captureStatus === "loading" ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">
+                  자동 화면 캡처 진행 중
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  공개 설문 전체 페이지를 캡처합니다. 개인정보 값 입력·제출은
+                  하지 않습니다.
+                </p>
+              </>
+            ) : null}
+            {captureStatus === "success" ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">
+                  자동 화면 캡처 완료 · {autoScreenshots.length}장
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  {`전체 ${autoScreenshots.length}장 캡처 · ZIP에 포함됩니다.`}
+                  {captureLimitations.some((line) => /막혔|추가 캡처/.test(line))
+                    ? " 일부 페이지는 필수 개인정보 문항 등으로 이동이 막혀 추가 첨부가 필요할 수 있습니다."
+                    : ""}
+                </p>
+              </>
+            ) : null}
+            {captureStatus === "timeout" ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">
+                  자동 화면 캡처 시간 초과
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  문항·고지문 원문은 증빙에 포함됩니다. 필요하면 추가 캡처를
+                  첨부하세요.
+                </p>
+              </>
+            ) : null}
+            {captureStatus === "failed" ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">
+                  자동 화면 캡처 실패
+                </p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  접근 제한·로딩 초과·필수응답 차단 등으로 캡처가 제한될 수
+                  있습니다.
+                </p>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-[0.875rem]">
+        <ReportExpandTrigger
+          open={manualOpen}
+          title="추가 캡처 첨부"
+          description="선택 · 자동 캡처에 빠진 화면이 있을 때만 사용하세요."
+          icon={ImagePlus}
+          onClick={() => setManualOpen((prev) => !prev)}
+          compact
+          tone="soft"
+        />
+        {manualOpen ? (
+          <div className="report-expand-panel">
+            <div className="report-detail-stack">
+              <p className="report-detail-body">
+                뒷페이지·고지문 화면이 빠졌다면 PNG·JPG·PDF를 추가할 수
+                있습니다. 개인정보가 입력된 화면은 첨부하지 마세요.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor={inputId}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-semibold text-slate-800 hover:bg-slate-100"
+                >
+                  <ImagePlus className="h-4 w-4" aria-hidden />
+                  캡처 파일 추가
+                </label>
+                <input
+                  id={inputId}
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
+                  multiple
+                  className="sr-only"
+                  onChange={(e) => {
+                    void onAddFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <span className="report-detail-note">
+                  최대 {MAX_MANUAL_EVIDENCE_FILES}개 · 파일당 5MB
+                </span>
+              </div>
+              {manualFiles.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {manualFiles.map((file, index) => (
+                    <li
+                      key={`${file.fileName}-${index}`}
+                      className="report-detail-tile flex items-center justify-between gap-2"
+                    >
+                      <span className="report-detail-body-strong truncate">
+                        {file.fileName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-600"
+                        aria-label={`${file.fileName} 제거`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        제거
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </div>
         ) : null}
+      </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <button
-            type="button"
-            onClick={onDownloadClick}
-            disabled={busy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <Download className="h-4 w-4" aria-hidden />
-            )}
-            신고용 증빙자료 다운로드
-          </button>
-          <a
-            href={KISA_REPORT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-rose-300 bg-white px-5 py-3 text-sm font-bold text-rose-900 transition hover:bg-rose-50"
-          >
-            <ExternalLink className="h-4 w-4" aria-hidden />
-            KISA 개인정보침해 신고센터로 이동
-          </a>
-        </div>
-        <p className="text-xs leading-relaxed text-rose-800/80 md:text-sm">
-          증빙자료를 먼저 내려받은 뒤, 신고센터에서 첨부자료로 활용하세요.
-        </p>
-        <p className="text-xs leading-relaxed text-rose-900/65 md:text-sm">
-          이 자료는 신고기관의 사실관계 확인을 돕기 위한 참고자료입니다. 최종
-          위법 여부는 개인정보보호위원회 또는 KISA의 검토·조사 결과에 따라
-          판단됩니다.
-        </p>
-        {error ? (
-          <p className="text-sm font-medium text-rose-800" role="alert">
-            {error}
+      {showCaptureWaitPrompt ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-950">
+            화면 캡처가 아직 진행 중입니다. 캡처를 포함하려면 잠시 후 다시
+            다운로드해 주세요.
           </p>
-        ) : null}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setShowCaptureWaitPrompt(false)}
+              className="inline-flex items-center justify-center rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-800"
+            >
+              캡처 완료 후 다운로드
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void runDownload(false);
+              }}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              캡처 없이 다운로드
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-2.5 sm:flex-row">
+        <button
+          type="button"
+          onClick={onDownloadClick}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+        >
+          {busy ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Download className="h-4 w-4" aria-hidden />
+          )}
+          신고용 증빙자료 다운로드
+        </button>
+        <a
+          href={KISA_REPORT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 sm:w-auto"
+        >
+          <ExternalLink className="h-4 w-4" aria-hidden />
+          KISA 개인정보침해 신고센터로 이동
+        </a>
+      </div>
+      <p className="text-sm leading-relaxed text-slate-500">
+        증빙자료는 신고기관 사실관계 확인을 위한 참고자료입니다. 최종 위법
+        여부는 개인정보보호위원회 또는 KISA 검토·조사 결과에 따릅니다.
+      </p>
+      {error ? (
+        <p className="text-sm font-medium text-rose-700" role="alert">
+          {error}
+        </p>
+      ) : null}
       </div>
     </section>
   );

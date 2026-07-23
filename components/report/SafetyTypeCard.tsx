@@ -1,5 +1,4 @@
 import { createElement } from "react";
-import { Database, Wrench } from "lucide-react";
 import { getSafetyTypeTheme } from "@/components/report/ui/safetyTypeTheme";
 import type { SafetyTypeProfile } from "@/lib/reporting/safetyType";
 
@@ -10,127 +9,85 @@ interface SafetyTypeCardProps {
 export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
   const theme = getSafetyTypeTheme(safetyType.tone);
 
-  return (
-    <section
-      className={`relative overflow-hidden rounded-[2rem] border-2 shadow-[var(--report-shadow)] ${theme.card}`}
-    >
-      <div
-        className={`pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-gradient-to-br ${theme.blobFrom} ${theme.blobTo} blur-2xl`}
-        aria-hidden
-      />
-      <div
-        className={`pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-gradient-to-tr ${theme.blobFrom} ${theme.blobTo} blur-3xl`}
-        aria-hidden
-      />
+  const metaBadges = [
+    { key: "method", label: `진단 방식 · ${safetyType.diagnosisMethodLabel}` },
+    ...(safetyType.fileNameLabel
+      ? [{ key: "file", label: `파일명 · ${safetyType.fileNameLabel}` }]
+      : []),
+    { key: "subject", label: `설문 주체 · ${safetyType.subjectLabel}` },
+    { key: "data", label: `수집정보 · ${safetyType.dataBadge}` },
+    { key: "tool", label: `사용도구 · ${safetyType.toolBadge}` },
+  ].slice(0, 5);
 
-      <div className="relative space-y-6 p-6 md:space-y-8 md:p-10">
-        <div className="flex flex-wrap items-start gap-5 md:gap-7">
+  return (
+    <section className="report-inner-card p-5 md:p-7">
+      <div className="space-y-6">
+        <div className="flex items-start gap-4">
           <span
-            className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.5rem] shadow-lg md:h-24 md:w-24 ${theme.iconBg} ${theme.iconFg}`}
+            className={`mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${theme.iconBg} ${theme.iconFg} border-slate-200/80`}
           >
             {createElement(theme.Icon, {
-              className: "h-10 w-10 md:h-12 md:w-12",
-              strokeWidth: 2.25,
+              className: "h-6 w-6",
+              strokeWidth: 2,
               "aria-hidden": true,
             })}
           </span>
 
           <div className="min-w-0 flex-1">
-            <p
-              className={`text-sm font-bold tracking-[0.08em] md:text-base ${theme.accent}`}
-            >
-              응답 판단
-            </p>
-            <h1
-              className={`mt-2 text-4xl font-extrabold leading-tight tracking-tight md:text-5xl ${theme.text}`}
-            >
-              {safetyType.displayName}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold tracking-wide text-slate-500">
+                응답 판단
+              </p>
+              <span
+                className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${theme.statusBadge}`}
+              >
+                {safetyType.displayName}
+              </span>
+            </div>
+            <h1 className="mt-2 text-2xl font-bold leading-snug tracking-tight text-slate-900 md:text-[1.75rem]">
+              {safetyType.headline}
             </h1>
             <p
-              className={`mt-4 text-2xl font-bold leading-snug md:text-3xl ${theme.text}`}
+              className={`mt-2 text-[15px] font-semibold leading-relaxed ${theme.accent}`}
             >
-              {safetyType.headline}
+              {safetyType.howToAct}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
-          <span
-            className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold ${theme.badge}`}
-          >
-            진단 방식: {safetyType.diagnosisMethodLabel}
-          </span>
-          {safetyType.fileNameLabel ? (
-            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
-              파일명: {safetyType.fileNameLabel}
+        <div className="flex flex-wrap gap-1.5">
+          {metaBadges.map((badge) => (
+            <span key={badge.key} className="report-badge-neutral">
+              {badge.label}
             </span>
-          ) : null}
-          <span
-            className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold ${theme.badge}`}
-          >
-            설문 주체: {safetyType.subjectLabel}
-          </span>
-          {safetyType.subjectEvidenceLabel ? (
-            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
-              {safetyType.subjectEvidenceLabel}
-            </span>
-          ) : null}
-          {safetyType.subjectMatchMethodLabel ? (
-            <span className="rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
-              {safetyType.subjectMatchMethodLabel}
-            </span>
-          ) : null}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
-            <Database className="h-3.5 w-3.5 text-muted" aria-hidden />
-            수집정보: {safetyType.dataBadge}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-3.5 py-1.5 text-sm font-semibold text-foreground shadow-sm">
-            <Wrench className="h-3.5 w-3.5 text-muted" aria-hidden />
-            사용도구: {safetyType.toolBadge}
-          </span>
-          <span
-            className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
-              /강력|CSAP|ISMS/.test(safetyType.toolJudgmentBadge)
-                ? "border-[#c4b5fd] bg-[#ede9fe] text-[#5b21b6]"
-                : "border-white/80 bg-white/85 text-foreground shadow-sm"
-            }`}
-          >
-            도구 판단: {safetyType.toolJudgmentBadge}
+          ))}
+          <span className="report-badge-neutral">
+            도구 판단 · {safetyType.toolJudgmentBadge}
           </span>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <div
-            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
-          >
-            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+        <div className="grid gap-3 border-t border-slate-100 pt-5 md:grid-cols-3">
+          <div className="report-inner-muted p-4">
+            <p className="text-xs font-semibold tracking-wide text-slate-500">
               왜 문제인가요?
             </p>
-            <p className="mt-2 text-base leading-relaxed text-foreground md:text-lg">
+            <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
               {safetyType.whyProblem}
             </p>
           </div>
-
-          <div
-            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
-          >
-            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+          <div className="report-inner-muted p-4">
+            <p className="text-xs font-semibold tracking-wide text-slate-500">
               {safetyType.legalOrLimitTitle}
             </p>
-            <p className="mt-2 text-base leading-relaxed text-foreground md:text-lg">
+            <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
               {safetyType.legalOrLimitBody}
             </p>
           </div>
-
-          <div
-            className={`rounded-2xl border bg-white/90 px-5 py-4 shadow-sm md:px-6 md:py-5 ${theme.border}`}
-          >
-            <p className={`text-sm font-bold tracking-wide ${theme.accent}`}>
+          <div className="report-inner-muted p-4">
+            <p className="text-xs font-semibold tracking-wide text-slate-500">
               어떻게 해야 하나요?
             </p>
-            <p
-              className={`mt-2 text-base font-bold leading-snug md:text-lg ${theme.text}`}
-            >
+            <p className="mt-2 text-[15px] font-semibold leading-relaxed text-slate-900">
               {safetyType.howToAct}
             </p>
           </div>

@@ -1,4 +1,3 @@
-import { Sparkles } from "lucide-react";
 import { ShareActions } from "@/components/ShareActions";
 import { DetailedEvidenceSection } from "@/components/report/DetailedEvidenceSection";
 import { DeveloperDiagnosticsSection } from "@/components/report/DeveloperDiagnosticsSection";
@@ -21,24 +20,22 @@ export function ReportView({ report }: ReportViewProps) {
   const showDeveloperDiagnostics = process.env.NODE_ENV === "development";
 
   return (
-    <div className="report-readable report-shell space-y-14 md:space-y-20">
-      <header className="flex items-center gap-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-400 to-teal-700 text-white shadow-md">
-          <Sparkles className="h-6 w-6" aria-hidden />
-        </span>
+    <div className="report-readable report-stack">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-bold tracking-[0.12em] text-teal-700">
+          <p className="text-xs font-semibold tracking-wide text-teal-800">
             SURE Check
           </p>
-          <h1 className="text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">
-            응답 판단 리포트
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
+            개인정보 리스크 진단 리포트
           </h1>
         </div>
-      </header>
+        <ShareActions report={report} variant="toolbar" />
+      </div>
 
       {report.limitationReasons && report.limitationReasons.length > 0 && (
         <InfoCallout title="진단 제한 안내" variant="warning">
-          <ul className="space-y-1.5">
+          <ul className="space-y-1">
             {report.limitationReasons.map((reason, i) => (
               <li key={i}>· {reason}</li>
             ))}
@@ -48,11 +45,11 @@ export function ReportView({ report }: ReportViewProps) {
 
       <ReportAudienceZone
         variant="respondent"
-        label="응답자용"
+        label="응답자용 진단"
         title="나의 응답 판단"
-        description="이 설문에 지금 어떻게 응답하면 되는지 바로 확인하세요."
+        description="이 설문에 지금 어떻게 응답하면 되는지 확인하세요."
       >
-        <UserSafetyReport audienceReport={audienceReport} />
+        <UserSafetyReport report={report} audienceReport={audienceReport} />
       </ReportAudienceZone>
 
       <EvidenceActionPanel report={report} audienceReport={audienceReport} />
@@ -63,10 +60,14 @@ export function ReportView({ report }: ReportViewProps) {
         label="기관·기업 담당자용"
         title="설문 개선 리포트"
         description="설문 담당자가 먼저 확인하고 고쳐야 할 항목입니다."
-        bridgeNote="여기부터는 설문 운영자용입니다."
       >
         <OperatorImprovementPanel audienceReport={audienceReport} />
-        <DetailedEvidenceSection report={report} audienceReport={audienceReport} />
+        <div className="report-subsection-ruled">
+          <DetailedEvidenceSection
+            report={report}
+            audienceReport={audienceReport}
+          />
+        </div>
       </ReportAudienceZone>
 
       <ReportAudienceZone
@@ -74,13 +75,11 @@ export function ReportView({ report }: ReportViewProps) {
         label="부록"
         title="설문/문항 정보 보기"
         description="진단에 사용된 설문 기본정보, 안내문, 문항 원문을 확인할 수 있습니다."
-        bridgeNote="아래 정보는 진단에 사용된 설문 기본정보와 문항 원문입니다. 판단 결과가 아니라 참고용 자료입니다."
       >
         <SurveySourceAppendix report={report} audienceReport={audienceReport} />
       </ReportAudienceZone>
 
-      <div className="space-y-6">
-        <ShareActions report={report} />
+      <div className="space-y-5 border-t border-slate-200 pt-2">
         <TrustNoticePanel report={report} />
         {showDeveloperDiagnostics ? (
           <DeveloperDiagnosticsSection report={report} />

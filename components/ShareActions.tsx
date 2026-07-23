@@ -7,7 +7,6 @@ import {
   FileText,
   Link2,
   MessageCircle,
-  Share2,
 } from "lucide-react";
 import type { ScanReport } from "@/lib/types/scan";
 import { copyToClipboard, getShareUrl } from "@/lib/utils/copy";
@@ -24,9 +23,14 @@ interface ShareState {
 
 interface ShareActionsProps {
   report: ScanReport;
+  /** Compact toolbar for report header / utility strip */
+  variant?: "toolbar" | "panel";
 }
 
-export function ShareActions({ report }: ShareActionsProps) {
+export function ShareActions({
+  report,
+  variant = "toolbar",
+}: ShareActionsProps) {
   const [toast, setToast] = useState<ShareState | null>(null);
 
   function showToast(message: string, type: "success" | "error" = "success") {
@@ -62,69 +66,61 @@ export function ShareActions({ report }: ShareActionsProps) {
     showToast("카카오톡 공유는 준비 중입니다. 공유 링크 복사를 이용해 주세요.");
   }
 
-  const primaryActions = [
-    { label: "요약 복사", icon: Copy, onClick: handleCopySummary },
-    { label: "링크 복사", icon: Link2, onClick: handleCopyLink },
-  ];
-
-  const secondaryActions = [
+  const actions = [
+    {
+      label: "요약 복사",
+      icon: Copy,
+      onClick: handleCopySummary,
+      primary: true,
+    },
+    { label: "링크 복사", icon: Link2, onClick: handleCopyLink, primary: true },
     { label: "전체 복사", icon: FileText, onClick: handleCopyFull },
     { label: "Markdown", icon: Download, onClick: handleMarkdownDownload },
-    { label: "카카오톡", icon: MessageCircle, onClick: handleKakaoShare, accent: true },
-    { label: "PDF (준비중)", icon: FileText, onClick: handlePdfDownload, disabled: true },
+    { label: "카카오톡", icon: MessageCircle, onClick: handleKakaoShare },
+    {
+      label: "PDF",
+      icon: FileText,
+      onClick: handlePdfDownload,
+      disabled: true,
+      title: "PDF 다운로드 준비 중",
+    },
   ];
 
   return (
-    <div className="rounded-[1.75rem] border border-border-subtle bg-white p-6 shadow-[var(--report-shadow-soft)] md:p-7">
-      <h3 className="mb-5 flex items-center gap-2.5 text-xl font-bold text-foreground md:text-2xl">
-        <Share2 size={20} className="text-teal-700" strokeWidth={2.25} />
-        공유 · 복사 · 다운로드
-      </h3>
-
-      <div className="flex flex-wrap gap-3">
-        {primaryActions.map(({ label, icon: Icon, onClick }) => (
-          <button
-            key={label}
-            type="button"
-            onClick={onClick}
-            className="report-btn-primary bg-teal-700 text-white shadow-md hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-300"
-          >
-            <Icon size={16} strokeWidth={2.25} />
-            {label}
-          </button>
-        ))}
-        {secondaryActions.map(({ label, icon: Icon, onClick, accent, disabled }) => (
+    <div className={variant === "panel" ? "space-y-2" : "space-y-2"}>
+      <div
+        className={`flex flex-wrap items-center gap-1.5 ${
+          variant === "toolbar" ? "justify-end" : ""
+        }`}
+        role="toolbar"
+        aria-label="공유 · 복사 · 다운로드"
+      >
+        {actions.map(({ label, icon: Icon, onClick, primary, disabled, title }) => (
           <button
             key={label}
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`report-btn-secondary ${
-              disabled
-                ? "cursor-not-allowed opacity-50"
-                : accent
-                  ? "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                  : ""
+            title={title ?? label}
+            className={`report-toolbar-btn ${
+              primary ? "report-toolbar-btn-primary" : ""
             }`}
           >
-            <Icon size={16} strokeWidth={2.25} />
-            {label}
+            <Icon size={13} strokeWidth={2} aria-hidden />
+            <span>{label}</span>
           </button>
         ))}
       </div>
-
-      {toast && (
+      {toast ? (
         <p
-          className={`mt-4 rounded-2xl px-4 py-3 text-base font-medium ${
-            toast.type === "success"
-              ? "bg-emerald-50 text-emerald-800"
-              : "bg-amber-50 text-amber-900"
-          }`}
+          className={`text-xs font-medium ${
+            toast.type === "success" ? "text-emerald-700" : "text-amber-700"
+          } ${variant === "toolbar" ? "text-right" : ""}`}
           role="status"
         >
           {toast.message}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

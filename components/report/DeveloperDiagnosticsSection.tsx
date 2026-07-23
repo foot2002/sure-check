@@ -27,28 +27,28 @@ export function DeveloperDiagnosticsSection({
   if (!visible) return null;
 
   return (
-    <section className="overflow-hidden rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 shadow-none">
+    <section className="overflow-hidden rounded-[var(--report-radius)] border border-dashed border-slate-300 bg-slate-50">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-3 px-5 py-5 text-left md:px-7"
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left md:px-5"
         aria-expanded={open}
       >
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-600">
-            <Code2 className="h-5 w-5" aria-hidden />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600">
+            <Code2 className="h-4 w-4" aria-hidden />
           </span>
           <div>
             <p className="text-lg font-bold text-slate-700 md:text-xl">
               내부 개발 진단
             </p>
-            <p className="mt-1 text-base text-slate-500">
+            <p className="mt-1 text-[15px] text-slate-500">
               개발 환경 + ?debug=1 전용. 공개 리포트에는 포함되지 않습니다.
             </p>
           </div>
         </div>
         <ChevronDown
-          className={`h-5 w-5 shrink-0 text-muted transition-transform ${
+          className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${
             open ? "rotate-180" : ""
           }`}
           aria-hidden

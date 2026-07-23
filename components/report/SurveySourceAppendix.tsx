@@ -1,8 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { getDetectedCategoryDisplayLabel } from "@/lib/extractors/htmlTextUtils";
+import {
+  ReportDetailBlock,
+  ReportDetailBody,
+  ReportDetailKvGrid,
+  ReportDetailStack,
+  ReportDetailTable,
+  ReportDetailTile,
+} from "@/components/report/ui/ReportDetail";
+import { ReportExpandTrigger } from "@/components/report/ui/ReportExpandTrigger";
 import { getToolCsapProfile } from "@/lib/reporting/toolRegistry";
 import type { AudienceReport } from "@/lib/reporting/reportMessages";
 import type { NormalizedQuestion, ScanReport } from "@/lib/types/scan";
@@ -75,7 +84,9 @@ export function SurveySourceAppendix({
 }: SurveySourceAppendixProps) {
   const [open, setOpen] = useState(false);
   const notices = noticeLines(report);
-  const metaNoticeTexts = (report.form.metadata?.noticeTexts ?? []).filter(Boolean);
+  const metaNoticeTexts = (report.form.metadata?.noticeTexts ?? []).filter(
+    Boolean,
+  );
   const questions = report.form.questions;
   const operatorName =
     report.form.metadata?.operatorHint ||
@@ -121,7 +132,8 @@ export function SurveySourceAppendix({
     { label: "문항 수", value: String(questions.length) },
     {
       label: "진단 제한 여부",
-      value: report.isLimited || audienceReport.isLimited ? "제한 진단" : "정상 진단",
+      value:
+        report.isLimited || audienceReport.isLimited ? "제한 진단" : "정상 진단",
     },
     {
       label: "추출 상태",
@@ -134,137 +146,94 @@ export function SurveySourceAppendix({
   ];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <button
-        type="button"
+    <div className="overflow-hidden rounded-[0.875rem]">
+      <ReportExpandTrigger
+        open={open}
+        title="설문/문항 정보 펼쳐보기"
+        description="진단에 사용된 설문 기본정보와 문항 원문입니다. 판단 결과가 아니라 참고용 자료입니다."
+        icon={FileText}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left md:px-6"
-        aria-expanded={open}
-      >
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-            <FileText className="h-5 w-5" aria-hidden />
-          </span>
-          <div>
-            <p className="text-lg font-bold text-slate-800">설문/문항 정보 펼쳐보기</p>
-            <p className="mt-1 text-sm text-slate-500 md:text-base">
-              아래 정보는 진단에 사용된 설문 기본정보와 문항 원문입니다. 판단 결과가
-              아니라 참고용 자료입니다.
-            </p>
-          </div>
-        </div>
-        <ChevronDown
-          className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          aria-hidden
-        />
-      </button>
+      />
 
       {open ? (
-        <div className="space-y-6 border-t border-slate-100 px-5 py-5 md:px-6">
-          <div>
-            <h3 className="mb-3 text-base font-bold text-slate-800">설문 기본정보</h3>
-            <dl className="grid gap-3 sm:grid-cols-2">
-              {metaRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
-                >
-                  <dt className="text-xs font-bold text-slate-500">{row.label}</dt>
-                  <dd className="mt-1 break-all text-sm font-medium text-slate-800 md:text-base">
-                    {row.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+        <div className="report-expand-panel">
+          <ReportDetailStack>
+            <ReportDetailBlock title="설문 기본정보">
+              <ReportDetailKvGrid rows={metaRows} />
+            </ReportDetailBlock>
 
-          <div>
-            <h3 className="mb-3 text-base font-bold text-slate-800">안내문·고지문 원문</h3>
-            {notices.length === 0 && metaNoticeTexts.length === 0 ? (
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600">
-                {report.form.metadata?.source?.kind === "file" ? (
-                  <>
-                    <p className="font-semibold text-slate-800">
-                      파일에서 개인정보 수집·이용 고지문을 확인하지 못했습니다.
-                    </p>
-                    <p className="mt-1.5">
-                      업로드한 파일에 고지문이 포함되어 있지 않으면 보유기간, 파기
-                      기준, 담당자 안내 등이 ‘미확인’으로 진단될 수 있습니다.
-                    </p>
-                  </>
-                ) : (
-                  <p>확인된 안내문·고지문 원문이 없습니다.</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {notices.map((row) => (
-                  <article
-                    key={row.label}
-                    className="rounded-xl border border-slate-100 bg-white px-4 py-3"
-                  >
-                    <p className="text-xs font-bold text-slate-500">{row.label}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                      {row.value}
-                    </p>
-                  </article>
-                ))}
-                {metaNoticeTexts.map((text, index) => (
-                  <article
-                    key={`meta-notice-${index}`}
-                    className="rounded-xl border border-slate-100 bg-white px-4 py-3"
-                  >
-                    <p className="text-xs font-bold text-slate-500">
-                      안내 텍스트 {index + 1}
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                      {text}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
+            <ReportDetailBlock title="안내문·고지문 원문">
+              {notices.length === 0 && metaNoticeTexts.length === 0 ? (
+                <ReportDetailTile>
+                  {report.form.metadata?.source?.kind === "file" ? (
+                    <>
+                      <ReportDetailBody strong>
+                        파일에서 개인정보 수집·이용 고지문을 확인하지
+                        못했습니다.
+                      </ReportDetailBody>
+                      <ReportDetailBody className="mt-1">
+                        업로드한 파일에 고지문이 포함되어 있지 않으면 보유기간,
+                        파기 기준, 담당자 안내 등이 ‘미확인’으로 진단될 수
+                        있습니다.
+                      </ReportDetailBody>
+                    </>
+                  ) : (
+                    <ReportDetailBody>
+                      확인된 안내문·고지문 원문이 없습니다.
+                    </ReportDetailBody>
+                  )}
+                </ReportDetailTile>
+              ) : (
+                <ReportDetailTable
+                  headers={["항목", "원문"]}
+                  rows={[
+                    ...notices.map((row) => [row.label, row.value]),
+                    ...metaNoticeTexts.map((text, index) => [
+                      `안내 텍스트 ${index + 1}`,
+                      text,
+                    ]),
+                  ]}
+                  clampFromColumn={1}
+                />
+              )}
+            </ReportDetailBlock>
 
-          <div>
-            <h3 className="mb-3 text-base font-bold text-slate-800">문항 목록</h3>
-            {questions.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                자동으로 읽은 문항이 없습니다. 진단 제한 상태일 수 있습니다.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {questions.map((question, index) => (
-                  <li
-                    key={question.id ?? `q-${index}`}
-                    className="rounded-xl border border-slate-100 bg-white px-4 py-3"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
-                        문항 {question.questionIndex ?? index + 1}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                        {question.required ? "필수" : "선택"}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                        {categoryLabel(question)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm font-semibold text-slate-800 md:text-base">
-                      {question.questionText ?? question.label}
-                    </p>
-                    {question.options && question.options.length > 0 ? (
-                      <p className="mt-2 text-sm text-slate-500">
-                        선택지: {question.options.join(" · ")}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+            <ReportDetailBlock title="문항 목록">
+              {questions.length === 0 ? (
+                <ReportDetailBody>
+                  자동으로 읽은 문항이 없습니다. 진단 제한 상태일 수 있습니다.
+                </ReportDetailBody>
+              ) : (
+                <ul className="space-y-2">
+                  {questions.map((question, index) => (
+                    <li key={question.id ?? `q-${index}`}>
+                      <ReportDetailTile tone="white">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="report-badge-neutral">
+                            문항 {question.questionIndex ?? index + 1}
+                          </span>
+                          <span className="report-badge-neutral">
+                            {question.required ? "필수" : "선택"}
+                          </span>
+                          <span className="report-badge-neutral">
+                            {categoryLabel(question)}
+                          </span>
+                        </div>
+                        <p className="report-detail-body-strong mt-2">
+                          {question.questionText ?? question.label}
+                        </p>
+                        {question.options && question.options.length > 0 ? (
+                          <p className="report-detail-note mt-1.5">
+                            선택지: {question.options.join(" · ")}
+                          </p>
+                        ) : null}
+                      </ReportDetailTile>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ReportDetailBlock>
+          </ReportDetailStack>
         </div>
       ) : null}
     </div>
