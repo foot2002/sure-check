@@ -4,7 +4,7 @@ import {
   CAPTURE_SETTLE_MS,
   CAPTURE_VIEWPORT,
   EVIDENCE_FULL_MAX_PAGES,
-  EVIDENCE_FULL_PAGE_TIMEOUT_MS,
+  evidenceFullPageTimeoutMs,
 } from "@/lib/evidence/capture/captureConfig";
 import {
   limitationCaptureFailed,
@@ -555,7 +555,6 @@ export async function runFullWalkthroughOrchestrator(input: {
         : EVIDENCE_FULL_MAX_PAGES;
 
     for (let pageNo = 1; pageNo <= maxPages; pageNo += 1) {
-      const pageDeadline = Date.now() + EVIDENCE_FULL_PAGE_TIMEOUT_MS;
       const step = debug?.nextStep() ?? pageNo;
 
       // Debug dump BEFORE fill
@@ -571,9 +570,12 @@ export async function runFullWalkthroughOrchestrator(input: {
       }
 
       // 1) Capture BEFORE any temporary answers
+      // (Do not start the per-page fill/next deadline until after capture —
+      // serverless screenshot + Hangul fonts often exceed 10s alone.)
       const shot = await adapter.captureCurrentPage(page, pageNo);
       screenshots.push(shot);
       syncShared();
+      const pageDeadline = Date.now() + evidenceFullPageTimeoutMs();
       debug?.push({
         step,
         provider,

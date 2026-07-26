@@ -13,8 +13,20 @@ export const CAPTURE_CLIENT_TIMEOUT_MS = 35_000;
 /** Evidence full-walkthrough mode */
 export const EVIDENCE_FULL_TIMEOUT_MS = 180_000;
 export const EVIDENCE_FULL_CLIENT_TIMEOUT_MS = 185_000;
+/** Per-page budget for fill/next after capture (local Chrome). */
 export const EVIDENCE_FULL_PAGE_TIMEOUT_MS = 10_000;
+/**
+ * Serverless Chromium is slower (cold start, full-page JPEG, Hangul fonts).
+ * Must be high enough that page 1 capture + next doesn't abort the walk.
+ */
+export const EVIDENCE_FULL_PAGE_TIMEOUT_SERVERLESS_MS = 45_000;
 export const EVIDENCE_FULL_MAX_PAGES = 50;
+
+export function evidenceFullPageTimeoutMs(): number {
+  return isServerlessCaptureRuntime()
+    ? EVIDENCE_FULL_PAGE_TIMEOUT_SERVERLESS_MS
+    : EVIDENCE_FULL_PAGE_TIMEOUT_MS;
+}
 
 /**
  * Vercel Functions response body limit is 4.5MB.
