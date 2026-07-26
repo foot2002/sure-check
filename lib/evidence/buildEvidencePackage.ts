@@ -6,6 +6,7 @@ import {
   EVIDENCE_DISCLAIMER,
   MAX_SOURCE_EXCERPT_BYTES,
   type EvidencePackageCaptureOptions,
+  type CapturePageMetaEvidence,
   type ManualEvidenceFile,
   type ReportEvidenceModel,
   type ScreenCaptureEvidenceMeta,
@@ -38,17 +39,32 @@ function captureFolderReadme(options: {
   autoCount: number;
   manualCount: number;
   captureAttempted: boolean;
+  captureStatus?: string | null;
+  captureMode?: string | null;
+  temporaryAnswersUsed?: boolean;
   limitations: string[];
 }): string {
+  const statusLine = options.captureStatus
+    ? `캡처 상태: ${options.captureStatus}`
+    : "";
+  const modeLine = options.captureMode
+    ? `캡처 모드: ${options.captureMode}`
+    : "";
   if (options.autoCount > 0 || options.manualCount > 0) {
     return [
       "이 폴더에는 SURE Check가 진단 당시 자동으로 캡처한 공개 설문 화면이 포함되어 있습니다.",
       options.manualCount > 0
         ? "사용자가 추가로 첨부한 캡처 이미지도 함께 포함되어 있습니다."
         : "",
+      statusLine,
+      modeLine,
       "",
-      "자동 캡처는 응답자가 아무것도 입력하지 않은 상태에서 수행되었습니다.",
-      "SURE Check는 임의 응답 입력, 다음 단계 강제 이동, 제출 버튼 클릭을 수행하지 않습니다.",
+      options.captureMode === "evidence_full_walkthrough"
+        ? "이 캡처는 신고용 증빙 수집을 위해 자동 탐색 모드로 수행되었습니다."
+        : "자동 캡처는 응답자가 아무것도 입력하지 않은 상태에서 수행되었습니다.",
+      options.temporaryAnswersUsed
+        ? "일부 페이지 진행을 위해 임시 응답값이 사용되었으며, 최종 제출은 수행하지 않았습니다."
+        : "SURE Check는 최종 제출 버튼 클릭을 수행하지 않습니다.",
       "",
       "캡처 이미지는 신고기관의 사실관계 확인을 돕기 위한 참고자료입니다.",
       "최종 위법 여부는 개인정보보호위원회 또는 KISA의 검토·조사 결과에 따라 판단됩니다.",
@@ -64,6 +80,8 @@ function captureFolderReadme(options: {
   if (options.captureAttempted) {
     return [
       "자동 화면 캡처를 완료하지 못했습니다.",
+      statusLine,
+      modeLine,
       "",
       "가능한 사유:",
       "",
@@ -78,13 +96,111 @@ function captureFolderReadme(options: {
         : []),
       "본 패키지는 문항 원문, 고지문 원문, 원본 추출자료, 진단일시, URL, 해시값을 중심으로 구성되었습니다.",
       "",
-    ].join("\n");
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
   }
 
   return [
     "자동 또는 수동으로 추가된 화면 캡처가 없습니다. 본 패키지는 문항 원문, 고지문, 원본 추출자료, 진단일시와 해시값을 중심으로 구성되었습니다.",
     "",
   ].join("\n");
+}
+
+function buildPersonalSensitiveSummaryRows(
+  pageMetas: CapturePageMetaEvidence[],
+): Array<{
+  provider: string;
+  pageNumber: number;
+  screenshotFile: string;
+  questionText: string;
+  detectedDataType: string;
+  riskCategory: string;
+  matchedKeyword: string;
+}> {
+  const rows: Array<{
+    provider: string;
+    pageNumber: number;
+    screenshotFile: string;
+    questionText: string;
+    detectedDataType: string;
+    riskCategory: string;
+    matchedKeyword: string;
+  }> = [];
+
+  const push = (
+    meta: CapturePageMetaEvidence,
+    questionText: string,
+    riskCategory: string,
+    detectedDataType: string,
+  ) => {
+    rows.push({
+      provider: meta.provider || "unknown",
+      pageNumber: meta.pageNumber,
+      screenshotFile: meta.screenshotFileName,
+      questionText,
+      detectedDataType,
+      riskCategory,
+      matchedKeyword: detectedDataType,
+    });
+  };
+
+  for (const meta of pageMetas) {
+    for (const q of meta.personalInfoQuestions) {
+      push(meta, q, "직접식별·준식별정보", "personal_info");
+    }
+    for (const q of meta.sensitiveInfoQuestions) {
+      push(meta, q, "민감정보", "sensitive_info");
+    }
+    for (const q of meta.highRiskQuestions) {
+      push(meta, q, "고위험정보", "high_risk_info");
+    }
+  }
+  return rows;
+}
+
+function buildPersonalSensitiveSummaryHtml(
+  rows: Array<{
+    provider: string;
+    pageNumber: number;
+    screenshotFile: string;
+    questionText: string;
+    detectedDataType: string;
+    riskCategory: string;
+    matchedKeyword: string;
+  }>,
+  options: { captureMode: string; temporaryAnswersUsed: boolean },
+): string {
+  const bodyRows =
+    rows.length === 0
+      ? `<tr><td colspan="7">개인정보·민감정보로 분류된 문항이 캡처 메타데이터에서 확인되지 않았습니다.</td></tr>`
+      : rows
+          .map(
+            (r) =>
+              `<tr><td>${escapeForHtmlExcerpt(r.provider)}</td><td>${r.pageNumber}</td><td>${escapeForHtmlExcerpt(r.screenshotFile)}</td><td>${escapeForHtmlExcerpt(r.questionText)}</td><td>${escapeForHtmlExcerpt(r.detectedDataType)}</td><td>${escapeForHtmlExcerpt(r.riskCategory)}</td><td>${escapeForHtmlExcerpt(r.matchedKeyword)}</td></tr>`,
+          )
+          .join("\n");
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>개인정보·민감정보 등장 페이지 요약</title></head>
+<body>
+  <h1>개인정보·민감정보 등장 페이지 요약</h1>
+  <p>신고기관이 핵심 증거를 빠르게 확인할 수 있도록 캡처 페이지 기준으로 정리한 참고자료입니다.</p>
+  <p>캡처 모드: ${escapeForHtmlExcerpt(options.captureMode)}</p>
+  <p>${
+    options.temporaryAnswersUsed
+      ? "일부 페이지 진행을 위해 임시 응답값이 사용되었으며, 최종 제출은 수행하지 않았습니다."
+      : "최종 제출은 수행하지 않았습니다."
+  }</p>
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead><tr><th>provider</th><th>pageNumber</th><th>screenshotFile</th><th>questionText</th><th>detectedDataType</th><th>riskCategory</th><th>matchedKeyword</th></tr></thead>
+    <tbody>
+${bodyRows}
+    </tbody>
+  </table>
+</body>
+</html>
+`;
 }
 
 function noticeResultText(model: ReportEvidenceModel): string {
@@ -156,6 +272,54 @@ export async function buildEvidencePackage(
   const autoScreenshots = capture.autoScreenshots ?? [];
   const captureLimitations = capture.captureLimitations ?? [];
   const captureAttempted = Boolean(capture.captureAttempted);
+  const captureStatus = capture.captureStatus ?? null;
+  const captureMode = capture.captureMode ?? "safe_public_only";
+  const pageMetas = capture.pageMetas ?? [];
+  const temporaryAnswersUsed = Boolean(capture.temporaryAnswersUsed);
+  const captureProvider = capture.captureProvider ?? null;
+  const sectionProgressTotal =
+    capture.sectionProgressTotal === undefined
+      ? null
+      : capture.sectionProgressTotal;
+  const expectedCapturablePageCount =
+    capture.expectedCapturablePageCount === undefined
+      ? capture.expectedPageCount === undefined
+        ? null
+        : capture.expectedPageCount
+      : capture.expectedCapturablePageCount;
+  const expectedPageCount = expectedCapturablePageCount;
+  const capturedPageCount =
+    capture.capturedPageCount ??
+    (pageMetas.length > 0 ? pageMetas.length : autoScreenshots.length);
+  const captureCompleteness =
+    capture.captureCompleteness ??
+    (captureStatus === "success"
+      ? "complete"
+      : capturedPageCount === 0
+        ? "failed"
+        : "partial");
+  const capturePathScope = capture.capturePathScope ?? null;
+  const finalSubmitDetected = Boolean(capture.finalSubmitDetected);
+  const finalSubmitClicked = false;
+  const stopReason = capture.stopReason ?? null;
+  const stopPage =
+    capture.stopPage === undefined ? null : capture.stopPage;
+  const blockedSubmitRequestCount = capture.blockedSubmitRequestCount ?? 0;
+  const branchLimitations = capture.branchLimitations ?? [];
+  const piiSensitiveScreenshotFiles = (
+    capture.piiSensitiveScreenshotFiles ??
+    pageMetas
+      .filter(
+        (m) =>
+          m.personalInfoQuestions.length > 0 ||
+          m.sensitiveInfoQuestions.length > 0 ||
+          m.highRiskQuestions.length > 0,
+      )
+      .map((m) => `08_화면캡처/${m.screenshotFileName}`)
+  ).map((f) => (f.startsWith("08_") ? f : `08_화면캡처/${f}`));
+  const piiSensitivePagesCaptured =
+    capture.piiSensitivePagesCaptured ??
+    piiSensitiveScreenshotFiles.length > 0;
 
   const screenshotEntries: Array<{
     path: string;
@@ -403,12 +567,163 @@ ${questionHtml || "    <li>(해당 없음)</li>"}
   for (const entry of screenshotEntries) {
     files.push({ path: entry.path, content: entry.content });
   }
+
+  for (const meta of pageMetas) {
+    const padded = String(meta.pageNumber).padStart(2, "0");
+    const pageJson = {
+      provider: meta.provider ?? captureProvider ?? "unknown",
+      pageNumber: meta.pageNumber,
+      capturedAt: meta.capturedAt,
+      capturedUrl: meta.capturedUrl,
+      pageTitle: meta.pageTitle,
+      visibleQuestions: meta.visibleQuestions ?? meta.detectedQuestions,
+      personalInfoQuestions: meta.personalInfoQuestions,
+      sensitiveInfoQuestions: meta.sensitiveInfoQuestions,
+      highRiskInfoQuestions: meta.highRiskQuestions,
+      temporaryAnswersUsedAfterCapture:
+        meta.temporaryAnswersUsedAfterCapture ?? meta.temporaryAnswersUsed,
+      temporaryAnswerTypes: meta.temporaryAnswerTypes,
+      finalSubmitDetected: meta.finalSubmitDetected,
+      finalSubmitClicked: meta.finalSubmitClicked ?? false,
+    };
+    files.push({
+      path: `08_화면캡처_메타데이터/page_${padded}.json`,
+      content: `${JSON.stringify(pageJson, null, 2)}\n`,
+    });
+  }
+
+  if (
+    pageMetas.length > 0 ||
+    temporaryAnswersUsed ||
+    captureMode === "evidence_full_walkthrough"
+  ) {
+    const summaryRows = buildPersonalSensitiveSummaryRows(pageMetas);
+    files.push({
+      path: "06_개인정보_민감정보_등장페이지_요약.csv",
+      content: toCsv(
+        [
+          "provider",
+          "pageNumber",
+          "screenshotFile",
+          "questionText",
+          "detectedDataType",
+          "riskCategory",
+          "matchedKeyword",
+        ],
+        summaryRows.map((r) => [
+          r.provider,
+          String(r.pageNumber),
+          r.screenshotFile,
+          r.questionText,
+          r.detectedDataType,
+          r.riskCategory,
+          r.matchedKeyword,
+        ]),
+      ),
+    });
+    files.push({
+      path: "06_개인정보_민감정보_등장페이지_요약.html",
+      content: buildPersonalSensitiveSummaryHtml(summaryRows, {
+        captureMode,
+        temporaryAnswersUsed,
+      }),
+    });
+  }
+
+  if (captureMode === "evidence_full_walkthrough" || stopReason) {
+    const skipped =
+      sectionProgressTotal != null &&
+      expectedCapturablePageCount != null &&
+      sectionProgressTotal > expectedCapturablePageCount
+        ? sectionProgressTotal - expectedCapturablePageCount
+        : 0;
+    const noticeLines = [
+      "자동 캡처 제한 및 주의사항",
+      "",
+      "- 최종 제출은 수행하지 않았습니다.",
+      "- 조건분기형 설문은 모든 가능한 응답 경로를 자동으로 캡처하지 못할 수 있습니다.",
+    ];
+    if (captureProvider === "google_forms" || skipped > 0) {
+      noticeLines.push(
+        `- ${
+          captureProvider === "google_forms" ? "Google Forms" : "이 설문"
+        } 테스트에서는 자동 탐색 경로 기준 ${capturedPageCount}개 화면이 캡처되었고, 섹션 진행 힌트상 미경유 섹션 ${
+          skipped > 0 ? skipped : "0"
+        }개가 확인되었습니다.`,
+      );
+    }
+    if (piiSensitiveScreenshotFiles.length > 0) {
+      const shortNames = piiSensitiveScreenshotFiles
+        .map((f) => f.replace(/^08_화면캡처\//, ""))
+        .join(", ");
+      noticeLines.push(
+        `- 개인정보/민감정보(또는 인적사항) 관련 문항은 ${shortNames}에 포함되어 있습니다.`,
+      );
+    }
+    for (const b of branchLimitations) {
+      noticeLines.push(`- ${b}`);
+    }
+    noticeLines.push(
+      "",
+      "기록 값:",
+      `provider: ${captureProvider ?? "unknown"}`,
+      `capturePathScope: ${capturePathScope ?? "n/a"}`,
+      `sectionProgressTotal: ${sectionProgressTotal ?? "null"}`,
+      `expectedCapturablePageCount: ${expectedCapturablePageCount ?? "null"}`,
+      `capturedPageCount: ${capturedPageCount}`,
+      `captureCompleteness: ${captureCompleteness}`,
+      `stopReason: ${stopReason ?? "n/a"}`,
+      `finalSubmitDetected: ${finalSubmitDetected}`,
+      `finalSubmitClicked: ${finalSubmitClicked}`,
+      `piiSensitiveScreenshotFiles: ${
+        piiSensitiveScreenshotFiles.join(", ") || "(none)"
+      }`,
+      "",
+      "limitations:",
+      ...captureLimitations.map((l) => `- ${l}`),
+      "",
+    );
+    files.push({
+      path: "10_자동캡처_실패원인_요약.txt",
+      content: noticeLines.join("\n"),
+    });
+    files.push({
+      path: "capture-debug-summary.json",
+      content: `${JSON.stringify(
+        {
+          provider: captureProvider,
+          captureMode,
+          captureCompleteness,
+          capturePathScope,
+          sectionProgressTotal,
+          expectedCapturablePageCount,
+          expectedPageCount,
+          capturedPageCount,
+          stopReason,
+          stopPage,
+          finalSubmitDetected,
+          finalSubmitClicked,
+          blockedSubmitRequestCount,
+          branchLimitations,
+          piiSensitivePagesCaptured,
+          piiSensitiveScreenshotFiles,
+          limitations: captureLimitations,
+        },
+        null,
+        2,
+      )}\n`,
+    });
+  }
+
   files.push({
     path: "08_화면캡처/README.txt",
     content: captureFolderReadme({
       autoCount: autoScreenshots.length,
       manualCount: manualFiles.length,
       captureAttempted,
+      captureStatus,
+      captureMode,
+      temporaryAnswersUsed,
       limitations: captureLimitations,
     }),
   });
@@ -474,6 +789,25 @@ ${questionHtml || "    <li>(해당 없음)</li>"}
     privacyNoticeDetectedItems: model.privacyNotice?.detectedItems ?? [],
     screenCaptureEvidence,
     captureLimitations,
+    captureStatus,
+    captureMode,
+    captureProvider,
+    captureCompleteness,
+    capturePathScope,
+    sectionProgressTotal,
+    expectedCapturablePageCount,
+    expectedPageCount,
+    capturedPageCount,
+    temporaryAnswersUsed,
+    finalSubmitDetected,
+    finalSubmitClicked,
+    blockedSubmitRequestCount,
+    stopReason,
+    stopPage,
+    branchLimitations,
+    piiSensitivePagesCaptured,
+    piiSensitiveScreenshotFiles,
+    pageMetas,
     evidenceFiles,
     fileHashes,
     limitations: enrichedLimitations,

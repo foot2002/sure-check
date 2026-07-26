@@ -6,10 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app components lib --max-warnings 0",
+    "lint": "eslint app components lib --ignore-pattern \"components/report/_archive/**\" --max-warnings 0",
     "build:public-institutions": "tsx scripts/build-public-institution-index.ts",
     "test:public-institutions": "tsx scripts/test-public-institution-matcher.ts",
-    "test:evidence-package": "tsx scripts/test-evidence-package-reb-moaform.ts"
+    "test:evidence-package": "tsx scripts/test-evidence-package-reb-moaform.ts",
+    "capture:debug:google": "tsx scripts/debug-capture.ts google",
+    "capture:debug:naver": "tsx scripts/debug-capture.ts naver",
+    "capture:debug:moaform": "tsx scripts/debug-capture.ts moaform",
+    "capture:debug:all": "tsx scripts/debug-capture.ts all",
+    "capture:verify": "tsx scripts/verify-evidence-capture.ts all",
+    "capture:verify:google": "tsx scripts/verify-evidence-capture.ts google",
+    "capture:verify:naver": "tsx scripts/verify-evidence-capture.ts naver",
+    "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform"
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",

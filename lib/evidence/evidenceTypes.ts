@@ -121,6 +121,27 @@ export interface AutoCaptureEvidenceFile {
   viewport: { width: number; height: number };
   source: "auto_browser_capture";
   size: number;
+  pageNumber?: number;
+  mode?: string;
+}
+
+export interface CapturePageMetaEvidence {
+  pageNumber: number;
+  pageTitle: string;
+  capturedUrl: string;
+  capturedAt: string;
+  screenshotFileName: string;
+  provider?: string;
+  detectedQuestions: string[];
+  visibleQuestions?: string[];
+  personalInfoQuestions: string[];
+  sensitiveInfoQuestions: string[];
+  highRiskQuestions: string[];
+  temporaryAnswersUsed: boolean;
+  temporaryAnswersUsedAfterCapture?: boolean;
+  temporaryAnswerTypes: string[];
+  finalSubmitDetected: boolean;
+  finalSubmitClicked?: boolean;
 }
 
 export interface ScreenCaptureEvidenceMeta {
@@ -143,6 +164,26 @@ export interface EvidencePackageCaptureOptions {
   autoScreenshots?: AutoCaptureEvidenceFile[];
   captureLimitations?: string[];
   captureAttempted?: boolean;
+  /** success | partial | failed | timeout — optional for ZIP/manifest */
+  captureStatus?: string;
+  captureMode?: "safe_public_only" | "evidence_full_walkthrough" | string;
+  captureProvider?: string;
+  expectedPageCount?: number | null;
+  expectedCapturablePageCount?: number | null;
+  sectionProgressTotal?: number | null;
+  capturedPageCount?: number;
+  captureCompleteness?: "complete" | "partial" | "failed" | string;
+  capturePathScope?: string;
+  finalSubmitDetected?: boolean;
+  finalSubmitClicked?: boolean;
+  blockedSubmitRequestCount?: number;
+  stopReason?: string;
+  stopPage?: number | null;
+  branchLimitations?: string[];
+  piiSensitivePagesCaptured?: boolean;
+  piiSensitiveScreenshotFiles?: string[];
+  pageMetas?: CapturePageMetaEvidence[];
+  temporaryAnswersUsed?: boolean;
 }
 
 export const EVIDENCE_DISCLAIMER =

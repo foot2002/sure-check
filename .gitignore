@@ -44,3 +44,23 @@ next-env.d.ts
 # public institution source (local only — never commit Excel / PII)
 data/source/
 *.xlsx
+
+# local debug / capture artifacts
+/tmp/
+/tsc-out.txt
+/tsc-result.txt
+/lint-out.txt
+/lint-result.txt
+scripts/_*
+scripts/probe-*
+scripts/fetch-*
+scripts/decode-*
+scripts/find-*
+scripts/inspect-*
+scripts/live-*
+scripts/scan-moaform*
+scripts/search-*
+scripts/verify-*
+scripts/walk-*
+scripts/smoke-*
+dev-notes/archive/

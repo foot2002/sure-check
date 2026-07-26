@@ -767,20 +767,86 @@ NEXT_PUBLIC_KISA_REPORT_URL=https://privacy.kisa.or.kr
 
 ### 신고용 증빙자료 자동 화면 캡처 기능
 
-`응답 거부·신고 검토`가 나온 **링크 진단** 결과에 대해, 신고 CTA가 열리면 `/api/evidence/capture`로 공개 설문 화면을 자동 캡처합니다.
+#### 자동 화면 캡처 리팩토링 및 안전 캡처 정책
 
-- 엔진: `puppeteer-core` + `@sparticuz/chromium`(서버리스) / 로컬은 Chrome·Edge 또는 `PUPPETEER_EXECUTABLE_PATH`
-- 첫 공개 페이지부터 “다음”으로 이동하며 **전체 페이지** `fullPage` PNG 캡처(구글폼 `N/M페이지` 감지 시 M장까지, 최대 30장)
-- 구글폼 리커트(전혀 그렇지 않다~매우 그렇다) 등 의견 척도는 페이지 이동을 위해 최소 선택. 이름·연락처 등 신원 입력·최종 제출 금지
-- `3/22페이지`처럼 URL이 안 바뀌어도 진행 표시로 페이지 이동을 판별
-- 도달하지 못한 페이지는 limitation 기록 + 추가 캡처 첨부 안내
-- 문항의 정적 “필수” 라벨만으로는 중단하지 않음(실제 검증 오류 메시지가 새로 뜬 경우만 차단)
-- 성공 시 ZIP `08_화면캡처/auto_screenshot_01_first_public_page.png` 등 포함 + SHA-256·manifest `screenCaptureEvidence`
-- 실패해도 진단·ZIP 다운로드는 유지. README·요약서·manifest에 `captureLimitations` 기록
-- 수동 캡처는 “추가 캡처 첨부”로 보조 유지
-- SSRF: 기존 `safeUrlCheck` 적용
+자동 캡처는 **증거 수집용 공개 화면 캡처**이며, 자동 설문 응답 기능이 아닙니다.
 
-관련 코드: `app/api/evidence/capture/route.ts`, `lib/evidence/captureSurveyScreenshots.ts`, `EvidenceActionPanel`
+**허용**
+
+- 첫 공개 설문 페이지 접속 후 응답 없이 전체 화면(`fullPage`) PNG 캡처
+- 안내문·개인정보 고지문이 보이는 공개 화면 캡처
+- 아무 입력 없이 이미 활성화된 “다음/시작하기”만 클릭해 추가 공개 페이지 캡처(최대 3장)
+- 실패·부분 성공·타임아웃 시 `limitation` 기록
+
+**금지**
+
+- 임의 응답 입력, 더미 연락처·신원 입력
+- 체크박스·라디오 임의 선택
+- 더미 파일 업로드, 필수응답 우회 조작
+- 제출/로그인/CAPTCHA 우회, 관리자 화면 접근
+
+**타임아웃·상태**
+
+- 서버 하드 타임아웃 **30초** → `success` | `partial` | `failed` | `timeout`
+- 프론트 대기 **35초** 후 timeout UI (무한 “캡처 중” 없음)
+- 캡처 실패해도 진단 결과·신고용 ZIP 다운로드·KISA 이동은 유지
+
+**모듈 구조** (`lib/evidence/capture/`)
+
+| 파일 | 역할 |
+|------|------|
+| `captureTypes.ts` | 타입 |
+| `captureConfig.ts` | 30초/3페이지 등 제한값 |
+| `browserLauncher.ts` | Chrome / `@sparticuz/chromium` |
+| `urlCaptureSafety.ts` | SSRF 게이트 |
+| `pageReadiness.ts` | 로딩·안정화 |
+| `pageNavigation.ts` | 입력 없는 안전 Next만 |
+| `screenshotCapture.ts` | PNG 캡처 |
+| `captureLimitations.ts` | limitation 문구 |
+| `captureSurveyScreenshots.ts` | 얇은 orchestrator |
+
+호환 entry: `lib/evidence/captureSurveyScreenshots.ts` (re-export)
+
+관련 코드: `app/api/evidence/capture/route.ts`, `EvidenceActionPanel`, `buildEvidencePackage`
+
+ZIP: 성공·partial 시 `08_화면캡처/` PNG + SHA-256·manifest `screenCaptureEvidence` / `captureStatus` / `captureLimitations`
+
+### 신고용 전체 화면 캡처 모드
+
+기본 캡처(`safe_public_only`)와 별도로, KISA/개보위 신고 증빙을 위한 **전체 탐색 캡처**(`evidence_full_walkthrough`)를 지원합니다.
+
+플랫폼별 어댑터: Google Forms / Naver Form / Moaform / Generic  
+경로: `lib/evidence/capture/fullWalkthrough/`
+
+| 구분 | 기본 캡처 | 신고용 전체 화면 캡처 |
+|------|-----------|------------------------|
+| 실행 | 신고 CTA 표시 시 자동 | 사용자 명시 클릭 |
+| 입력 | 없음 | 임시 응답값 허용 (캡처 후 입력) |
+| 범위 | 최대 3장 / 30초 | 최대 50장 / 180초 |
+| 제출 | 금지 | 금지 (제출 버튼 감지 시 캡처 후 종료) |
+| 완성도 | — | `complete` / `partial` / `failed` |
+
+**임시 응답값 예:** 이름 `증빙용 임시값`, 이메일 `capture@example.invalid`, 연락처 `010-0000-0000`, 자유서술 `증빙용 자동 탐색`, 선택형은 최소 선택, 파일은 더미 PDF/PNG.
+
+**ZIP 추가 산출물**
+
+- `08_화면캡처/page_01.png` …
+- `08_화면캡처_메타데이터/page_01.json` …
+- `06_개인정보_민감정보_등장페이지_요약.html` / `.csv`
+- manifest: `captureProvider`, `expectedPageCount`, `capturedPageCount`, `captureCompleteness`, `finalSubmitClicked: false`
+
+관련 코드: `lib/evidence/capture/fullWalkthrough/`, `EvidenceActionPanel`의 “신고용 전체 화면 캡처 시작” 버튼
+
+로컬 디버그:
+
+```bash
+npm run capture:debug:google
+npm run capture:debug:naver
+npm run capture:debug:moaform
+npm run capture:debug:all
+```
+
+산출물: `tmp/capture-debug/<provider>/capture-debug-summary.json`, `step_XXX_*` (PNG/DOM/버튼/판단), `CAPTURE_DEBUG_RESULT.txt`
 
 ### 신고용 증빙자료 고지문 확인 및 증빙 정확도 보정
 
@@ -1109,9 +1175,12 @@ app/
   lab/page.tsx                # 검증 Lab (개발자용)
   report/[scanId]/page.tsx    # 공유 링크용 결과 페이지
   api/scan/                   # Mock API Routes
-components/                   # UI 컴포넌트
+  api/evidence/capture/       # 안전 공개화면 캡처 API (30초)
+components/
   report/                     # 응답자/운영자/상세 근거 리포트 UI
+  report/_archive/            # 미사용 레거시 리포트 컴포넌트
 lib/
+  evidence/capture/           # 안전 공개화면 캡처 모듈 (더미입력 없음)
   debug/                      # ScanDebugInfo, AnalyzerTrace 빌더
   reporting/                  # AudienceReport 합성 및 메시지
   fixtures/normalizedForms.ts # NormalizedForm 샘플 5종
