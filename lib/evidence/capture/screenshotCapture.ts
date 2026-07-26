@@ -9,6 +9,7 @@ import type {
   CaptureMode,
   CaptureScreenshot,
 } from "@/lib/evidence/capture/captureTypes";
+import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 import { formatKstDateTime } from "@/lib/evidence/sanitizeFilename";
 
 export function captureLabelFor(
@@ -48,7 +49,9 @@ export async function captureFullPage(
   const { label, fileName } = captureLabelFor(pageNo, mode, ext);
   const capturedAt = new Date();
 
-  // Expand common survey scroll containers so fullPage includes clipped content
+  // Hangul glyphs are missing on serverless Chromium unless we inject fonts
+  await applyKoreanFontsToPage(page);
+
   await page
     .evaluate(() => {
       const selectors = [

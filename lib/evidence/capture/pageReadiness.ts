@@ -4,6 +4,7 @@ import {
   CAPTURE_PAGE_LOAD_TIMEOUT_MS,
   CAPTURE_SETTLE_MS,
 } from "@/lib/evidence/capture/captureConfig";
+import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,6 +57,7 @@ export async function gotoSurveyPage(
       })
       .catch(() => undefined);
     await sleep(CAPTURE_SETTLE_MS);
+    await applyKoreanFontsToPage(page);
 
     if (/moaform\.com|surveyl\.ink/i.test(url)) {
       await page

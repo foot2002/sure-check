@@ -20,6 +20,7 @@
     "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform"
   },
   "dependencies": {
+    "@fontsource/noto-sans-kr": "^5.3.0",
     "@sparticuz/chromium": "^149.0.0",
     "cheerio": "^1.2.0",
     "fast-xml-parser": "^5.10.1",

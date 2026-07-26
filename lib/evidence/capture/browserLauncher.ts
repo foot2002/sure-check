@@ -6,6 +6,7 @@ import {
   CAPTURE_VIEWPORT,
   isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
+import { ensureServerlessKoreanFonts } from "@/lib/evidence/capture/koreanFonts";
 
 function findLocalChrome(): string | undefined {
   const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
@@ -41,6 +42,8 @@ function findLocalChrome(): string | undefined {
 async function launchServerlessChromium(options?: {
   headless?: boolean;
 }): Promise<Browser> {
+  await ensureServerlessKoreanFonts();
+
   const chromium = await import("@sparticuz/chromium");
   chromium.default.setGraphicsMode = false;
 
@@ -65,7 +68,6 @@ export async function launchCaptureBrowser(options?: {
 }): Promise<Browser> {
   const headless = options?.headless !== false;
 
-  // Vercel / Lambda: always use @sparticuz/chromium (never host Chrome paths)
   if (isServerlessCaptureRuntime()) {
     return launchServerlessChromium(options);
   }
@@ -92,6 +94,5 @@ export async function launchCaptureBrowser(options?: {
     );
   }
 
-  // Linux without local Chrome (CI / container): same serverless binary
   return launchServerlessChromium(options);
 }
