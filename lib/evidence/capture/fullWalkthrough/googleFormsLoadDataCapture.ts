@@ -179,7 +179,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function buildGoogleFormsEvidenceHtml(
+export function buildGoogleFormsEvidenceBody(
   form: GoogleLoadDataForm,
   page: GoogleLoadDataPage,
 ): string {
@@ -207,18 +207,46 @@ export function buildGoogleFormsEvidenceHtml(
     })
     .join("\n");
 
+  return `<div class="wrap">
+  <div class="hero">
+    <div class="bar"></div>
+    <div class="inner">
+      <h1>${escapeHtml(form.formTitle)}</h1>
+      <div class="meta">Google Forms · 신고 증빙용 화면 재구성<br/>원본 URL: ${escapeHtml(form.formUrl)}</div>
+    </div>
+  </div>
+  <div class="progress">
+    <div class="track"><div class="fill" style="width:${progressPct}%"></div></div>
+    <div>${page.pageNumber}/${total}페이지</div>
+  </div>
+  ${cards || `<section class="card"><h2>(이 페이지에 표시할 문항이 없습니다)</h2></section>`}
+  <div class="nav"><button class="btn" type="button">${page.pageNumber >= total ? "제출" : "다음"}</button></div>
+  <p class="note">배포 환경(Chromium)에서 Google Forms 라이브 뷰어가 빈 껍데기로만 렌더되어, 폼 구조 데이터(FB_PUBLIC_LOAD_DATA_)로 페이지별 증빙 화면을 재구성했습니다. 문항 텍스트·선택지는 원본 설문과 동일합니다.</p>
+</div>`;
+}
+
+export function buildGoogleFormsEvidenceHtml(
+  form: GoogleLoadDataForm,
+  page: GoogleLoadDataPage,
+): string {
   return `<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>${escapeHtml(form.formTitle)} — ${page.pageNumber}/${total}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet"/>
-<style>
+<title>${escapeHtml(form.formTitle)} — ${page.pageNumber}/${form.pages.length}</title>
+${buildEvidenceDocumentHeadStyles()}
+</head>
+<body>
+<main id="root">${buildGoogleFormsEvidenceBody(form, page)}</main>
+</body>
+</html>`;
+}
+
+function buildEvidenceDocumentHeadStyles(): string {
+  return `<style>
 *{box-sizing:border-box}
-body{margin:0;background:#d0e2ff;color:#202124;font-family:'Noto Sans KR','Malgun Gothic',sans-serif}
+body{margin:0;background:#d0e2ff;color:#202124;font-family:'SURECheckKR','Noto Sans KR','Malgun Gothic',sans-serif}
 h1,h2,h3,p,li,div,span,button,label{color:#202124}
 .wrap{max-width:740px;margin:0 auto;padding:24px 16px 48px}
 .hero{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.08);margin-bottom:14px}
@@ -228,7 +256,7 @@ h1,h2,h3,p,li,div,span,button,label{color:#202124}
 .hero .meta{font-size:13px;color:#5f6368;line-height:1.5}
 .progress{display:flex;align-items:center;gap:12px;margin:14px 0 18px;color:#5f6368;font-size:13px}
 .track{flex:1;height:8px;background:#dadce0;border-radius:99px;overflow:hidden}
-.fill{height:100%;width:${progressPct}%;background:#ff6d00}
+.fill{height:100%;background:#ff6d00}
 .card{background:#fff;border-radius:8px;padding:18px 22px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .card .type{font-size:12px;color:#673ab7;margin-bottom:6px;font-weight:600}
 .card h2{margin:0;font-size:16px;font-weight:600;line-height:1.45;white-space:pre-wrap}
@@ -240,27 +268,7 @@ h1,h2,h3,p,li,div,span,button,label{color:#202124}
 .nav{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 .btn{background:#673ab7;color:#fff;border:0;border-radius:4px;padding:10px 24px;font-size:14px}
 .note{margin-top:16px;font-size:11px;color:#5f6368;line-height:1.4}
-</style>
-</head>
-<body>
-<main class="wrap">
-  <div class="hero">
-    <div class="bar"></div>
-    <div class="inner">
-      <h1>${escapeHtml(form.formTitle)}</h1>
-      <div class="meta">Google Forms · 신고 증빙용 화면 재구성<br/>원본 URL: ${escapeHtml(form.formUrl)}</div>
-    </div>
-  </div>
-  <div class="progress">
-    <div class="track"><div class="fill"></div></div>
-    <div>${page.pageNumber}/${total}페이지</div>
-  </div>
-  ${cards || `<section class="card"><h2>(이 페이지에 표시할 문항이 없습니다)</h2></section>`}
-  <div class="nav"><button class="btn" type="button">${page.pageNumber >= total ? "제출" : "다음"}</button></div>
-  <p class="note">배포 환경(Chromium)에서 Google Forms 라이브 뷰어가 빈 껍데기로만 렌더되어, 폼 구조 데이터(FB_PUBLIC_LOAD_DATA_)로 페이지별 증빙 화면을 재구성했습니다. 문항 텍스트·선택지는 원본 설문과 동일합니다.</p>
-</main>
-</body>
-</html>`;
+</style>`;
 }
 
 function questionsToMeta(
@@ -351,31 +359,31 @@ export async function captureGoogleFormsViaLoadData(input: {
   const pageMetas: CapturePageMeta[] = [];
 
   try {
+    // One shell document + one font injection. Replacing #root avoids reloading
+    // ~0.7MB Hangul CSS on every page (which crashes single-process Chromium).
+    await page.setContent(
+      `<!doctype html><html lang="ko"><head><meta charset="utf-8"/>${buildEvidenceDocumentHeadStyles()}</head><body><main id="root"></main></body></html>`,
+      { waitUntil: "load", timeout: 20_000 },
+    );
+    const fontOk = await applyKoreanFontFaceToEvidencePage(page);
+    if (!fontOk) {
+      limitations.push(
+        "경고: 서버에서 한글 폰트 파일을 찾지 못했습니다. 화면 글자가 비어 보일 수 있습니다.",
+      );
+    }
+
     for (let i = 0; i < maxPages; i += 1) {
       const section = form.pages[i];
-      const html = buildGoogleFormsEvidenceHtml(form, section);
-      // Must use a blank page — Google Forms enforces Trusted Types and rejects
-      // setContent/document.write on the live viewer document.
-      await page.goto("about:blank", { waitUntil: "domcontentloaded" }).catch(
-        () => undefined,
-      );
-      await page.setContent(html, {
-        waitUntil: "load",
-        timeout: 25_000,
-      });
-      await page
-        .waitForNetworkIdle({ idleTime: 500, timeout: 10_000 })
-        .catch(() => undefined);
-      const fontOk = await applyKoreanFontFaceToEvidencePage(page);
-      await page
-        .evaluate(() => document.fonts.ready.catch(() => undefined))
-        .catch(() => undefined);
-      await new Promise((r) => setTimeout(r, 400));
-      if (!fontOk && screenshots.length === 0) {
-        limitations.push(
-          "경고: 서버에서 한글 폰트 파일을 찾지 못했습니다. 화면 글자가 비어 보일 수 있습니다.",
-        );
-      }
+      const bodyHtml = buildGoogleFormsEvidenceBody(form, section);
+      await page.evaluate((html) => {
+        const root = document.getElementById("root");
+        if (root) root.innerHTML = html;
+        document.title = (
+          document.querySelector("h1")?.textContent || "Google Forms"
+        ).slice(0, 120);
+      }, bodyHtml);
+      await new Promise((r) => setTimeout(r, 120));
+
       const serverless = isServerlessCaptureRuntime();
       const ext = serverless ? "jpg" : "png";
       const raw = serverless
