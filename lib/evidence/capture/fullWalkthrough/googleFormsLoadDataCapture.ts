@@ -4,11 +4,13 @@ import {
   EVIDENCE_FULL_MAX_PAGES,
   isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
-import type { CaptureScreenshot } from "@/lib/evidence/capture/captureTypes";
+import type {
+  CapturePageMeta,
+  CaptureScreenshot,
+} from "@/lib/evidence/capture/captureTypes";
 import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
-import { captureFullPage } from "@/lib/evidence/capture/screenshotCapture";
-import type { CapturePageMeta } from "@/lib/evidence/capture/captureTypes";
 import { classifyQuestionRisk } from "@/lib/evidence/capture/pageQuestionScan";
+import { formatKstDateTime } from "@/lib/evidence/sanitizeFilename";
 
 export type GoogleLoadDataQuestion = {
   id: string;
@@ -353,32 +355,69 @@ export async function captureGoogleFormsViaLoadData(input: {
       const html = buildGoogleFormsEvidenceHtml(form, section);
       // Must use a blank page — Google Forms enforces Trusted Types and rejects
       // setContent/document.write on the live viewer document.
+      await page.goto("about:blank", { waitUntil: "domcontentloaded" }).catch(
+        () => undefined,
+      );
       await page.setContent(html, {
-        waitUntil: "domcontentloaded",
-        timeout: 20_000,
+        waitUntil: "load",
+        timeout: 30_000,
       });
-      // Prefer CDN Noto Sans KR for reconstructed pages; fall back to embedded.
+      // External Noto Sans KR stylesheet needs an explicit fonts.ready wait.
       await page
-        .evaluate(async () => {
-          try {
-            await document.fonts.load('400 16px "Noto Sans KR"');
-            await document.fonts.load('700 16px "Noto Sans KR"');
-            await document.fonts.ready;
-          } catch {
-            /* ignore */
-          }
-        })
+        .waitForFunction(
+          async () => {
+            try {
+              await document.fonts.load('400 16px "Noto Sans KR"');
+              await document.fonts.load('700 16px "Noto Sans KR"');
+              return document.fonts.check('400 16px "Noto Sans KR"');
+            } catch {
+              return false;
+            }
+          },
+          { timeout: 12_000 },
+        )
         .catch(() => undefined);
       await applyKoreanFontsToPage(page);
-      await new Promise((r) => setTimeout(r, 250));
-      const shot = await captureFullPage(
-        page,
-        section.pageNumber,
-        "evidence_full_walkthrough",
-      );
-      // Keep capturedUrl pointing at the real survey for evidence metadata.
-      shot.capturedUrl = input.formUrl;
-      shot.finalUrl = input.formUrl;
+      await new Promise((r) => setTimeout(r, 300));
+      // Skip captureFullPage overflow hacks — they are for live survey pages.
+      const serverless = isServerlessCaptureRuntime();
+      const ext = serverless ? "jpg" : "png";
+      const raw = serverless
+        ? await page.screenshot({
+            type: "jpeg",
+            quality: 62,
+            fullPage: true,
+            captureBeyondViewport: true,
+          })
+        : await page.screenshot({
+            type: "png",
+            fullPage: true,
+            captureBeyondViewport: true,
+          });
+      const buffer = Buffer.from(raw);
+      const capturedAt = new Date();
+      const pageNo = section.pageNumber;
+      const shot: CaptureScreenshot = {
+        id: `page_${String(pageNo).padStart(2, "0")}`,
+        label: `${pageNo}페이지`,
+        fileName: `page_${String(pageNo).padStart(2, "0")}.${ext}`,
+        mimeType: serverless ? "image/jpeg" : "image/png",
+        buffer,
+        capturedAt: capturedAt.toISOString(),
+        capturedAtKst: formatKstDateTime(capturedAt),
+        capturedUrl: input.formUrl,
+        finalUrl: input.formUrl,
+        pageTitle: await page.title(),
+        viewport: {
+          ...(serverless
+            ? CAPTURE_SERVERLESS_VIEWPORT
+            : { width: 1440, height: 1200 }),
+        },
+        source: "auto_browser_capture",
+        size: buffer.byteLength,
+        pageNumber: pageNo,
+        mode: "evidence_full_walkthrough",
+      };
       screenshots.push(shot);
       pageMetas.push(
         questionsToMeta(section.pageNumber, shot, section.questions),
