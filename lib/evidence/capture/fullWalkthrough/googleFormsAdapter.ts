@@ -249,9 +249,16 @@ export const googleFormsAdapter: FormCaptureAdapter = {
     }
 
     if (!hydrated && isServerlessCaptureRuntime()) {
-      await page
-        .reload({ waitUntil: "domcontentloaded", timeout: 20_000 })
-        .catch(() => undefined);
+      // Prefer soft re-navigation over page.reload() — reload under serverless
+      // Chromium often throws "Attempted to use detached Frame".
+      try {
+        await page.goto(page.url(), {
+          waitUntil: "domcontentloaded",
+          timeout: 20_000,
+        });
+      } catch {
+        /* continue polling */
+      }
       await page
         .waitForNetworkIdle({ idleTime: 600, timeout: 12_000 })
         .catch(() => undefined);

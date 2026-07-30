@@ -39,10 +39,35 @@ function findLocalChrome(): string | undefined {
   return candidates.find((path) => path && existsSync(path));
 }
 
+function buildServerlessArgs(
+  chromiumArgs: string[],
+  opts: { allowSingleProcess: boolean },
+): string[] {
+  const args = chromiumArgs.filter((arg) => {
+    const a = String(arg);
+    // Launch option owns headless mode — drop duplicated flags from chromium.args.
+    if (/^--headless(=|$)/i.test(a)) return false;
+    if (!opts.allowSingleProcess) {
+      if (a === "--single-process" || a === "--no-zygote") return false;
+    }
+    return true;
+  });
+
+  args.push(
+    "--disable-dev-shm-usage",
+    "--hide-scrollbars",
+    "--disable-blink-features=AutomationControlled",
+  );
+  return args;
+}
+
 /**
- * Launch @sparticuz/chromium with the upstream-recommended shell headless mode.
- * Graphics must stay enabled — disabling WebGL leaves Google Forms on an empty
- * freebird shell (progress bar only, no questions / Next).
+ * Launch @sparticuz/chromium for survey capture.
+ *
+ * Google Forms on Vercel requires:
+ * - headless "shell" (not `true` / new headless) or the viewer stays an empty shell
+ * - graphics/WebGL enabled (SwiftShader)
+ * - preferably multi-process (`--single-process` often prevents freebird hydration)
  */
 async function launchServerlessChromium(options?: {
   headless?: boolean;
@@ -50,36 +75,29 @@ async function launchServerlessChromium(options?: {
   await ensureServerlessKoreanFonts();
 
   const chromium = await import("@sparticuz/chromium");
-  // Default is true; keep WebGL/SwiftShader available for SPA form viewers.
   chromium.default.setGraphicsMode = true;
 
   const executablePath = await chromium.default.executablePath();
   const useHeadful = options?.headless === false;
   const headlessMode = useHeadful ? false : ("shell" as const);
-
-  const baseArgs = Array.isArray(chromium.default.args)
-    ? chromium.default.args
+  const rawArgs = Array.isArray(chromium.default.args)
+    ? chromium.default.args.map(String)
     : [];
-  const args = await puppeteer.defaultArgs({
-    args: [
-      ...baseArgs,
-      "--disable-dev-shm-usage",
-      "--font-render-hinting=none",
-      "--hide-scrollbars",
-      "--disable-blink-features=AutomationControlled",
-      // Help Material/Google apps paint under serverless Chromium.
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-    ],
-    headless: headlessMode === false ? false : "shell",
-  });
 
-  return puppeteer.launch({
-    args,
-    defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
-    executablePath,
-    headless: headlessMode,
-  });
+  const tryLaunch = async (allowSingleProcess: boolean): Promise<Browser> =>
+    puppeteer.launch({
+      args: buildServerlessArgs(rawArgs, { allowSingleProcess }),
+      defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
+      executablePath,
+      headless: headlessMode,
+    });
+
+  try {
+    return await tryLaunch(false);
+  } catch {
+    // Some serverless hosts still require single-process.
+    return tryLaunch(true);
+  }
 }
 
 export async function launchCaptureBrowser(options?: {
