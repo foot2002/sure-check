@@ -39,29 +39,46 @@ function findLocalChrome(): string | undefined {
   return candidates.find((path) => path && existsSync(path));
 }
 
+/**
+ * Launch @sparticuz/chromium with the upstream-recommended shell headless mode.
+ * Graphics must stay enabled — disabling WebGL leaves Google Forms on an empty
+ * freebird shell (progress bar only, no questions / Next).
+ */
 async function launchServerlessChromium(options?: {
   headless?: boolean;
 }): Promise<Browser> {
   await ensureServerlessKoreanFonts();
 
   const chromium = await import("@sparticuz/chromium");
-  chromium.default.setGraphicsMode = false;
+  // Default is true; keep WebGL/SwiftShader available for SPA form viewers.
+  chromium.default.setGraphicsMode = true;
 
   const executablePath = await chromium.default.executablePath();
-  const headless = options?.headless === false ? false : true;
+  const useHeadful = options?.headless === false;
+  const headlessMode = useHeadful ? false : ("shell" as const);
 
-  return puppeteer.launch({
+  const baseArgs = Array.isArray(chromium.default.args)
+    ? chromium.default.args
+    : [];
+  const args = await puppeteer.defaultArgs({
     args: [
-      ...chromium.default.args,
+      ...baseArgs,
       "--disable-dev-shm-usage",
       "--font-render-hinting=none",
       "--hide-scrollbars",
-      // Reduce empty Google Forms shells on datacenter Chromium.
       "--disable-blink-features=AutomationControlled",
+      // Help Material/Google apps paint under serverless Chromium.
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
     ],
+    headless: headlessMode === false ? false : "shell",
+  });
+
+  return puppeteer.launch({
+    args,
     defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
     executablePath,
-    headless,
+    headless: headlessMode,
   });
 }
 

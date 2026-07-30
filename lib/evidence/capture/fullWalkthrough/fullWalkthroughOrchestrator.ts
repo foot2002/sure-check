@@ -578,6 +578,15 @@ export async function runFullWalkthroughOrchestrator(input: {
         buttons = dumped.buttons;
       }
 
+      // Detect nav BEFORE capture mutates layout/fonts — screenshot CSS can
+      // temporarily collapse Material buttons on serverless Chromium.
+      let nextHandle = await adapter.findNextButton(page);
+      let submitHandle = await adapter.findSubmitButton(page);
+      let hasNext = Boolean(nextHandle);
+      let hasSubmit = Boolean(submitHandle);
+      if (nextHandle) await nextHandle.dispose().catch(() => undefined);
+      if (submitHandle) await submitHandle.dispose().catch(() => undefined);
+
       // 1) Capture BEFORE any temporary answers
       // (Do not start the per-page fill/next deadline until after capture —
       // serverless screenshot + Hangul fonts often exceed 10s alone.)
@@ -612,7 +621,8 @@ export async function runFullWalkthroughOrchestrator(input: {
       if (
         expectedPageCount == null &&
         state.totalPageHint != null &&
-        state.totalPageHint > 0
+        state.totalPageHint > 0 &&
+        !(provider === "google_forms" && state.totalPageHint >= 100)
       ) {
         expectedPageCount = state.totalPageHint;
         if (sectionProgressTotal == null) {
@@ -620,17 +630,22 @@ export async function runFullWalkthroughOrchestrator(input: {
         }
       } else if (
         state.totalPageHint != null &&
-        state.totalPageHint > (sectionProgressTotal ?? 0)
+        state.totalPageHint > (sectionProgressTotal ?? 0) &&
+        !(provider === "google_forms" && state.totalPageHint >= 100)
       ) {
         sectionProgressTotal = state.totalPageHint;
       }
 
-      const nextHandle = await adapter.findNextButton(page);
-      const submitHandle = await adapter.findSubmitButton(page);
-      const hasNext = Boolean(nextHandle);
-      const hasSubmit = Boolean(submitHandle);
+      // Re-check after capture (fonts/CSS). Prefer pre-capture detection if
+      // post-capture lookup goes blind on serverless Google Forms.
+      nextHandle = await adapter.findNextButton(page);
+      submitHandle = await adapter.findSubmitButton(page);
+      const hasNextAfter = Boolean(nextHandle);
+      const hasSubmitAfter = Boolean(submitHandle);
       if (nextHandle) await nextHandle.dispose().catch(() => undefined);
       if (submitHandle) await submitHandle.dispose().catch(() => undefined);
+      hasNext = hasNext || hasNextAfter;
+      hasSubmit = hasSubmit || hasSubmitAfter;
 
       if (hasNext) {
         debug?.push({

@@ -56,7 +56,10 @@ export function buildKoreanFontCss(): string {
   cachedCss = [
     `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:400;font-display:swap;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
     `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:700;font-display:swap;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
-    `html,body,body *:not(script):not(style):not(noscript){font-family:'SURECheckKR','Noto Sans KR','Open Sans','Malgun Gothic',sans-serif !important;}`,
+    // Prefer inheritance over `body * !important` so Material/Google nav
+    // buttons keep their layout metrics on serverless Chromium.
+    `html,body{font-family:'SURECheckKR','Noto Sans KR','Open Sans','Malgun Gothic',sans-serif !important;}`,
+    `.freebirdFormviewerViewFormCard,.freebirdFormviewerViewFormContent,.freebirdFormviewerComponentsQuestionBaseTitle,.M7eMe,[role='listitem'],[role='heading'],.Qr7Oae,p,span,div,label,li{font-family:'SURECheckKR','Noto Sans KR','Open Sans','Malgun Gothic',sans-serif !important;}`,
   ].join("\n");
   return cachedCss;
 }

@@ -49,7 +49,10 @@ export async function captureFullPage(
   const { label, fileName } = captureLabelFor(pageNo, mode, ext);
   const capturedAt = new Date();
 
-  // Hangul glyphs are missing on serverless Chromium unless we inject fonts
+  // Hangul glyphs are missing on serverless Chromium unless we inject fonts.
+  // Skip the global !important font override until after Google Forms nav is
+  // resolved — capture still needs glyphs, but avoid collapsing Material buttons
+  // before the orchestrator has re-checked Next.
   await applyKoreanFontsToPage(page);
 
   await page
@@ -68,6 +71,14 @@ export async function captureFullPage(
       for (const sel of selectors) {
         for (const node of Array.from(document.querySelectorAll(sel))) {
           const el = node as HTMLElement;
+          // Do not force height on navigation chrome — it can zero-size Next.
+          if (
+            el.closest(
+              ".freebirdFormviewerViewNavigationNavControls, .freebirdFormviewerViewNavigationButtons, [jsname='OCpkoe'], [jsname='M2UYVd']",
+            )
+          ) {
+            continue;
+          }
           el.style.setProperty("height", "auto", "important");
           el.style.setProperty("max-height", "none", "important");
           el.style.setProperty("overflow", "visible", "important");

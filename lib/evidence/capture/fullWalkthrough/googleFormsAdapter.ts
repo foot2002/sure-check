@@ -29,6 +29,35 @@ const GOOGLE_QUESTION_SELECTORS = [
   ".Qr7Oae [role='heading']",
 ];
 
+/** Stable Google Forms viewer jsnames (locale-independent). */
+const GOOGLE_NEXT_JSNAME = "OCpkoe";
+const GOOGLE_SUBMIT_JSNAME = "M2UYVd";
+
+async function findGoogleJsnameButton(
+  page: Page,
+  jsname: string,
+): Promise<ElementHandle<Element> | null> {
+  const handle = await page.$(`[jsname="${jsname}"]`);
+  if (handle) return handle;
+  // Nested mark: some themes wrap the actionable node.
+  const nested = await page.$(`[jsname="${jsname}"] [role="button"]`);
+  return nested;
+}
+
+async function clickGoogleJsname(page: Page, jsname: string): Promise<boolean> {
+  return page.evaluate((name) => {
+    const root = document.querySelector<HTMLElement>(`[jsname="${name}"]`);
+    if (!root) return false;
+    const target =
+      root.matches('[role="button"], button, a') || root.tabIndex >= 0
+        ? root
+        : root.querySelector<HTMLElement>('[role="button"], button, a') || root;
+    target.scrollIntoView({ block: "center", inline: "nearest" });
+    target.click();
+    return true;
+  }, jsname);
+}
+
 async function fillGoogleSpecific(page: Page): Promise<number> {
   return page.evaluate(() => {
     let filled = 0;
@@ -160,97 +189,95 @@ export const googleFormsAdapter: FormCaptureAdapter = {
   async waitForReady(page: Page): Promise<void> {
     await page
       .waitForSelector(
-        ".freebirdFormviewerViewFormCard, .freebirdFormviewerViewFormContent, [role='listitem'], .Qr7Oae",
-        { timeout: 10_000 },
+        ".freebirdFormviewerViewFormCard, .freebirdFormviewerViewFormContent, [role='listitem'], .Qr7Oae, [jsname='OCpkoe'], [jsname='M2UYVd']",
+        { timeout: 15_000 },
       )
       .catch(() => undefined);
 
-    // Shell cards appear before questions/nav hydrate. On serverless Chromium
-    // this gap is often several seconds — capturing too early yields an empty
-    // form with no Next button (looks like "1 of 100 pages" in the UI).
-    const budgetMs = isServerlessCaptureRuntime() ? 28_000 : 10_000;
+    // Shell cards + "1/N페이지" SSR text appear before the client viewer hydrates.
+    // Serverless Chromium must wait for jsname nav (locale-safe) or interactive fields.
+    const budgetMs = isServerlessCaptureRuntime() ? 35_000 : 12_000;
     const deadline = Date.now() + budgetMs;
     let hydrated = false;
     while (Date.now() < deadline) {
       const state = await page
-        .evaluate(() => {
-          const navRe =
-            /^(다음|다음\s*페이지|계속|다음으로|시작하기|시작|설문\s*시작|참여하기|제출|보내기|완료|next|continue|start|submit|send)$/i;
-          const navSoft =
-            /(다음\s*페이지|다음으로|시작하기|설문\s*시작|응답\s*제출|확인\s*및\s*제출|\bnext\b|\bsubmit\b|\bcontinue\b|^다음$|^제출$|^시작$)/i;
-          const buttons = Array.from(
+        .evaluate((nextName, submitName) => {
+          const hasJsNav = Boolean(
+            document.querySelector(`[jsname="${nextName}"], [jsname="${submitName}"]`),
+          );
+          const interactive = document.querySelector(
+            '[role="radio"], [role="checkbox"], input:not([type="hidden"]), textarea, [role="listbox"], [role="combobox"]',
+          );
+          const titleEls = Array.from(
             document.querySelectorAll<HTMLElement>(
-              'button, a, [role="button"], div[role="button"], span[role="button"]',
+              ".freebirdFormviewerComponentsQuestionBaseTitle, .M7eMe",
             ),
           );
-          let hasNav = false;
-          for (const el of buttons) {
-            const label = (
-              el.innerText ||
-              el.getAttribute("aria-label") ||
-              ""
-            )
-              .replace(/\s+/g, " ")
-              .trim();
-            if (!label || label.length > 60) continue;
-            const rect = el.getBoundingClientRect();
-            if (rect.width < 2 || rect.height < 2) continue;
-            if (navRe.test(label) || navSoft.test(label)) {
-              hasNav = true;
-              break;
-            }
-          }
-
-          let visibleCopy = 0;
-          for (const el of Array.from(
-            document.querySelectorAll<HTMLElement>(
-              ".freebirdFormviewerComponentsQuestionBaseTitle, .M7eMe, [role='listitem'], .Qr7Oae",
-            ),
-          )) {
+          let visibleTitles = 0;
+          for (const el of titleEls) {
             const text = (el.innerText || "").replace(/\s+/g, " ").trim();
             const rect = el.getBoundingClientRect();
             if (text.length >= 2 && rect.width > 2 && rect.height > 2) {
-              visibleCopy += 1;
+              visibleTitles += 1;
             }
           }
-          return { hasNav, visibleCopy };
-        })
-        .catch(() => ({ hasNav: false, visibleCopy: 0 }));
+          const bodyLen = (document.body?.innerText || "").replace(/\s+/g, " ")
+            .trim().length;
+          return {
+            hasJsNav,
+            hasInteractive: Boolean(interactive),
+            visibleTitles,
+            bodyLen,
+          };
+        }, GOOGLE_NEXT_JSNAME, GOOGLE_SUBMIT_JSNAME)
+        .catch(() => ({
+          hasJsNav: false,
+          hasInteractive: false,
+          visibleTitles: 0,
+          bodyLen: 0,
+        }));
 
-      if (state.hasNav && state.visibleCopy >= 1) {
+      if (
+        state.hasJsNav ||
+        (state.hasInteractive && state.visibleTitles >= 1) ||
+        state.visibleTitles >= 2
+      ) {
         hydrated = true;
         break;
       }
-      // Nav alone is enough to start walking; copy alone may still be shell text.
-      if (state.hasNav) {
-        hydrated = true;
-        break;
-      }
-      await sleep(500);
+      await sleep(400);
     }
 
     if (!hydrated && isServerlessCaptureRuntime()) {
-      // One reload helps when the first paint stays on an empty freebird shell.
       await page
-        .reload({ waitUntil: "domcontentloaded", timeout: 15_000 })
+        .reload({ waitUntil: "domcontentloaded", timeout: 20_000 })
         .catch(() => undefined);
       await page
-        .waitForNetworkIdle({ idleTime: 500, timeout: 8_000 })
+        .waitForNetworkIdle({ idleTime: 600, timeout: 12_000 })
         .catch(() => undefined);
-      const retryDeadline = Date.now() + 12_000;
+      const retryDeadline = Date.now() + 15_000;
       while (Date.now() < retryDeadline) {
-        const next = await findNextControl(page);
-        const submit = await findSubmitControl(page);
-        if (next || submit) {
-          if (next) await next.dispose().catch(() => undefined);
-          if (submit) await submit.dispose().catch(() => undefined);
+        const ready = await page
+          .evaluate(
+            (nextName, submitName) =>
+              Boolean(
+                document.querySelector(
+                  `[jsname="${nextName}"], [jsname="${submitName}"], [role="radio"], [role="checkbox"], textarea`,
+                ),
+              ),
+            GOOGLE_NEXT_JSNAME,
+            GOOGLE_SUBMIT_JSNAME,
+          )
+          .catch(() => false);
+        if (ready) {
+          hydrated = true;
           break;
         }
-        await sleep(500);
+        await sleep(400);
       }
     }
 
-    await sleep(isServerlessCaptureRuntime() ? 700 : 400);
+    await sleep(isServerlessCaptureRuntime() ? 900 : 400);
   },
 
   async getCurrentPageState(page: Page): Promise<FormPageState> {
@@ -310,11 +337,17 @@ export const googleFormsAdapter: FormCaptureAdapter = {
   },
 
   async findNextButton(page: Page): Promise<ElementHandle<Element> | null> {
-    return findNextControl(page);
+    return (
+      (await findNextControl(page)) ||
+      (await findGoogleJsnameButton(page, GOOGLE_NEXT_JSNAME))
+    );
   },
 
   async findSubmitButton(page: Page): Promise<ElementHandle<Element> | null> {
-    return findSubmitControl(page);
+    return (
+      (await findSubmitControl(page)) ||
+      (await findGoogleJsnameButton(page, GOOGLE_SUBMIT_JSNAME))
+    );
   },
 
   async clickNext(page: Page): Promise<PageTransitionResult> {
@@ -324,8 +357,8 @@ export const googleFormsAdapter: FormCaptureAdapter = {
     } catch {
       before = page.url();
     }
-    const submit = await findSubmitControl(page);
-    const next = await findNextControl(page);
+    const submit = await googleFormsAdapter.findSubmitButton(page);
+    const next = await googleFormsAdapter.findNextButton(page);
 
     // Prefer Next when both exist (multi-section forms)
     if (!next && submit) {
@@ -334,7 +367,10 @@ export const googleFormsAdapter: FormCaptureAdapter = {
     }
     if (submit) await submit.dispose().catch(() => undefined);
 
-    const clicked = await clickMarkedOrHandle(page, next);
+    let clicked = await clickMarkedOrHandle(page, next);
+    if (!clicked) {
+      clicked = await clickGoogleJsname(page, GOOGLE_NEXT_JSNAME);
+    }
     if (!clicked) return "none";
 
     try {
