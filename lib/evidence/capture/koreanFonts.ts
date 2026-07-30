@@ -175,27 +175,26 @@ export async function applyKoreanFontFaceToEvidencePage(
   })();
   if (!regular) return false;
 
-  const hangulRange =
-    "U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF";
   const css = [
-    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:400;font-display:block;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
-    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:700;font-display:block;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
-    `html,body{font-family:'SURECheckKR','Noto Sans KR',sans-serif !important;color:#202124 !important;}`,
-    `h1,h2,h3,p,li,div,span,button,label{font-family:'SURECheckKR','Noto Sans KR',sans-serif !important;color:inherit !important;}`,
+    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:400;font-display:block;src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
+    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:700;font-display:block;src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
+    `html,body{font-family:'SURECheckKR',sans-serif !important;color:#111 !important;}`,
+    `h1,h2,h3,p,li,div,span,button,label{font-family:'SURECheckKR',sans-serif !important;color:#111 !important;}`,
   ].join("\n");
 
   await page.addStyleTag({ content: css }).catch(() => undefined);
-  await page
+  const loaded = await page
     .evaluate(async () => {
       try {
         await document.fonts.load('400 16px "SURECheckKR"');
         await document.fonts.load('700 16px "SURECheckKR"');
         await document.fonts.ready;
+        return document.fonts.check('400 16px "SURECheckKR"');
       } catch {
-        /* ignore */
+        return false;
       }
     })
-    .catch(() => undefined);
-  await new Promise((r) => setTimeout(r, 200));
-  return true;
+    .catch(() => false);
+  await new Promise((r) => setTimeout(r, 250));
+  return Boolean(loaded);
 }

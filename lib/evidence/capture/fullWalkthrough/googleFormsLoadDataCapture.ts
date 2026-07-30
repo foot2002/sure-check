@@ -368,21 +368,37 @@ export async function captureGoogleFormsViaLoadData(input: {
     const fontOk = await applyKoreanFontFaceToEvidencePage(page);
     if (!fontOk) {
       limitations.push(
-        "경고: 서버에서 한글 폰트 파일을 찾지 못했습니다. 화면 글자가 비어 보일 수 있습니다.",
+        "경고: 서버에서 한글 폰트 파일을 찾지 못했거나 로드에 실패했습니다. 화면 글자가 비어 보일 수 있습니다.",
       );
     }
 
     for (let i = 0; i < maxPages; i += 1) {
       const section = form.pages[i];
       const bodyHtml = buildGoogleFormsEvidenceBody(form, section);
-      await page.evaluate((html) => {
+      const painted = await page.evaluate((html) => {
         const root = document.getElementById("root");
         if (root) root.innerHTML = html;
         document.title = (
           document.querySelector("h1")?.textContent || "Google Forms"
         ).slice(0, 120);
+        const sample = (document.body?.innerText || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 80);
+        const h2 = document.querySelector("h2");
+        const cs = h2 ? getComputedStyle(h2) : null;
+        return {
+          sample,
+          font: cs?.fontFamily || "",
+          color: cs?.color || "",
+        };
       }, bodyHtml);
-      await new Promise((r) => setTimeout(r, 120));
+      if (i === 0) {
+        limitations.push(
+          `증빙 렌더 확인: text="${painted.sample}" font=${painted.font} color=${painted.color}`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 150));
 
       const serverless = isServerlessCaptureRuntime();
       const ext = serverless ? "jpg" : "png";
