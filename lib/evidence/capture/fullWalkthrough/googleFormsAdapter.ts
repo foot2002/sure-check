@@ -11,6 +11,7 @@ import {
   waitForFingerprintChange,
   readBodyFingerprint,
 } from "@/lib/evidence/capture/fullWalkthrough/adapterUtils";
+import { isServerlessCaptureRuntime } from "@/lib/evidence/capture/captureConfig";
 import { fillTemporaryAnswers } from "@/lib/evidence/capture/fullWalkthrough/responseFiller";
 import { captureFullPage } from "@/lib/evidence/capture/screenshotCapture";
 import type {
@@ -163,7 +164,93 @@ export const googleFormsAdapter: FormCaptureAdapter = {
         { timeout: 10_000 },
       )
       .catch(() => undefined);
-    await sleep(400);
+
+    // Shell cards appear before questions/nav hydrate. On serverless Chromium
+    // this gap is often several seconds — capturing too early yields an empty
+    // form with no Next button (looks like "1 of 100 pages" in the UI).
+    const budgetMs = isServerlessCaptureRuntime() ? 28_000 : 10_000;
+    const deadline = Date.now() + budgetMs;
+    let hydrated = false;
+    while (Date.now() < deadline) {
+      const state = await page
+        .evaluate(() => {
+          const navRe =
+            /^(다음|다음\s*페이지|계속|다음으로|시작하기|시작|설문\s*시작|참여하기|제출|보내기|완료|next|continue|start|submit|send)$/i;
+          const navSoft =
+            /(다음\s*페이지|다음으로|시작하기|설문\s*시작|응답\s*제출|확인\s*및\s*제출|\bnext\b|\bsubmit\b|\bcontinue\b|^다음$|^제출$|^시작$)/i;
+          const buttons = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              'button, a, [role="button"], div[role="button"], span[role="button"]',
+            ),
+          );
+          let hasNav = false;
+          for (const el of buttons) {
+            const label = (
+              el.innerText ||
+              el.getAttribute("aria-label") ||
+              ""
+            )
+              .replace(/\s+/g, " ")
+              .trim();
+            if (!label || label.length > 60) continue;
+            const rect = el.getBoundingClientRect();
+            if (rect.width < 2 || rect.height < 2) continue;
+            if (navRe.test(label) || navSoft.test(label)) {
+              hasNav = true;
+              break;
+            }
+          }
+
+          let visibleCopy = 0;
+          for (const el of Array.from(
+            document.querySelectorAll<HTMLElement>(
+              ".freebirdFormviewerComponentsQuestionBaseTitle, .M7eMe, [role='listitem'], .Qr7Oae",
+            ),
+          )) {
+            const text = (el.innerText || "").replace(/\s+/g, " ").trim();
+            const rect = el.getBoundingClientRect();
+            if (text.length >= 2 && rect.width > 2 && rect.height > 2) {
+              visibleCopy += 1;
+            }
+          }
+          return { hasNav, visibleCopy };
+        })
+        .catch(() => ({ hasNav: false, visibleCopy: 0 }));
+
+      if (state.hasNav && state.visibleCopy >= 1) {
+        hydrated = true;
+        break;
+      }
+      // Nav alone is enough to start walking; copy alone may still be shell text.
+      if (state.hasNav) {
+        hydrated = true;
+        break;
+      }
+      await sleep(500);
+    }
+
+    if (!hydrated && isServerlessCaptureRuntime()) {
+      // One reload helps when the first paint stays on an empty freebird shell.
+      await page
+        .reload({ waitUntil: "domcontentloaded", timeout: 15_000 })
+        .catch(() => undefined);
+      await page
+        .waitForNetworkIdle({ idleTime: 500, timeout: 8_000 })
+        .catch(() => undefined);
+      const retryDeadline = Date.now() + 12_000;
+      while (Date.now() < retryDeadline) {
+        const next = await findNextControl(page);
+        const submit = await findSubmitControl(page);
+        if (next || submit) {
+          if (next) await next.dispose().catch(() => undefined);
+          if (submit) await submit.dispose().catch(() => undefined);
+          break;
+        }
+        await sleep(500);
+      }
+    }
+
+    await sleep(isServerlessCaptureRuntime() ? 700 : 400);
   },
 
   async getCurrentPageState(page: Page): Promise<FormPageState> {
@@ -182,16 +269,20 @@ export const googleFormsAdapter: FormCaptureAdapter = {
         const m = text.match(re);
         if (!m) continue;
         const total = Number(m[2]);
-        if (Number.isFinite(total) && total > 1) return total;
+        if (Number.isFinite(total) && total > 1 && total < 100) return total;
       }
-      // Progressbar aria often exposes valuemax as section count on some themes
+      // Google Forms progressbar aria-valuemax is usually 100 (= percent scale),
+      // not section count. Only trust non-100 maxima as section hints.
       const bar = document.querySelector('[role="progressbar"]');
       const max = Number(bar?.getAttribute("aria-valuemax"));
-      if (Number.isFinite(max) && max > 1 && max <= 100) return max;
+      if (Number.isFinite(max) && max > 1 && max < 100) return max;
       return null;
     });
     if (fromDom != null) return fromDom;
     const state = await buildBasePageState(page, "google_forms");
+    if (state.totalPageHint != null && state.totalPageHint >= 100) {
+      return null;
+    }
     return state.totalPageHint;
   },
 

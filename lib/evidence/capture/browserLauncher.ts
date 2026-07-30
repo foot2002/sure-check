@@ -56,6 +56,8 @@ async function launchServerlessChromium(options?: {
       "--disable-dev-shm-usage",
       "--font-render-hinting=none",
       "--hide-scrollbars",
+      // Reduce empty Google Forms shells on datacenter Chromium.
+      "--disable-blink-features=AutomationControlled",
     ],
     defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
     executablePath,

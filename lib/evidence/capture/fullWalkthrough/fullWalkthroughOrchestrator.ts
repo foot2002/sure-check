@@ -537,6 +537,15 @@ export async function runFullWalkthroughOrchestrator(input: {
 
     await adapter.waitForReady(page);
     expectedPageCount = await adapter.estimateExpectedPageCount(page);
+    // Guard: Google Forms percent progress (aria-valuemax=100) must never be
+    // treated as a 100-section survey.
+    if (
+      provider === "google_forms" &&
+      expectedPageCount != null &&
+      expectedPageCount >= 100
+    ) {
+      expectedPageCount = null;
+    }
     sectionProgressTotal = expectedPageCount;
     syncShared();
 

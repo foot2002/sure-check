@@ -3,6 +3,7 @@ import {
   CAPTURE_NETWORK_IDLE_MS,
   CAPTURE_PAGE_LOAD_TIMEOUT_MS,
   CAPTURE_SETTLE_MS,
+  isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
 import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 
@@ -27,9 +28,25 @@ export async function installEvaluateNameHelper(page: Page): Promise<void> {
 
 export async function prepareCapturePage(page: Page): Promise<void> {
   await installEvaluateNameHelper(page);
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SURECheckEvidenceCapture/1.0",
-  );
+  // Stock Chrome UA on serverless — a custom suffix can keep Google Forms on
+  // an empty freebird shell (no questions / Next) from datacenter IPs.
+  const ua = isServerlessCaptureRuntime()
+    ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SURECheckEvidenceCapture/1.0";
+  await page.setUserAgent(ua);
+  if (isServerlessCaptureRuntime()) {
+    await page
+      .evaluateOnNewDocument(() => {
+        try {
+          Object.defineProperty(navigator, "webdriver", {
+            get: () => undefined,
+          });
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => undefined);
+  }
 }
 
 export async function gotoSurveyPage(
@@ -53,11 +70,21 @@ export async function gotoSurveyPage(
     await page
       .waitForNetworkIdle({
         idleTime: 400,
-        timeout: CAPTURE_NETWORK_IDLE_MS,
+        timeout: isServerlessCaptureRuntime()
+          ? Math.max(CAPTURE_NETWORK_IDLE_MS, 6_000)
+          : CAPTURE_NETWORK_IDLE_MS,
       })
       .catch(() => undefined);
-    await sleep(CAPTURE_SETTLE_MS);
-    await applyKoreanFontsToPage(page);
+    await sleep(
+      isServerlessCaptureRuntime()
+        ? Math.max(CAPTURE_SETTLE_MS, 900)
+        : CAPTURE_SETTLE_MS,
+    );
+    // Defer Hangul font injection until after Google Forms hydrates when possible;
+    // injecting huge CSS on an empty shell can slow first paint on serverless.
+    if (!/docs\.google\.com\/forms|forms\.gle/i.test(url)) {
+      await applyKoreanFontsToPage(page);
+    }
 
     if (/moaform\.com|surveyl\.ink/i.test(url)) {
       await page
