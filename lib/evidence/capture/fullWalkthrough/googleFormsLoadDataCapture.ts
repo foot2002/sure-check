@@ -211,9 +211,12 @@ export function buildGoogleFormsEvidenceHtml(
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${escapeHtml(form.formTitle)} — ${page.pageNumber}/${total}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#d0e2ff;color:#202124;font-family:'SURECheckKR','Noto Sans KR','Malgun Gothic',sans-serif}
+body{margin:0;background:#d0e2ff;color:#202124;font-family:'Noto Sans KR','Malgun Gothic',sans-serif}
 .wrap{max-width:740px;margin:0 auto;padding:24px 16px 48px}
 .hero{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.08);margin-bottom:14px}
 .hero .bar{height:10px;background:#673ab7}
@@ -354,10 +357,20 @@ export async function captureGoogleFormsViaLoadData(input: {
         waitUntil: "domcontentloaded",
         timeout: 20_000,
       });
-      // Inject Hangul faces after setContent (not embedded in HTML) to avoid
-      // crashing single-process Chromium with repeated ~0.7MB CSS payloads.
+      // Prefer CDN Noto Sans KR for reconstructed pages; fall back to embedded.
+      await page
+        .evaluate(async () => {
+          try {
+            await document.fonts.load('400 16px "Noto Sans KR"');
+            await document.fonts.load('700 16px "Noto Sans KR"');
+            await document.fonts.ready;
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => undefined);
       await applyKoreanFontsToPage(page);
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 250));
       const shot = await captureFullPage(
         page,
         section.pageNumber,
