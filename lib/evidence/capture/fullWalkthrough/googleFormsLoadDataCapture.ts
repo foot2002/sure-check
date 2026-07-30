@@ -5,7 +5,7 @@ import {
   isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
 import type { CaptureScreenshot } from "@/lib/evidence/capture/captureTypes";
-import { buildKoreanFontCss } from "@/lib/evidence/capture/koreanFonts";
+import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 import { captureFullPage } from "@/lib/evidence/capture/screenshotCapture";
 import type { CapturePageMeta } from "@/lib/evidence/capture/captureTypes";
 import { classifyQuestionRisk } from "@/lib/evidence/capture/pageQuestionScan";
@@ -181,7 +181,6 @@ export function buildGoogleFormsEvidenceHtml(
   form: GoogleLoadDataForm,
   page: GoogleLoadDataPage,
 ): string {
-  const fontCss = buildKoreanFontCss();
   const total = form.pages.length;
   const progressPct = Math.max(
     2,
@@ -213,7 +212,6 @@ export function buildGoogleFormsEvidenceHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${escapeHtml(form.formTitle)} — ${page.pageNumber}/${total}</title>
 <style>
-${fontCss}
 *{box-sizing:border-box}
 body{margin:0;background:#d0e2ff;color:#202124;font-family:'SURECheckKR','Noto Sans KR','Malgun Gothic',sans-serif}
 .wrap{max-width:740px;margin:0 auto;padding:24px 16px 48px}
@@ -356,7 +354,10 @@ export async function captureGoogleFormsViaLoadData(input: {
         waitUntil: "domcontentloaded",
         timeout: 20_000,
       });
-      await new Promise((r) => setTimeout(r, 200));
+      // Inject Hangul faces after setContent (not embedded in HTML) to avoid
+      // crashing single-process Chromium with repeated ~0.7MB CSS payloads.
+      await applyKoreanFontsToPage(page);
+      await new Promise((r) => setTimeout(r, 150));
       const shot = await captureFullPage(
         page,
         section.pageNumber,
