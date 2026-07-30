@@ -1,5 +1,10 @@
 import type { ScanRepository } from "@/lib/repositories/ScanRepository";
-import type { CreateScanJobInput, ScanJob, ScanReport, ScanStatus } from "@/lib/types/scan";
+import type {
+  CreateScanJobInput,
+  ScanJob,
+  ScanReport,
+  ScanStatus,
+} from "@/lib/types/scan";
 import { SCAN_STEPS } from "@/lib/types/scan";
 import {
   getFixtureByUrl,
@@ -16,37 +21,33 @@ function generateScanId(): string {
 }
 
 /**
- * Local-development mock only.
+ * Run diagnosis in the same request as createScanJob.
  *
- * This in-memory progress simulation runs after the API route has returned so
- * the prototype can show pending -> running -> completed states without a DB.
- * Serverless production runtimes do not guarantee this work will continue after
- * the response. Replace this path with Supabase scan_jobs + a separate Worker
- * before operating SURE Check as a real service.
+ * Previously: fire-and-forget + ~5.6s fake step delays. On Vercel that was both
+ * slow and unreliable (work could stop after the response; other isolates
+ * could not see in-memory jobs/reports).
  */
-async function simulateScanProgress(scanId: string): Promise<void> {
-  const stepDelay = 800;
-
-  await delay(stepDelay);
+async function runScanToCompletion(scanId: string): Promise<void> {
   mockStore.updateJob(scanId, {
     status: "running",
     currentStep: 1,
     stepLabel: SCAN_STEPS[0],
   });
 
-  for (let i = 1; i < SCAN_STEPS.length; i++) {
-    await delay(stepDelay);
-    mockStore.updateJob(scanId, {
-      currentStep: i + 1,
-      stepLabel: SCAN_STEPS[i],
-    });
-  }
-
-  await delay(stepDelay);
   const job = mockStore.getJob(scanId);
   if (!job) return;
 
+  // Advance step labels without artificial delays while extraction runs.
+  mockStore.updateJob(scanId, {
+    currentStep: 2,
+    stepLabel: SCAN_STEPS[1],
+  });
+
   try {
+    mockStore.updateJob(scanId, {
+      currentStep: 3,
+      stepLabel: SCAN_STEPS[2],
+    });
     const { report, jobStatus } = await resolveScanReport(scanId, job.formUrl);
     mockStore.saveReport(report);
     mockStore.updateJob(scanId, {
@@ -64,10 +65,6 @@ async function simulateScanProgress(scanId: string): Promise<void> {
       errorMessage: "진단 중 오류가 발생했습니다.",
     });
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class MockScanRepository implements ScanRepository {
@@ -100,12 +97,8 @@ export class MockScanRepository implements ScanRepository {
     };
 
     mockStore.saveJob(job);
-
-    // Local mock only; see simulateScanProgress. Production should enqueue work
-    // through a durable scan_jobs table and a Worker/Queue.
-    void simulateScanProgress(scanId);
-
-    return job;
+    await runScanToCompletion(scanId);
+    return mockStore.getJob(scanId) ?? job;
   }
 
   async getScanJob(scanId: string): Promise<ScanJob | null> {

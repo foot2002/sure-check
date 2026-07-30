@@ -3,18 +3,21 @@
 import { useCallback, useState } from "react";
 import { ArrowRight, Check, Copy, Link2, Loader2, X } from "lucide-react";
 import { ScanProgress } from "@/components/ScanProgress";
-import type { ScanJob } from "@/lib/types/scan";
+import type { ScanJob, ScanReport } from "@/lib/types/scan";
 import { copyToClipboard } from "@/lib/utils/copy";
 
 interface UrlScanFormProps {
   onScanStart?: () => void;
   onScanComplete: (scanId: string) => void;
+  /** Prefer this when /api/scan/start returns the report inline (Vercel-safe). */
+  onReportReady?: (report: ScanReport) => void;
   onUrlClear?: () => void;
 }
 
 export function UrlScanForm({
   onScanStart,
   onScanComplete,
+  onReportReady,
   onUrlClear,
 }: UrlScanFormProps) {
   const [url, setUrl] = useState("");
@@ -49,6 +52,30 @@ export function UrlScanForm({
       if (!res.ok) {
         setError(data.error ?? "진단을 시작할 수 없습니다.");
         setIsSubmitting(false);
+        return;
+      }
+
+      // Synchronous diagnosis: report comes back with /start (avoids lost
+      // in-memory state across Vercel isolates + removes poll round-trips).
+      if (data.report && onReportReady) {
+        setIsSubmitting(false);
+        onReportReady(data.report as ScanReport);
+        return;
+      }
+
+      if (
+        data.status === "completed" ||
+        data.status === "limited" ||
+        data.status === "failed"
+      ) {
+        setIsSubmitting(false);
+        if (data.status === "failed") {
+          setError(
+            (data.errorMessage as string) || "진단 중 오류가 발생했습니다.",
+          );
+          return;
+        }
+        onScanComplete(data.scanId as string);
         return;
       }
 

@@ -1,7 +1,7 @@
 import type { Browser, Page } from "puppeteer-core";
 import {
   CAPTURE_SERVERLESS_VIEWPORT,
-  EVIDENCE_FULL_MAX_PAGES,
+  evidenceFullMaxPages,
   isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
 import type {
@@ -345,9 +345,9 @@ export async function captureGoogleFormsViaLoadData(input: {
   }
 
   const maxPages = Math.min(
-    input.maxPages ?? EVIDENCE_FULL_MAX_PAGES,
+    input.maxPages ?? evidenceFullMaxPages(),
     form.pages.length,
-    EVIDENCE_FULL_MAX_PAGES,
+    evidenceFullMaxPages(),
   );
 
   const page = await input.browser.newPage();

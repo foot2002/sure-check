@@ -77,9 +77,12 @@ export async function gotoSurveyPage(
 
     await page
       .waitForNetworkIdle({
-        idleTime: isGoogleForms ? 800 : 400,
+        idleTime: isGoogleForms ? 800 : 300,
         timeout: isServerlessCaptureRuntime()
-          ? Math.max(CAPTURE_NETWORK_IDLE_MS, isGoogleForms ? 12_000 : 6_000)
+          ? Math.max(
+              CAPTURE_NETWORK_IDLE_MS,
+              isGoogleForms ? 8_000 : 3_500,
+            )
           : isGoogleForms
             ? Math.max(CAPTURE_NETWORK_IDLE_MS, 5_000)
             : CAPTURE_NETWORK_IDLE_MS,
@@ -87,7 +90,7 @@ export async function gotoSurveyPage(
       .catch(() => undefined);
     await sleep(
       isServerlessCaptureRuntime()
-        ? Math.max(CAPTURE_SETTLE_MS, isGoogleForms ? 1_200 : 900)
+        ? Math.max(CAPTURE_SETTLE_MS, isGoogleForms ? 800 : 450)
         : isGoogleForms
           ? Math.max(CAPTURE_SETTLE_MS, 700)
           : CAPTURE_SETTLE_MS,

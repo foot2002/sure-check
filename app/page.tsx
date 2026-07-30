@@ -153,6 +153,7 @@ export default function HomePage() {
                 <UrlScanForm
                   onScanStart={handleScanStart}
                   onScanComplete={handleScanComplete}
+                  onReportReady={handleFileScanComplete}
                   onUrlClear={handleClear}
                 />
               ) : (

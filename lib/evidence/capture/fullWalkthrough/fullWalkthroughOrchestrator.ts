@@ -4,7 +4,7 @@ import {
   CAPTURE_SETTLE_MS,
   CAPTURE_SERVERLESS_VIEWPORT,
   CAPTURE_VIEWPORT,
-  EVIDENCE_FULL_MAX_PAGES,
+  evidenceFullMaxPages,
   evidenceFullPageTimeoutMs,
   isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
@@ -617,8 +617,8 @@ export async function runFullWalkthroughOrchestrator(input: {
 
     const maxPages =
       provider === "generic"
-        ? Math.min(10, EVIDENCE_FULL_MAX_PAGES)
-        : EVIDENCE_FULL_MAX_PAGES;
+        ? Math.min(10, evidenceFullMaxPages())
+        : evidenceFullMaxPages();
 
     for (let pageNo = 1; pageNo <= maxPages; pageNo += 1) {
       const step = debug?.nextStep() ?? pageNo;

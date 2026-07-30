@@ -1,8 +1,13 @@
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
-const TIMEOUT_MS = 12_000;
+const IS_SERVERLESS = Boolean(
+  process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.AWS_EXECUTION_ENV,
+);
+const TIMEOUT_MS = IS_SERVERLESS ? 8_000 : 12_000;
 const MAX_BYTES = 2 * 1024 * 1024;
-const MAX_SPA_PAGES = 40;
+const MAX_SPA_PAGES = IS_SERVERLESS ? 24 : 40;
 const QOOM_CLIENT_VERSION = "20220808";
 const ANSWER_ORIGIN = "https://answer.moaform.com";
 

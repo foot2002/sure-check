@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getScanRepository } from "@/lib/repositories/MockScanRepository";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+/** Moaform SPA extraction can take a while on cold egress. */
+export const maxDuration = 120;
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -24,10 +29,16 @@ export async function POST(request: Request) {
 
     const repository = getScanRepository();
     const job = await repository.createScanJob({ formUrl });
+    // Return report in the same response so Vercel multi-isolate memory
+    // does not lose the result between /start and /report.
+    const report = await repository.getReport(job.scanId);
 
     return NextResponse.json({
       scanId: job.scanId,
       status: job.status,
+      stepLabel: job.stepLabel,
+      errorMessage: job.errorMessage,
+      report: report ?? null,
     });
   } catch {
     return NextResponse.json(

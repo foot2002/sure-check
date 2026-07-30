@@ -24,6 +24,25 @@ const BLOCKED_HOSTNAMES = new Set([
   "0.0.0.0",
 ]);
 
+/** Public survey hosts — skip DNS private-IP checks (saves RTT on Vercel). */
+const TRUSTED_PUBLIC_HOST_SUFFIXES = [
+  "docs.google.com",
+  "forms.gle",
+  "form.naver.com",
+  "survey-api.naver.com",
+  "naver.me",
+  "moaform.com",
+  "surveyl.ink",
+  "survey.pstatic.net",
+];
+
+function isTrustedPublicHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return TRUSTED_PUBLIC_HOST_SUFFIXES.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`),
+  );
+}
+
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map(Number);
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return false;
@@ -95,11 +114,13 @@ export async function safeUrlCheck(rawUrl: string): Promise<UrlSafetyResult> {
     return { safe: false, reason: "호스트명이 없습니다." };
   }
 
-  if (await hostnameResolvesToPrivateIp(parsed.hostname)) {
-    return {
-      safe: false,
-      reason: "localhost, 사설 IP, 또는 내부 네트워크 주소는 차단됩니다.",
-    };
+  if (!isTrustedPublicHostname(parsed.hostname)) {
+    if (await hostnameResolvesToPrivateIp(parsed.hostname)) {
+      return {
+        safe: false,
+        reason: "localhost, 사설 IP, 또는 내부 네트워크 주소는 차단됩니다.",
+      };
+    }
   }
 
   return { safe: true, normalizedUrl: parsed.toString() };

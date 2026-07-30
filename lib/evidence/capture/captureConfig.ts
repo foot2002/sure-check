@@ -17,15 +17,23 @@ export const EVIDENCE_FULL_CLIENT_TIMEOUT_MS = 185_000;
 export const EVIDENCE_FULL_PAGE_TIMEOUT_MS = 10_000;
 /**
  * Serverless Chromium is slower (cold start, full-page JPEG, Hangul fonts).
- * Must be high enough that page 1 capture + next doesn't abort the walk.
+ * Keep below prior 45s so a stuck page fails faster and the walk can finish.
  */
-export const EVIDENCE_FULL_PAGE_TIMEOUT_SERVERLESS_MS = 45_000;
+export const EVIDENCE_FULL_PAGE_TIMEOUT_SERVERLESS_MS = 28_000;
 export const EVIDENCE_FULL_MAX_PAGES = 50;
+/** Cap walk length on Vercel — response body + Chromium time dominate. */
+export const EVIDENCE_FULL_MAX_PAGES_SERVERLESS = 24;
 
 export function evidenceFullPageTimeoutMs(): number {
   return isServerlessCaptureRuntime()
     ? EVIDENCE_FULL_PAGE_TIMEOUT_SERVERLESS_MS
     : EVIDENCE_FULL_PAGE_TIMEOUT_MS;
+}
+
+export function evidenceFullMaxPages(): number {
+  return isServerlessCaptureRuntime()
+    ? EVIDENCE_FULL_MAX_PAGES_SERVERLESS
+    : EVIDENCE_FULL_MAX_PAGES;
 }
 
 /**
@@ -35,11 +43,11 @@ export function evidenceFullPageTimeoutMs(): number {
 export const CAPTURE_MAX_RESPONSE_BYTES = 3_600_000;
 
 /** JPEG quality on serverless to fit many pages under the body limit. */
-export const CAPTURE_SERVERLESS_JPEG_QUALITY = 52;
+export const CAPTURE_SERVERLESS_JPEG_QUALITY = 48;
 
 export const CAPTURE_SERVERLESS_VIEWPORT = {
-  width: 1280,
-  height: 1100,
+  width: 1100,
+  height: 900,
 } as const;
 
 export function isServerlessCaptureRuntime(): boolean {

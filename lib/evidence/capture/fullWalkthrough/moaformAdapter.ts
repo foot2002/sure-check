@@ -37,7 +37,7 @@ const MOA_QUESTION_SELECTORS = [
 ];
 
 async function waitForMoaformRendered(page: Page): Promise<boolean> {
-  const budgetMs = isServerlessCaptureRuntime() ? 20_000 : 10_000;
+  const budgetMs = isServerlessCaptureRuntime() ? 12_000 : 10_000;
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
     const contexts = await getSearchContexts(page);
