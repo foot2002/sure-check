@@ -42,23 +42,55 @@ async function waitForNaverRendered(page: Page): Promise<boolean> {
   while (Date.now() < deadline) {
     const contexts = await getSearchContexts(page);
     for (const ctx of contexts) {
-      const ready = await ctx
-        .evaluate(() => {
-          const text = (document.body?.innerText || "").trim();
-          const hasQuestion = Boolean(
-            document.querySelector(
-              ".question_area, .questionnaire_item, [class*='question'], input, textarea, select, [role='radio'], label",
-            ),
-          );
-          const hasButton = Array.from(
-            document.querySelectorAll("button, [role='button'], a"),
-          ).some((el) => {
-            const t = ((el as HTMLElement).innerText || "").trim();
-            return /다음|계속|제출|응답|완료|시작/i.test(t);
-          });
-          return text.length > 40 && (hasQuestion || hasButton);
-        })
-        .catch(() => false);
+          const ready = await ctx
+            .evaluate(() => {
+              const skeletons = Array.from(
+                document.querySelectorAll(
+                  '[class*="skeleton"], [class*="Skeleton"], [class*="placeholder"]',
+                ),
+              ).filter((el) => {
+                const style = window.getComputedStyle(el as HTMLElement);
+                const rect = (el as HTMLElement).getBoundingClientRect();
+                return (
+                  rect.width > 20 &&
+                  rect.height > 8 &&
+                  style.display !== "none" &&
+                  style.visibility !== "hidden" &&
+                  style.opacity !== "0"
+                );
+              });
+              if (skeletons.length >= 3) return false;
+
+              const text = (document.body?.innerText || "").trim();
+              const hasQuestion = Boolean(
+                document.querySelector(
+                  ".question_area, .questionnaire_item, [class*='question'], input, textarea, select, [role='radio'], label",
+                ),
+              );
+              const titleText = Array.from(
+                document.querySelectorAll(
+                  ".question_title, .question_area .title, .questionnaire_item .title, h2, h3",
+                ),
+              )
+                .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+                .filter((t) => t.length > 4);
+              const hasButton = Array.from(
+                document.querySelectorAll("button, [role='button'], a"),
+              ).some((el) => {
+                const t = ((el as HTMLElement).innerText || "").trim();
+                const cls = String((el as HTMLElement).className || "");
+                return (
+                  /다음|계속|제출|응답|완료|시작/i.test(t) ||
+                  /btn_|submit|Submit|Button/i.test(cls)
+                );
+              });
+              return (
+                text.length > 40 &&
+                hasQuestion &&
+                (titleText.length >= 1 || hasButton)
+              );
+            })
+            .catch(() => false);
       if (ready) {
         await sleep(400);
         return true;
@@ -101,6 +133,146 @@ async function readNaverPercent(page: Page): Promise<number | null> {
   });
 }
 
+async function findNaverPrimaryCta(
+  page: Page,
+  kind: "next" | "submit",
+): Promise<ElementHandle<Element> | null> {
+  const contexts = await getSearchContexts(page);
+  for (const ctx of contexts) {
+    const marked = await ctx
+      .evaluate((want) => {
+        document
+          .querySelectorAll("[data-sure-naver-cta]")
+          .forEach((el) => el.removeAttribute("data-sure-naver-cta"));
+
+        const isDisabled = (el: HTMLElement) => {
+          const cls = String(el.className || "");
+          return (
+            el.hasAttribute("disabled") ||
+            el.getAttribute("aria-disabled") === "true" ||
+            /(?:^|\s)(?:is-)?disabled(?:\s|$)/i.test(cls) ||
+            Boolean((el as HTMLButtonElement).disabled)
+          );
+        };
+
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "button, a, [role='button'], input[type='button'], input[type='submit'], .btn, [class*='btn_'], [class*='Button'], [class*='submit'], [class*='Submit']",
+          ),
+        );
+
+        const scored: Array<{ el: HTMLElement; score: number }> = [];
+        for (const el of candidates) {
+          const label = (
+            el.innerText ||
+            el.getAttribute("aria-label") ||
+            el.getAttribute("title") ||
+            (el as HTMLInputElement).value ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim();
+          const cls = String(el.className || "");
+          const style = window.getComputedStyle(el);
+          if (
+            style.display === "none" ||
+            style.visibility === "hidden" ||
+            style.opacity === "0" ||
+            style.pointerEvents === "none"
+          ) {
+            continue;
+          }
+          const rect = el.getBoundingClientRect();
+          if (rect.width < 20 || rect.height < 18) continue;
+          if (isDisabled(el) && want === "next") continue;
+          if (/이전|뒤로|back|prev|로그인|login/i.test(label)) continue;
+          if (/^(\.\.\.|···|⋯)$/.test(label)) continue;
+
+          const looksSubmit =
+            /제출|보내기|완료|응답하기|작성\s*완료|submit|send|finish|done/i.test(
+              label,
+            ) || /submit|Submit|btn_submit|btnSubmit/i.test(cls);
+          const looksNext =
+            /다음|계속|시작|참여|next|continue|start/i.test(label) ||
+            /btn_next|btnNext|next/i.test(cls);
+
+          let score = 0;
+          if (want === "submit") {
+            if (looksSubmit) score += 100;
+            else if (!label && rect.top > window.innerHeight * 0.45) score += 35;
+            else if (!looksNext && rect.top > window.innerHeight * 0.55) {
+              score += 15;
+            } else continue;
+          } else {
+            if (looksNext) score += 100;
+            else if (looksSubmit) continue;
+            else if (!label && rect.width >= 64) score += 20;
+            else continue;
+          }
+
+          if (/submit|Submit|btn_submit|primary|confirm/i.test(cls)) score += 20;
+          if (!label || label.length <= 2) {
+            // Icon / tofu label — prefer lower, wider CTAs.
+            score += Math.min(40, Math.floor(rect.top / 80));
+            if (rect.width >= 80) score += 10;
+          }
+          if (!isDisabled(el)) score += 10;
+
+          scored.push({ el, score });
+        }
+
+        scored.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return (
+            b.el.getBoundingClientRect().top - a.el.getBoundingClientRect().top
+          );
+        });
+        if (!scored[0] || scored[0].score < 25) return false;
+        scored[0].el.setAttribute("data-sure-naver-cta", "1");
+        return true;
+      }, kind)
+      .catch(() => false);
+
+    if (!marked) continue;
+    const handle = await ctx.$("[data-sure-naver-cta='1']");
+    if (handle) {
+      await ctx
+        .evaluate(() => {
+          document
+            .querySelectorAll("[data-sure-naver-cta]")
+            .forEach((el) => el.removeAttribute("data-sure-naver-cta"));
+        })
+        .catch(() => undefined);
+      return handle;
+    }
+  }
+  return null;
+}
+
+async function enhanceNaverTextVisibility(page: Page): Promise<void> {
+  await page
+    .evaluate(() => {
+      const style = document.createElement("style");
+      style.setAttribute("data-sure-naver-text", "1");
+      style.textContent = `
+        #content, .questionnaire, .question_area, .questionnaire_item,
+        .question_title, label, p, span, li, h1, h2, h3, button, a {
+          color: #111 !important;
+          -webkit-text-fill-color: #111 !important;
+          opacity: 1 !important;
+        }
+        [class*="skeleton"], [class*="Skeleton"], [class*="placeholder"] {
+          opacity: 0 !important;
+        }
+      `;
+      document
+        .querySelectorAll("[data-sure-naver-text]")
+        .forEach((n) => n.remove());
+      document.documentElement.appendChild(style);
+    })
+    .catch(() => undefined);
+}
+
 export const naverFormAdapter: FormCaptureAdapter = {
   provider: "naver_form",
 
@@ -127,6 +299,7 @@ export const naverFormAdapter: FormCaptureAdapter = {
     }
     // Deferred from goto — inject once after the shell is present.
     await applyKoreanFontsToPage(page).catch(() => undefined);
+    await enhanceNaverTextVisibility(page);
   },
 
   async getCurrentPageState(page: Page): Promise<FormPageState> {
@@ -162,6 +335,7 @@ export const naverFormAdapter: FormCaptureAdapter = {
     pageNumber: number,
   ): Promise<CaptureScreenshot> {
     await waitForNaverRendered(page);
+    await enhanceNaverTextVisibility(page);
     return captureFullPage(page, pageNumber, "evidence_full_walkthrough");
   },
 
@@ -172,19 +346,27 @@ export const naverFormAdapter: FormCaptureAdapter = {
   },
 
   async findNextButton(page: Page): Promise<ElementHandle<Element> | null> {
-    return findNextControl(page);
+    return (
+      (await findNextControl(page)) || (await findNaverPrimaryCta(page, "next"))
+    );
   },
 
   async findSubmitButton(page: Page): Promise<ElementHandle<Element> | null> {
-    return findSubmitControl(page);
+    return (
+      (await findSubmitControl(page)) ||
+      (await findNaverPrimaryCta(page, "submit"))
+    );
   },
 
   async clickNext(page: Page): Promise<PageTransitionResult> {
     const before = await readBodyFingerprint(page);
     const beforeHash = await naverPageHash(page);
     const beforePct = await readNaverPercent(page);
-    const next = await findNextControl(page);
-    const submit = await findSubmitControl(page);
+    const next =
+      (await findNextControl(page)) || (await findNaverPrimaryCta(page, "next"));
+    const submit =
+      (await findSubmitControl(page)) ||
+      (await findNaverPrimaryCta(page, "submit"));
 
     if (!next && submit) {
       await submit.dispose().catch(() => undefined);

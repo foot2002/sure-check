@@ -671,7 +671,7 @@ export async function runFullWalkthroughOrchestrator(input: {
         );
         await prepareCapturePage(page);
         await installSubmitRequestGuard(page, {
-          onBlocked: (_url) => {
+          onBlocked: () => {
             blockedSubmitRequestCount += 1;
           },
         });

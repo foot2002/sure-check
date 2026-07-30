@@ -57,9 +57,9 @@ export const NEXT_LABEL_SOFT =
 export const FORBIDDEN_NAV_LABEL =
   /제출|보내기|완료|등록하기|확인\s*및\s*제출|응답\s*제출|완료하기|submit|send|finish|done|로그인|login|sign\s*in|이전|뒤로|back|prev|초기화|이동중|loading/i;
 export const SUBMIT_LABEL =
-  /^(제출|보내기|완료|완료하기|응답\s*제출|확인\s*및\s*제출|submit|send|finish|done)$/i;
+  /^(제출|제출하기|보내기|완료|완료하기|응답\s*제출|응답하기|작성\s*완료|확인\s*및\s*제출|submit|send|finish|done)$/i;
 export const SUBMIT_LABEL_SOFT =
-  /(제출|보내기|완료하기|응답\s*제출|확인\s*및\s*제출|\bsubmit\b|\bsend\b|\bfinish\b|\bdone\b)/i;
+  /(제출하기|응답하기|작성\s*완료|응답\s*제출|확인\s*및\s*제출|보내기|완료하기|\bsubmit\b|\bsend\b|\bfinish\b|\bdone\b|제출)/i;
 export const VALIDATION_ERROR =
   /이\s*질문은\s*필수|필수\s*항목입니다|필수\s*응답|답변해\s*주세요|입력해\s*주세요|선택해\s*주세요|작성해\s*주세요|this\s*is\s*a\s*required|required\s*question|please\s*(answer|fill|select)|captcha|로봇이\s*아닙니다|로그인/i;
 
