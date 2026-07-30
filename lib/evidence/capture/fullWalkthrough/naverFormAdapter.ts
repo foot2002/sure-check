@@ -22,7 +22,7 @@ import type {
 } from "@/lib/evidence/capture/fullWalkthrough/pageState";
 import type { CaptureScreenshot } from "@/lib/evidence/capture/captureTypes";
 import { isServerlessCaptureRuntime } from "@/lib/evidence/capture/captureConfig";
-import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
+import { applyKoreanFontFaceToEvidencePage, applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 
 const NAVER_QUESTION_SELECTORS = [
   ".question_title",
@@ -199,14 +199,19 @@ async function findNaverPrimaryCta(
           let score = 0;
           if (want === "submit") {
             if (looksSubmit) score += 100;
-            else if (!label && rect.top > window.innerHeight * 0.45) score += 35;
-            else if (!looksNext && rect.top > window.innerHeight * 0.55) {
-              score += 15;
+            else if (!label && rect.top > window.innerHeight * 0.45) score += 45;
+            else if (
+              !looksNext &&
+              /btn_|Button|primary|confirm/i.test(cls) &&
+              rect.top > window.innerHeight * 0.4
+            ) {
+              score += 30;
             } else continue;
           } else {
+            // Next: require an explicit next label/class — unlabeled bottom
+            // CTAs on single-page Naver forms are almost always Submit.
+            if (looksSubmit) continue;
             if (looksNext) score += 100;
-            else if (looksSubmit) continue;
-            else if (!label && rect.width >= 64) score += 20;
             else continue;
           }
 
@@ -250,27 +255,38 @@ async function findNaverPrimaryCta(
 }
 
 async function enhanceNaverTextVisibility(page: Page): Promise<void> {
+  if (isServerlessCaptureRuntime()) {
+    await applyKoreanFontFaceToEvidencePage(page).catch(() => false);
+  }
   await page
     .evaluate(() => {
       const style = document.createElement("style");
       style.setAttribute("data-sure-naver-text", "1");
       style.textContent = `
         #content, .questionnaire, .question_area, .questionnaire_item,
-        .question_title, label, p, span, li, h1, h2, h3, button, a {
+        .question_title, label, p, span, li, h1, h2, h3, button, a, input, textarea {
           color: #111 !important;
           -webkit-text-fill-color: #111 !important;
           opacity: 1 !important;
+          visibility: visible !important;
+          font-family: 'SURECheckKR','Noto Sans KR','Malgun Gothic',sans-serif !important;
         }
-        [class*="skeleton"], [class*="Skeleton"], [class*="placeholder"] {
-          opacity: 0 !important;
+        [class*="skeleton"], [class*="Skeleton"] {
+          display: none !important;
         }
       `;
       document
         .querySelectorAll("[data-sure-naver-text]")
         .forEach((n) => n.remove());
       document.documentElement.appendChild(style);
+      try {
+        void document.fonts.load('400 16px "SURECheckKR"');
+      } catch {
+        /* ignore */
+      }
     })
     .catch(() => undefined);
+  await sleep(200);
 }
 
 export const naverFormAdapter: FormCaptureAdapter = {
