@@ -1,14 +1,28 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { createRequire } from "module";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import type { Page } from "puppeteer-core";
 import { isServerlessCaptureRuntime } from "@/lib/evidence/capture/captureConfig";
 
 let cachedCss: string | null = null;
 let systemFontsReady = false;
 
+const requireFromHere = createRequire(__filename);
+
 function resolveFontsourceDir(): string | null {
-  const candidates = [
+  const candidates: string[] = [];
+
+  try {
+    const pkg = requireFromHere.resolve(
+      "@fontsource/noto-sans-kr/package.json",
+    );
+    candidates.push(join(dirname(pkg), "files"));
+  } catch {
+    // package may be traced without package.json resolve in some runtimes
+  }
+
+  candidates.push(
     join(
       process.cwd(),
       "node_modules",
@@ -25,7 +39,16 @@ function resolveFontsourceDir(): string | null {
       "noto-sans-kr",
       "files",
     ),
-  ];
+    join(
+      process.cwd(),
+      ".next",
+      "node_modules",
+      "@fontsource",
+      "noto-sans-kr",
+      "files",
+    ),
+  );
+
   return candidates.find((dir) => existsSync(dir)) ?? null;
 }
 
@@ -119,4 +142,46 @@ export async function applyKoreanFontsToPage(page: Page): Promise<void> {
     .catch(() => undefined);
 
   await new Promise((r) => setTimeout(r, 150));
+}
+
+/**
+ * Evidence HTML pages: inject only @font-face + body font-family (no freebird
+ * selector !important overrides that can hide Hangul when the face fails).
+ */
+export async function applyKoreanFontFaceToEvidencePage(
+  page: Page,
+): Promise<boolean> {
+  const regular = (() => {
+    // Force rebuild path lookup even if a previous empty cache exists.
+    const dir = resolveFontsourceDir();
+    if (!dir) return null;
+    const full = join(dir, "noto-sans-kr-korean-400-normal.woff2");
+    if (!existsSync(full)) return null;
+    return readFileSync(full).toString("base64");
+  })();
+  if (!regular) return false;
+
+  const hangulRange =
+    "U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF";
+  const css = [
+    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:400;font-display:block;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
+    `@font-face{font-family:'SURECheckKR';font-style:normal;font-weight:700;font-display:block;unicode-range:${hangulRange};src:url(data:font/woff2;base64,${regular}) format('woff2');}`,
+    `html,body{font-family:'SURECheckKR','Noto Sans KR',sans-serif !important;color:#202124 !important;}`,
+    `h1,h2,h3,p,li,div,span,button,label{font-family:'SURECheckKR','Noto Sans KR',sans-serif !important;color:inherit !important;}`,
+  ].join("\n");
+
+  await page.addStyleTag({ content: css }).catch(() => undefined);
+  await page
+    .evaluate(async () => {
+      try {
+        await document.fonts.load('400 16px "SURECheckKR"');
+        await document.fonts.load('700 16px "SURECheckKR"');
+        await document.fonts.ready;
+      } catch {
+        /* ignore */
+      }
+    })
+    .catch(() => undefined);
+  await new Promise((r) => setTimeout(r, 200));
+  return true;
 }

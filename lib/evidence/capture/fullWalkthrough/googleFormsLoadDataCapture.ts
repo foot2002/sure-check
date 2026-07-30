@@ -8,6 +8,7 @@ import type {
   CapturePageMeta,
   CaptureScreenshot,
 } from "@/lib/evidence/capture/captureTypes";
+import { applyKoreanFontFaceToEvidencePage } from "@/lib/evidence/capture/koreanFonts";
 import { classifyQuestionRisk } from "@/lib/evidence/capture/pageQuestionScan";
 import { formatKstDateTime } from "@/lib/evidence/sanitizeFilename";
 
@@ -218,6 +219,7 @@ export function buildGoogleFormsEvidenceHtml(
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#d0e2ff;color:#202124;font-family:'Noto Sans KR','Malgun Gothic',sans-serif}
+h1,h2,h3,p,li,div,span,button,label{color:#202124}
 .wrap{max-width:740px;margin:0 auto;padding:24px 16px 48px}
 .hero{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.08);margin-bottom:14px}
 .hero .bar{height:10px;background:#673ab7}
@@ -364,12 +366,16 @@ export async function captureGoogleFormsViaLoadData(input: {
       await page
         .waitForNetworkIdle({ idleTime: 500, timeout: 10_000 })
         .catch(() => undefined);
+      const fontOk = await applyKoreanFontFaceToEvidencePage(page);
       await page
         .evaluate(() => document.fonts.ready.catch(() => undefined))
         .catch(() => undefined);
       await new Promise((r) => setTimeout(r, 400));
-      // Do NOT call applyKoreanFontsToPage here — its !important SURECheckKR
-      // override hides Hangul when the embedded face fails on serverless.
+      if (!fontOk && screenshots.length === 0) {
+        limitations.push(
+          "경고: 서버에서 한글 폰트 파일을 찾지 못했습니다. 화면 글자가 비어 보일 수 있습니다.",
+        );
+      }
       const serverless = isServerlessCaptureRuntime();
       const ext = serverless ? "jpg" : "png";
       const raw = serverless
