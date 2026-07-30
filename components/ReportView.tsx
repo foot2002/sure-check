@@ -2,6 +2,7 @@ import { ShareActions } from "@/components/ShareActions";
 import { DetailedEvidenceSection } from "@/components/report/DetailedEvidenceSection";
 import { DeveloperDiagnosticsSection } from "@/components/report/DeveloperDiagnosticsSection";
 import { EvidenceActionPanel } from "@/components/report/EvidenceActionPanel";
+import { FilePreDeployReport } from "@/components/report/FilePreDeployReport";
 import { OperatorImprovementPanel } from "@/components/report/OperatorImprovementPanel";
 import { ReportAudienceZone } from "@/components/report/ReportAudienceZone";
 import { SurveySourceAppendix } from "@/components/report/SurveySourceAppendix";
@@ -9,6 +10,7 @@ import { UserSafetyReport } from "@/components/report/UserSafetyReport";
 import { InfoCallout } from "@/components/report/ui/InfoCallout";
 import { TrustNoticePanel } from "@/components/report/ui/TrustNoticePanel";
 import { composeAudienceReport } from "@/lib/reporting/composeAudienceReport";
+import { isFileSourceReport } from "@/lib/reporting/buildFilePreDeployReport";
 import type { ScanReport } from "@/lib/types/scan";
 
 interface ReportViewProps {
@@ -18,6 +20,62 @@ interface ReportViewProps {
 export function ReportView({ report }: ReportViewProps) {
   const audienceReport = composeAudienceReport(report);
   const showDeveloperDiagnostics = process.env.NODE_ENV === "development";
+  const isFileReport = isFileSourceReport(report);
+
+  if (isFileReport) {
+    return (
+      <div className="report-readable report-stack">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-teal-800">
+              SURE Check
+            </p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
+              설문파일 배포 전 진단 리포트
+            </h1>
+          </div>
+          <ShareActions report={report} variant="toolbar" />
+        </div>
+
+        {report.limitationReasons && report.limitationReasons.length > 0 && (
+          <InfoCallout title="진단 제한 안내" variant="warning">
+            <ul className="space-y-1">
+              {report.limitationReasons.map((reason, i) => (
+                <li key={i}>· {reason}</li>
+              ))}
+            </ul>
+          </InfoCallout>
+        )}
+
+        <FilePreDeployReport report={report} />
+
+        <ReportAudienceZone
+          variant="appendix"
+          label="부록"
+          title="추출 원문·상세 근거"
+          description="파일에서 읽은 문항·고지 원문과 세부 산출 근거입니다."
+        >
+          <DetailedEvidenceSection
+            report={report}
+            audienceReport={audienceReport}
+          />
+          <div className="report-subsection-ruled mt-4">
+            <SurveySourceAppendix
+              report={report}
+              audienceReport={audienceReport}
+            />
+          </div>
+        </ReportAudienceZone>
+
+        <div className="space-y-5 border-t border-slate-200 pt-2">
+          <TrustNoticePanel report={report} />
+          {showDeveloperDiagnostics ? (
+            <DeveloperDiagnosticsSection report={report} />
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="report-readable report-stack">
