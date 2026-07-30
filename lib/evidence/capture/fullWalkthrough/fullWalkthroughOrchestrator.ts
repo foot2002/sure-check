@@ -2,6 +2,7 @@ import type { Browser, Page } from "puppeteer-core";
 import { launchCaptureBrowser } from "@/lib/evidence/capture/browserLauncher";
 import {
   CAPTURE_SETTLE_MS,
+  CAPTURE_SERVERLESS_VIEWPORT,
   CAPTURE_VIEWPORT,
   EVIDENCE_FULL_MAX_PAGES,
   evidenceFullPageTimeoutMs,
@@ -471,8 +472,12 @@ export async function runFullWalkthroughOrchestrator(input: {
 
   try {
     browser = await launchCaptureBrowser({ headless: input.headless !== false });
-    const page: Page = await browser.newPage();
-    await page.setViewport(CAPTURE_VIEWPORT);
+    let page: Page = await browser.newPage();
+    await page.setViewport(
+      isServerlessCaptureRuntime()
+        ? CAPTURE_SERVERLESS_VIEWPORT
+        : CAPTURE_VIEWPORT,
+    );
     await prepareCapturePage(page);
     await installSubmitRequestGuard(page, {
       onBlocked: (url) => {
@@ -642,7 +647,45 @@ export async function runFullWalkthroughOrchestrator(input: {
       // 1) Capture BEFORE any temporary answers
       // (Do not start the per-page fill/next deadline until after capture —
       // serverless screenshot + Hangul fonts often exceed 10s alone.)
-      const shot = await adapter.captureCurrentPage(page, pageNo);
+      let shot: Awaited<ReturnType<FormCaptureAdapter["captureCurrentPage"]>>;
+      try {
+        shot = await adapter.captureCurrentPage(page, pageNo);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        const recoverable =
+          pageNo === 1 &&
+          Boolean(browser) &&
+          /Target closed|Session closed|Protocol error.*[Ss]creenshot/i.test(
+            message,
+          );
+        if (!recoverable || !browser) throw error;
+
+        // Serverless Chromium can kill the tab on the first Naver full-page
+        // raster. Recreate the page once and retry capture.
+        page = await browser.newPage();
+        await page.setViewport(
+          isServerlessCaptureRuntime()
+            ? CAPTURE_SERVERLESS_VIEWPORT
+            : CAPTURE_VIEWPORT,
+        );
+        await prepareCapturePage(page);
+        await installSubmitRequestGuard(page, {
+          onBlocked: (_url) => {
+            blockedSubmitRequestCount += 1;
+          },
+        });
+        const reloaded = await gotoSurveyPage(page, safety.normalizedUrl);
+        if (!reloaded.ok) throw error;
+        await adapter.waitForReady(page);
+        nextHandle = await adapter.findNextButton(page);
+        submitHandle = await adapter.findSubmitButton(page);
+        hasNext = Boolean(nextHandle);
+        hasSubmit = Boolean(submitHandle);
+        if (nextHandle) await nextHandle.dispose().catch(() => undefined);
+        if (submitHandle) await submitHandle.dispose().catch(() => undefined);
+        shot = await adapter.captureCurrentPage(page, pageNo);
+      }
       screenshots.push(shot);
       syncShared();
       const pageDeadline = Date.now() + evidenceFullPageTimeoutMs();

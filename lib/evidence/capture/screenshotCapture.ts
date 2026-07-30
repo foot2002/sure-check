@@ -39,6 +39,111 @@ export function captureLabelFor(
   };
 }
 
+function isTargetClosedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Target closed|Session closed|Protocol error.*[Ss]creenshot/i.test(
+    message,
+  );
+}
+
+async function expandScrollRegions(
+  page: Page,
+  serverless: boolean,
+): Promise<void> {
+  await page
+    .evaluate((serverlessMode) => {
+      // Naver Form uses #content.questionnaire as the app shell. Forcing
+      // height:auto there + fullPage screenshot crashes @sparticuz/chromium
+      // (Page.captureScreenshot → Target closed) on Vercel.
+      const selectors = serverlessMode
+        ? [
+            "html",
+            "body",
+            ".freebirdFormviewerViewFormCard",
+            ".freebirdFormviewerViewFormContent",
+            ".freebirdFormviewerViewResponsePage",
+            "[role='list']",
+            ".js-question",
+            ".question_area",
+            ".questionnaire_item",
+          ]
+        : [
+            "html",
+            "body",
+            ".freebirdFormviewerViewFormCard",
+            ".freebirdFormviewerViewFormContent",
+            ".freebirdFormviewerViewResponsePage",
+            "[role='list']",
+            ".js-question",
+            "#content",
+            ".questionnaire",
+            ".question_area",
+            ".questionnaire_item",
+          ];
+      for (const sel of selectors) {
+        for (const node of Array.from(document.querySelectorAll(sel))) {
+          const el = node as HTMLElement;
+          if (
+            el.closest(
+              ".freebirdFormviewerViewNavigationNavControls, .freebirdFormviewerViewNavigationButtons, [jsname='OCpkoe'], [jsname='M2UYVd']",
+            )
+          ) {
+            continue;
+          }
+          // Never mutate Naver's top-level questionnaire shell on serverless.
+          if (
+            serverlessMode &&
+            (el.id === "content" ||
+              /\bquestionnaire\b/i.test(el.className || ""))
+          ) {
+            continue;
+          }
+          el.style.setProperty("height", "auto", "important");
+          el.style.setProperty("max-height", "none", "important");
+          el.style.setProperty("overflow", "visible", "important");
+        }
+      }
+      void document.body?.offsetHeight;
+    }, serverless)
+    .catch(() => undefined);
+}
+
+async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
+  const quality = CAPTURE_SERVERLESS_JPEG_QUALITY;
+  const attempts: Array<{
+    fullPage: boolean;
+    captureBeyondViewport: boolean;
+  }> = [
+    // Prefer full page without beyond-viewport (less memory on single-process).
+    { fullPage: true, captureBeyondViewport: false },
+    { fullPage: false, captureBeyondViewport: false },
+  ];
+
+  let lastError: unknown;
+  for (const opts of attempts) {
+    try {
+      const raw = await page.screenshot({
+        type: "jpeg",
+        quality,
+        fullPage: opts.fullPage,
+        captureBeyondViewport: opts.captureBeyondViewport,
+      });
+      return Buffer.from(raw);
+    } catch (error) {
+      lastError = error;
+      if (!isTargetClosedError(error)) {
+        // Non-fatal protocol quirks: try next strategy.
+        continue;
+      }
+      // Target closed — page is dead; further attempts on same page will fail.
+      throw error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(String(lastError ?? "screenshot failed"));
+}
+
 export async function captureFullPage(
   page: Page,
   pageNo: number,
@@ -54,54 +159,18 @@ export async function captureFullPage(
   // resolved — capture still needs glyphs, but avoid collapsing Material buttons
   // before the orchestrator has re-checked Next.
   await applyKoreanFontsToPage(page);
+  await expandScrollRegions(page, serverless);
 
-  await page
-    .evaluate(() => {
-      const selectors = [
-        "html",
-        "body",
-        ".freebirdFormviewerViewFormCard",
-        ".freebirdFormviewerViewFormContent",
-        ".freebirdFormviewerViewResponsePage",
-        "[role='list']",
-        ".js-question",
-        "#content",
-        ".questionnaire",
-      ];
-      for (const sel of selectors) {
-        for (const node of Array.from(document.querySelectorAll(sel))) {
-          const el = node as HTMLElement;
-          // Do not force height on navigation chrome — it can zero-size Next.
-          if (
-            el.closest(
-              ".freebirdFormviewerViewNavigationNavControls, .freebirdFormviewerViewNavigationButtons, [jsname='OCpkoe'], [jsname='M2UYVd']",
-            )
-          ) {
-            continue;
-          }
-          el.style.setProperty("height", "auto", "important");
-          el.style.setProperty("max-height", "none", "important");
-          el.style.setProperty("overflow", "visible", "important");
-        }
-      }
-      void document.body?.offsetHeight;
-    })
-    .catch(() => undefined);
+  const buffer = serverless
+    ? await takeServerlessScreenshot(page)
+    : Buffer.from(
+        await page.screenshot({
+          type: "png",
+          fullPage: true,
+          captureBeyondViewport: true,
+        }),
+      );
 
-  const raw = serverless
-    ? await page.screenshot({
-        type: "jpeg",
-        quality: CAPTURE_SERVERLESS_JPEG_QUALITY,
-        fullPage: true,
-        captureBeyondViewport: true,
-      })
-    : await page.screenshot({
-        type: "png",
-        fullPage: true,
-        captureBeyondViewport: true,
-      });
-
-  const buffer = Buffer.from(raw);
   return {
     id:
       mode === "evidence_full_walkthrough"

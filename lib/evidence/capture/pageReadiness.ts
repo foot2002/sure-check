@@ -92,9 +92,10 @@ export async function gotoSurveyPage(
           ? Math.max(CAPTURE_SETTLE_MS, 700)
           : CAPTURE_SETTLE_MS,
     );
-    // Defer Hangul font injection until after Google Forms hydrates when possible;
-    // injecting huge CSS on an empty shell can slow first paint on serverless.
-    if (!isGoogleForms) {
+    // Defer Hangul injection for heavy SPAs — ~0.7MB CSS before paint can
+    // destabilize @sparticuz/chromium (esp. Naver Form #content shell).
+    const isNaverForm = /form\.naver\.com/i.test(url);
+    if (!isGoogleForms && !isNaverForm) {
       await applyKoreanFontsToPage(page);
     }
 
@@ -103,6 +104,16 @@ export async function gotoSurveyPage(
         .waitForSelector("button.AnswerButton", { timeout: 5_000 })
         .catch(() => undefined);
       await sleep(300);
+    }
+
+    if (isNaverForm) {
+      await page
+        .waitForSelector(
+          ".question_area, .questionnaire_item, #content.questionnaire, button, [role='button']",
+          { timeout: isServerlessCaptureRuntime() ? 8_000 : 4_000 },
+        )
+        .catch(() => undefined);
+      await sleep(isServerlessCaptureRuntime() ? 500 : 300);
     }
 
     return { ok: true, status };
