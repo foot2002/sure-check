@@ -8,7 +8,6 @@ import type {
   CapturePageMeta,
   CaptureScreenshot,
 } from "@/lib/evidence/capture/captureTypes";
-import { applyKoreanFontsToPage } from "@/lib/evidence/capture/koreanFonts";
 import { classifyQuestionRisk } from "@/lib/evidence/capture/pageQuestionScan";
 import { formatKstDateTime } from "@/lib/evidence/sanitizeFilename";
 
@@ -359,27 +358,20 @@ export async function captureGoogleFormsViaLoadData(input: {
         () => undefined,
       );
       await page.setContent(html, {
-        waitUntil: "load",
-        timeout: 30_000,
+        waitUntil: "networkidle0",
+        timeout: 25_000,
+      }).catch(async () => {
+        await page.setContent(html, {
+          waitUntil: "load",
+          timeout: 20_000,
+        });
       });
-      // External Noto Sans KR stylesheet needs an explicit fonts.ready wait.
       await page
-        .waitForFunction(
-          async () => {
-            try {
-              await document.fonts.load('400 16px "Noto Sans KR"');
-              await document.fonts.load('700 16px "Noto Sans KR"');
-              return document.fonts.check('400 16px "Noto Sans KR"');
-            } catch {
-              return false;
-            }
-          },
-          { timeout: 12_000 },
-        )
+        .evaluate(() => document.fonts.ready.catch(() => undefined))
         .catch(() => undefined);
-      await applyKoreanFontsToPage(page);
-      await new Promise((r) => setTimeout(r, 300));
-      // Skip captureFullPage overflow hacks — they are for live survey pages.
+      await new Promise((r) => setTimeout(r, 400));
+      // Do NOT call applyKoreanFontsToPage here — its !important SURECheckKR
+      // override hides Hangul when the embedded face fails on serverless.
       const serverless = isServerlessCaptureRuntime();
       const ext = serverless ? "jpg" : "png";
       const raw = serverless
