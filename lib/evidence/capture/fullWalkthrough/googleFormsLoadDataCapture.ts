@@ -375,29 +375,13 @@ export async function captureGoogleFormsViaLoadData(input: {
     for (let i = 0; i < maxPages; i += 1) {
       const section = form.pages[i];
       const bodyHtml = buildGoogleFormsEvidenceBody(form, section);
-      const painted = await page.evaluate((html) => {
+      await page.evaluate((html) => {
         const root = document.getElementById("root");
         if (root) root.innerHTML = html;
         document.title = (
           document.querySelector("h1")?.textContent || "Google Forms"
         ).slice(0, 120);
-        const sample = (document.body?.innerText || "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 80);
-        const h2 = document.querySelector("h2");
-        const cs = h2 ? getComputedStyle(h2) : null;
-        return {
-          sample,
-          font: cs?.fontFamily || "",
-          color: cs?.color || "",
-        };
       }, bodyHtml);
-      if (i === 0) {
-        limitations.push(
-          `증빙 렌더 확인: text="${painted.sample}" font=${painted.font} color=${painted.color}`,
-        );
-      }
       await new Promise((r) => setTimeout(r, 150));
 
       const serverless = isServerlessCaptureRuntime();
