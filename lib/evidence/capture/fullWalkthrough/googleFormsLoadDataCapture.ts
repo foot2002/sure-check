@@ -358,14 +358,12 @@ export async function captureGoogleFormsViaLoadData(input: {
         () => undefined,
       );
       await page.setContent(html, {
-        waitUntil: "networkidle0",
+        waitUntil: "load",
         timeout: 25_000,
-      }).catch(async () => {
-        await page.setContent(html, {
-          waitUntil: "load",
-          timeout: 20_000,
-        });
       });
+      await page
+        .waitForNetworkIdle({ idleTime: 500, timeout: 10_000 })
+        .catch(() => undefined);
       await page
         .evaluate(() => document.fonts.ready.catch(() => undefined))
         .catch(() => undefined);
