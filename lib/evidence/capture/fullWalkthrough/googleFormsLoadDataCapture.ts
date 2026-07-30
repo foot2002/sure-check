@@ -318,13 +318,15 @@ export async function captureGoogleFormsViaLoadData(input: {
     "문항·선택지 텍스트는 원본 Google Forms 데이터와 동일하며, 최종 제출은 수행하지 않았습니다.",
   ];
 
+  // Prefer fetch — avoids depending on a Trusted-Types-locked viewer document.
   const form =
+    (await fetchGoogleFormsLoadData(input.formUrl)) ||
     (input.existingPage
       ? await extractGoogleFormsLoadDataFromPage(
           input.existingPage,
           input.formUrl,
         )
-      : null) || (await fetchGoogleFormsLoadData(input.formUrl));
+      : null);
 
   if (!form || form.pages.length === 0) {
     throw new Error("Google Forms FB_PUBLIC_LOAD_DATA_를 파싱하지 못했습니다.");
@@ -336,7 +338,7 @@ export async function captureGoogleFormsViaLoadData(input: {
     EVIDENCE_FULL_MAX_PAGES,
   );
 
-  const page = input.existingPage || (await input.browser.newPage());
+  const page = await input.browser.newPage();
   if (isServerlessCaptureRuntime()) {
     await page.setViewport(CAPTURE_SERVERLESS_VIEWPORT).catch(() => undefined);
   }
@@ -344,24 +346,32 @@ export async function captureGoogleFormsViaLoadData(input: {
   const screenshots: CaptureScreenshot[] = [];
   const pageMetas: CapturePageMeta[] = [];
 
-  for (let i = 0; i < maxPages; i += 1) {
-    const section = form.pages[i];
-    const html = buildGoogleFormsEvidenceHtml(form, section);
-    await page.setContent(html, {
-      waitUntil: "domcontentloaded",
-      timeout: 20_000,
-    });
-    await new Promise((r) => setTimeout(r, 200));
-    const shot = await captureFullPage(
-      page,
-      section.pageNumber,
-      "evidence_full_walkthrough",
-    );
-    // Keep capturedUrl pointing at the real survey for evidence metadata.
-    shot.capturedUrl = input.formUrl;
-    shot.finalUrl = input.formUrl;
-    screenshots.push(shot);
-    pageMetas.push(questionsToMeta(section.pageNumber, shot, section.questions));
+  try {
+    for (let i = 0; i < maxPages; i += 1) {
+      const section = form.pages[i];
+      const html = buildGoogleFormsEvidenceHtml(form, section);
+      // Must use a blank page — Google Forms enforces Trusted Types and rejects
+      // setContent/document.write on the live viewer document.
+      await page.setContent(html, {
+        waitUntil: "domcontentloaded",
+        timeout: 20_000,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const shot = await captureFullPage(
+        page,
+        section.pageNumber,
+        "evidence_full_walkthrough",
+      );
+      // Keep capturedUrl pointing at the real survey for evidence metadata.
+      shot.capturedUrl = input.formUrl;
+      shot.finalUrl = input.formUrl;
+      screenshots.push(shot);
+      pageMetas.push(
+        questionsToMeta(section.pageNumber, shot, section.questions),
+      );
+    }
+  } finally {
+    await page.close().catch(() => undefined);
   }
 
   limitations.push(
