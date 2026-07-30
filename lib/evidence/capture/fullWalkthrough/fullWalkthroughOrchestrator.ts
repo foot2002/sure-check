@@ -5,6 +5,7 @@ import {
   CAPTURE_VIEWPORT,
   EVIDENCE_FULL_MAX_PAGES,
   evidenceFullPageTimeoutMs,
+  isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
 import {
   limitationCaptureFailed,
@@ -33,6 +34,9 @@ import {
 } from "@/lib/evidence/capture/fullWalkthrough/captureTrace";
 import { genericFormAdapter } from "@/lib/evidence/capture/fullWalkthrough/genericFormAdapter";
 import { googleFormsAdapter } from "@/lib/evidence/capture/fullWalkthrough/googleFormsAdapter";
+import {
+  captureGoogleFormsViaLoadData,
+} from "@/lib/evidence/capture/fullWalkthrough/googleFormsLoadDataCapture";
 import { moaformAdapter } from "@/lib/evidence/capture/fullWalkthrough/moaformAdapter";
 import { naverFormAdapter } from "@/lib/evidence/capture/fullWalkthrough/naverFormAdapter";
 import { installSubmitRequestGuard } from "@/lib/evidence/capture/fullWalkthrough/submitRequestGuard";
@@ -534,6 +538,54 @@ export async function runFullWalkthroughOrchestrator(input: {
     }
     syncShared();
     limitations.push(`설문도구: ${providerLabel(provider)}`);
+
+    // @sparticuz/chromium on Vercel cannot hydrate Google Forms freebird viewer
+    // (empty shell / no Next). Reconstruct pages from FB_PUBLIC_LOAD_DATA_.
+    if (provider === "google_forms" && isServerlessCaptureRuntime()) {
+      debug?.push({
+        step: debug.nextStep(),
+        provider,
+        pageNumber: 1,
+        url: page.url(),
+        action: "page_loaded",
+        reason: "serverless Google Forms — load-data capture",
+      });
+      const rebuilt = await captureGoogleFormsViaLoadData({
+        browser,
+        formUrl: safety.normalizedUrl,
+        existingPage: page,
+      });
+      for (const shot of rebuilt.screenshots) screenshots.push(shot);
+      for (const meta of rebuilt.pageMetas) pageMetas.push(meta);
+      limitations.push(...rebuilt.limitations);
+      expectedPageCount = rebuilt.form.pages.length;
+      sectionProgressTotal = rebuilt.form.pages.length;
+      reachedSubmitGate = true;
+      finalSubmitDetected = true;
+      stopReason = "submit_detected";
+      stopPage = rebuilt.screenshots.length;
+      syncShared();
+      return finalizeEvidence({
+        status: "success",
+        provider,
+        expectedPageCount,
+        sectionProgressTotal,
+        screenshots,
+        pageMetas,
+        limitations,
+        temporaryAnswersUsed: false,
+        finalSubmitDetected,
+        startedAt,
+        reachedSubmitGate,
+        timedOut: false,
+        stoppedEarly: false,
+        stopReason,
+        stopPage,
+        blockedSubmitRequestCount,
+        surveyUrl: safety.normalizedUrl,
+        debug,
+      });
+    }
 
     await adapter.waitForReady(page);
     expectedPageCount = await adapter.estimateExpectedPageCount(page);
