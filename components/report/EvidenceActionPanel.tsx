@@ -751,7 +751,7 @@ export function EvidenceActionPanel({
       ? sectionProgressTotal - capturableCountForUi
       : 0;
   const piiFileLabels = piiSensitiveScreenshotFiles.map((f) =>
-    f.replace(/^08_화면캡처\//, ""),
+    f.replace(/^0[28]_화면캡처\//, ""),
   );
 
   const sourceKind =
@@ -842,7 +842,7 @@ export function EvidenceActionPanel({
                   1차 화면 캡처 완료: {safeScreenshots.length || autoScreenshots.length}장
                 </p>
                 <p className="mt-0.5 text-sm text-slate-600">
-                  캡처 이미지는 신고용 증빙자료 ZIP에 함께 포함됩니다.
+                  캡처 이미지는 증빙 ZIP의 화면캡처 폴더에 포함됩니다.
                 </p>
               </>
             ) : null}
@@ -1218,8 +1218,9 @@ export function EvidenceActionPanel({
         </a>
       </div>
       <p className="text-sm leading-relaxed text-slate-500">
-        증빙자료는 신고기관 사실관계 확인을 위한 참고자료입니다. 최종 위법
-        여부는 개인정보보호위원회 또는 KISA 검토·조사 결과에 따릅니다.
+        ZIP 구성: ① 신고증빙 요약서(설문·법 문제·신고이유·증빙 요지, 브라우저에서
+        PDF로 저장) ② 화면 캡처 이미지. 최종 위법 여부는 개인정보보호위원회 또는
+        KISA 검토·조사 결과에 따릅니다.
       </p>
       {error ? (
         <p className="text-sm font-medium text-rose-700" role="alert">

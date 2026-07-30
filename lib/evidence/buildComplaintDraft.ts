@@ -33,6 +33,7 @@ export interface ComplaintDraftCaptureContext {
   captureAttempted?: boolean;
 }
 
+/** Compact report-reason text embedded in the single evidence summary document. */
 export function buildComplaintDraft(
   model: ReportEvidenceModel,
   capture: ComplaintDraftCaptureContext = {},
@@ -64,11 +65,11 @@ export function buildComplaintDraft(
     const followUps: string[] = [];
     if (publicLike) {
       followUps.push(
-        `다만 공공기관이 외부 설문도구인 ${tool}을 통해 ${detected} 등 직접식별정보를 수집하고 있어, 위탁 또는 외부도구 처리 기준, 원자료 접근권한, 보관 위치, 파기 방식, CSAP 등 공공부문 클라우드 보안 기준 충족 여부 확인이 필요해 보입니다.`,
+        `다만 공공기관이 외부 설문도구인 ${tool}을 통해 ${detected} 등 직접식별정보를 수집하고 있어, 위탁·원자료 접근권한·보관·파기·CSAP 등 공공부문 클라우드 보안 기준 충족 여부 확인이 필요해 보입니다.`,
       );
     } else {
       followUps.push(
-        `다만 외부 설문도구인 ${tool}을 통해 ${detected} 등을 수집하고 있어, 위탁 또는 외부도구 처리 기준, 원자료 접근권한, 보관·파기 기준 확인이 필요해 보입니다.`,
+        `다만 외부 설문도구인 ${tool}을 통해 ${detected} 등을 수집하고 있어, 위탁·원자료 접근권한·보관·파기 기준 확인이 필요해 보입니다.`,
       );
     }
     if (missingActionable.some((n) => /담당|문의/.test(n.item))) {
@@ -113,47 +114,23 @@ export function buildComplaintDraft(
   const autoCount = (capture.screenCaptureEvidence ?? []).filter(
     (c) => c.source === "auto_browser_capture",
   ).length;
-  const captureAttachmentNote =
+  const captureNote =
     autoCount > 0
-      ? "화면 캡처 자료"
+      ? `화면 캡처 ${autoCount}장 (02_화면캡처/)`
       : capture.captureAttempted
-        ? "화면 캡처 자료는 자동 수집되지 않았습니다."
-        : "08_화면캡처/ (있는 경우)";
-
-  const attachments = [
-    "00_읽어주세요.txt",
-    "01_신고내용_요약서.html",
-    "02_신고서_작성_초안.txt",
-    "03_탐지문항_목록.csv",
-    "04_개인정보_분류표.csv",
-    "05_고지문_확인결과.txt",
-    "06_법정책_검토근거.txt",
-    "07_원본추출자료/",
-    captureAttachmentNote,
-    "09_해시값_SHA256.txt",
-    "evidence-manifest.json",
-  ];
+        ? "화면 캡처는 자동 수집되지 않았습니다."
+        : "화면 캡처 없음";
 
   return [
-    "제목:",
-    title,
+    `제목: ${title}`,
     "",
-    "본문:",
     body,
     "",
-    "———",
     `설문 URL: ${model.surveyUrl || "(파일 진단)"}`,
     `진단일시(KST): ${model.generatedAtKst}`,
     `사용도구: ${model.toolName}`,
     `운영기관: ${model.operatorName}`,
     `탐지된 개인정보 항목: ${detected}`,
-    "",
-    "첨부자료 목록:",
-    ...attachments.map((item) => `- ${item}`),
-    "",
-    "참고:",
-    "이 문안은 SURE Check 자동 진단 결과를 바탕으로 한 신고 작성 참고용입니다.",
-    "최종 위법 여부는 개인정보보호위원회 또는 KISA의 검토·조사 결과에 따라 판단됩니다.",
-    "",
+    `첨부: 01_신고증빙_요약서.html, ${captureNote}`,
   ].join("\n");
 }

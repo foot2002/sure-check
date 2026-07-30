@@ -174,7 +174,9 @@ function finalizeEvidence(input: {
   const capturedPageCount = input.screenshots.length;
   const rawPiiFiles = collectPiiScreenshotFiles(input.pageMetas);
   const piiSensitiveScreenshotFiles = rawPiiFiles.map((f) =>
-    f.startsWith("08_") ? f : `08_화면캡처/${f}`,
+    f.startsWith("02_") || f.startsWith("08_")
+      ? f.replace(/^08_화면캡처\//, "02_화면캡처/")
+      : `02_화면캡처/${f}`,
   );
   const piiSensitivePagesCaptured = piiSensitiveScreenshotFiles.length > 0;
 

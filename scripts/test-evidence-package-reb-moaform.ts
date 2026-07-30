@@ -287,40 +287,34 @@ async function main() {
   const JSZip = (await import("jszip")).default;
   const zipBytes = await pkg.blob.arrayBuffer();
   const zip = await JSZip.loadAsync(zipBytes);
-  const htmlExcerpt = await zip
-    .file("07_원본추출자료/raw_public_html_excerpt.html")
-    ?.async("string");
-  assert(Boolean(htmlExcerpt), "html excerpt missing");
+  const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
+  console.log("zip entries:", names);
+
   assert(
-    !htmlExcerpt!.includes("placeholder"),
-    "html excerpt must not be placeholder",
+    names.includes("01_신고증빙_요약서.html"),
+    "summary html missing",
   );
   assert(
-    htmlExcerpt!.includes("설문조사 경품 지급"),
-    "html excerpt must include notice text",
+    names.every(
+      (n) =>
+        n === "01_신고증빙_요약서.html" || n.startsWith("02_화면캡처/"),
+    ),
+    "zip must only contain summary + screenshots",
   );
 
-  const jsonExcerpt = await zip
-    .file("07_원본추출자료/raw_embedded_json_excerpt.json")
-    ?.async("string");
-  assert(Boolean(jsonExcerpt), "json excerpt missing");
-  const parsed = JSON.parse(jsonExcerpt!) as {
-    totalQuestionCount: number;
-    detectedPersonalDataQuestionCount: number;
-  };
+  const summaryHtml = await zip
+    .file("01_신고증빙_요약서.html")!
+    .async("string");
+  assert(summaryHtml.includes("신고 이유"), "summary must include report reason");
   assert(
-    parsed.totalQuestionCount === model.totalQuestionCount,
-    "json excerpt totalQuestionCount mismatch",
+    summaryHtml.includes("법·정책") || summaryHtml.includes("고지문"),
+    "summary must include diagnosis/legal section",
   );
   assert(
-    parsed.detectedPersonalDataQuestionCount ===
-      model.detectedPersonalDataQuestionCount,
-    "json excerpt detectedPersonalDataQuestionCount mismatch",
+    summaryHtml.includes("수집 목적") && summaryHtml.includes("확인됨"),
+    "summary must reflect notice check results",
   );
-
-  const noticeFile = await zip.file("05_고지문_확인결과.txt")?.async("string");
-  assert(Boolean(noticeFile?.includes("수집 목적: 확인됨")), "05 must show 수집 목적 확인됨");
-  assert(Boolean(noticeFile?.includes("보유기간: 확인됨")), "05 must show 보유기간 확인됨");
+  assert(pkg.fileCount === names.length, "fileCount must match zip entries");
 
   console.log("\nPASS: evidence package - public agency moaform with valid privacy notice");
 }

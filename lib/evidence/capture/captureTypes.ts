@@ -114,7 +114,7 @@ export interface CaptureSurveyResult {
   stopPage?: number | null;
   branchLimitations?: string[];
   piiSensitivePagesCaptured?: boolean;
-  /** Prefer paths like 08_화면캡처/page_20.png */
+  /** Prefer paths like 02_화면캡처/page_20.png */
   piiSensitiveScreenshotFiles?: string[];
   screenshots: AutoScreenshotPayload[];
   pageMetas: CapturePageMeta[];
