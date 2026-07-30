@@ -195,8 +195,8 @@ export const googleFormsAdapter: FormCaptureAdapter = {
       .catch(() => undefined);
 
     // Shell cards + "1/N페이지" SSR text appear before the client viewer hydrates.
-    // Serverless Chromium must wait for jsname nav (locale-safe) or interactive fields.
-    const budgetMs = isServerlessCaptureRuntime() ? 35_000 : 12_000;
+    // Cap waits so a stuck single-process viewer cannot burn the whole 180s budget.
+    const budgetMs = isServerlessCaptureRuntime() ? 20_000 : 12_000;
     const deadline = Date.now() + budgetMs;
     let hydrated = false;
     while (Date.now() < deadline) {
@@ -262,7 +262,7 @@ export const googleFormsAdapter: FormCaptureAdapter = {
       await page
         .waitForNetworkIdle({ idleTime: 600, timeout: 12_000 })
         .catch(() => undefined);
-      const retryDeadline = Date.now() + 15_000;
+      const retryDeadline = Date.now() + 8_000;
       while (Date.now() < retryDeadline) {
         const ready = await page
           .evaluate(

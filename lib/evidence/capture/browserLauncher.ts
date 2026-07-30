@@ -39,17 +39,11 @@ function findLocalChrome(): string | undefined {
   return candidates.find((path) => path && existsSync(path));
 }
 
-function buildServerlessArgs(
-  chromiumArgs: string[],
-  opts: { allowSingleProcess: boolean },
-): string[] {
+function buildServerlessArgs(chromiumArgs: string[]): string[] {
   const args = chromiumArgs.filter((arg) => {
     const a = String(arg);
     // Launch option owns headless mode — drop duplicated flags from chromium.args.
     if (/^--headless(=|$)/i.test(a)) return false;
-    if (!opts.allowSingleProcess) {
-      if (a === "--single-process" || a === "--no-zygote") return false;
-    }
     return true;
   });
 
@@ -64,10 +58,9 @@ function buildServerlessArgs(
 /**
  * Launch @sparticuz/chromium for survey capture.
  *
- * Google Forms on Vercel requires:
- * - headless "shell" (not `true` / new headless) or the viewer stays an empty shell
- * - graphics/WebGL enabled (SwiftShader)
- * - preferably multi-process (`--single-process` often prevents freebird hydration)
+ * Google Forms on Vercel requires headless "shell" (not `true` / new headless)
+ * and graphics/WebGL enabled. Keep chromium `--single-process` — removing it
+ * can hang browser launch on Vercel until the function times out.
  */
 async function launchServerlessChromium(options?: {
   headless?: boolean;
@@ -84,20 +77,12 @@ async function launchServerlessChromium(options?: {
     ? chromium.default.args.map(String)
     : [];
 
-  const tryLaunch = async (allowSingleProcess: boolean): Promise<Browser> =>
-    puppeteer.launch({
-      args: buildServerlessArgs(rawArgs, { allowSingleProcess }),
-      defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
-      executablePath,
-      headless: headlessMode,
-    });
-
-  try {
-    return await tryLaunch(false);
-  } catch {
-    // Some serverless hosts still require single-process.
-    return tryLaunch(true);
-  }
+  return puppeteer.launch({
+    args: buildServerlessArgs(rawArgs),
+    defaultViewport: CAPTURE_SERVERLESS_VIEWPORT,
+    executablePath,
+    headless: headlessMode,
+  });
 }
 
 export async function launchCaptureBrowser(options?: {
