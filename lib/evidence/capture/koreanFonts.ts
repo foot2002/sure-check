@@ -1,30 +1,26 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { createRequire } from "module";
 import { tmpdir } from "os";
-import { dirname, join } from "path";
+import { join } from "path";
 import type { Page } from "puppeteer-core";
 import { isServerlessCaptureRuntime } from "@/lib/evidence/capture/captureConfig";
 
 let cachedCss: string | null = null;
 let systemFontsReady = false;
 
-const requireFromHere = createRequire(__filename);
-
 function resolveFontsourceDir(): string | null {
-  const candidates: string[] = [];
-
-  try {
-    const pkg = requireFromHere.resolve(
-      "@fontsource/noto-sans-kr/package.json",
-    );
-    candidates.push(join(dirname(pkg), "files"));
-  } catch {
-    // package may be traced without package.json resolve in some runtimes
-  }
-
-  candidates.push(
+  const candidates = [
     join(
       process.cwd(),
+      "node_modules",
+      "@fontsource",
+      "noto-sans-kr",
+      "files",
+    ),
+    join(
+      process.cwd(),
+      ".next",
+      "server",
+      "chunks",
       "node_modules",
       "@fontsource",
       "noto-sans-kr",
@@ -47,7 +43,25 @@ function resolveFontsourceDir(): string | null {
       "noto-sans-kr",
       "files",
     ),
-  );
+    // Vercel output file tracing often places included assets under this root.
+    join(
+      "/var/task",
+      "node_modules",
+      "@fontsource",
+      "noto-sans-kr",
+      "files",
+    ),
+  ];
+
+  try {
+    // Avoid createRequire(__filename) — breaks some Next/Vercel bundles.
+    const resolved = require.resolve(
+      "@fontsource/noto-sans-kr/files/noto-sans-kr-korean-400-normal.woff2",
+    );
+    candidates.unshift(join(resolved, ".."));
+  } catch {
+    // ignore
+  }
 
   return candidates.find((dir) => existsSync(dir)) ?? null;
 }
