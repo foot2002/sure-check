@@ -12,28 +12,24 @@ export type SubmitGuardHooks = {
 };
 
 /**
- * Secondary defense only.
- * Primary defense is never clicking submit.
+ * Observe submit-like traffic without request interception.
  *
- * Google Forms /formResponse is used for section navigation — never abort it.
- * Log it with last-click context instead.
+ * IMPORTANT: `page.setRequestInterception(true)` breaks Google Forms hydration
+ * on @sparticuz/chromium (empty freebird shell, no Next, detached frames).
+ * Primary defense remains: never click the final Submit control.
  */
 export async function installSubmitRequestGuard(
   page: Page,
   hooks: SubmitGuardHooks,
 ): Promise<void> {
-  await page.setRequestInterception(true).catch(() => undefined);
-
   page.on("request", (request: HTTPRequest) => {
     try {
       const url = request.url();
       const method = request.method().toUpperCase();
       const lastClickLabel = hooks.getLastClickLabel?.() ?? null;
 
-      // Google Forms section "Next" also hits formResponse — never abort.
       if (/docs\.google\.com\/forms/i.test(url) && /formResponse/i.test(url)) {
         hooks.onFormResponseSeen?.({ url, method, lastClickLabel });
-        void request.continue().catch(() => undefined);
         return;
       }
 
@@ -47,14 +43,11 @@ export async function installSubmitRequestGuard(
         );
 
       if (isTerminalSubmitPost) {
+        // Cannot abort without interception; record only.
         hooks.onBlocked(url);
-        void request.abort("blockedbyclient").catch(() => undefined);
-        return;
       }
-
-      void request.continue().catch(() => undefined);
     } catch {
-      void request.continue().catch(() => undefined);
+      // ignore observer errors
     }
   });
 }
