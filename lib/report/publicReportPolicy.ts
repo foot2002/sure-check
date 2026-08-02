@@ -20,6 +20,7 @@ export const PUBLIC_REPORT_FORBIDDEN_KEYS = [
   "survey_title",
   "matched_name",
   "evidence_text",
+  "evidence_files",
   "sha256",
   "mime_type",
   "byte_size",

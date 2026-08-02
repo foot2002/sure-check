@@ -63,6 +63,41 @@ function mockSafePayload(): PublicDashboardPayload {
       highOrCriticalRate: 30,
       avgOverallScore: 62.5,
     },
+    insights: {
+      rangeLabel: "최근 7일",
+      oneLineConclusion:
+        "최근 7일 진단된 온라인 설문 10건 중 4건이 개인정보를 수집했고, 3건은 응답자 관점에서 신중한 대응이 필요한 설문으로 분류되었습니다.",
+      keyFindings: [
+        {
+          id: "personal_info",
+          title: "개인정보 수집 현황",
+          headline: "개인정보를 수집하는 설문이 확인되었습니다.",
+          detail: "진단 설문 10건 중 4건이 개인정보를 포함했습니다.",
+          available: true,
+        },
+        {
+          id: "respondent_caution",
+          title: "응답자 관점 판단",
+          headline: "응답 전 신중한 확인이 필요한 설문이 확인되었습니다.",
+          detail:
+            "2건은 ‘응답 거부·신고 검토’ 또는 이에 준하는 판단으로 분류되었습니다.",
+          available: true,
+        },
+        {
+          id: "public_external_tool",
+          title: "공공부문 외부도구 확인",
+          headline: "공공부문 설문은 외부도구·보안 기준 확인이 필요합니다.",
+          detail:
+            "공공부문 개인정보 수집 설문 2건 중 2건에서 외부 설문도구 또는 CSAP 확인 필요 신호가 있었습니다.",
+          available: true,
+        },
+      ],
+      platformInsight:
+        "이번 기간에는 Google Forms에서 개인정보 포함 비율이 가장 높게 나타났습니다. 다만 표본이 적은 초기 통계이므로, 플랫폼 자체의 위험도를 단정하는 자료는 아닙니다.",
+      cautionDecisionCount: 3,
+      reportLikeDecisionCount: 2,
+      publicExternalToolCheckCount: 2,
+    },
     privacyIndex: {
       avgScore: 62.5,
       grade: "개선 필요",
@@ -209,12 +244,28 @@ async function main(): Promise<void> {
       assert(live.publicSectorToolStats != null, "publicSectorToolStats missing");
       assert(live.diagnosisQualityStats != null, "diagnosisQualityStats missing");
       assert(live.privacyIndex != null, "privacyIndex missing");
+      assert(live.insights != null, "insights missing");
+      assert(
+        typeof live.insights.oneLineConclusion === "string",
+        "oneLineConclusion missing",
+      );
+      assert(
+        live.insights.keyFindings.length === 3,
+        "keyFindings should have 3 cards",
+      );
       // Labels should be unique in issueStats
       const labels = live.issueStats.map((i) => i.label);
       assert(
         new Set(labels).size === labels.length,
         "issueStats labels must be unique",
       );
+      const otherIndex = labels.indexOf("기타 확인 필요");
+      if (otherIndex >= 0 && labels.length > 1) {
+        assert(
+          otherIndex === labels.length - 1,
+          "기타 확인 필요 should be last when present",
+        );
+      }
       console.log(
         `live dashboard: OK (hasData=${live.hasData}, totalScans=${live.summary.totalScans}, issues=${live.issueStats.length})`,
       );

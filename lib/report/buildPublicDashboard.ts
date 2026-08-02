@@ -3,7 +3,10 @@ import {
   assertPublicReportSafe,
   PUBLIC_DISCLOSURE_MESSAGE,
 } from "@/lib/report/publicReportPolicy";
-import { toPublicIssueLabel } from "@/lib/report/publicIssueLabels";
+import {
+  issueDisplayRank,
+  toPublicIssueLabel,
+} from "@/lib/report/publicIssueLabels";
 
 export type PublicDashboardRange = "today" | "7d" | "30d" | "custom";
 
@@ -121,6 +124,29 @@ export interface PublicDiagnosisQualityStats {
   avgCapturedPageCount: number | null;
 }
 
+export type PublicKeyFindingId =
+  | "personal_info"
+  | "respondent_caution"
+  | "public_external_tool";
+
+export interface PublicKeyFindingCard {
+  id: PublicKeyFindingId;
+  title: string;
+  headline: string;
+  detail: string;
+  available: boolean;
+}
+
+export interface PublicDashboardInsights {
+  rangeLabel: string;
+  oneLineConclusion: string;
+  keyFindings: PublicKeyFindingCard[];
+  platformInsight: string;
+  cautionDecisionCount: number;
+  reportLikeDecisionCount: number;
+  publicExternalToolCheckCount: number;
+}
+
 export interface PublicDashboardPayload {
   range: PublicDashboardRange;
   from: string;
@@ -129,6 +155,7 @@ export interface PublicDashboardPayload {
   hasData: boolean;
   isEarlyData: boolean;
   summary: PublicDashboardSummary;
+  insights: PublicDashboardInsights;
   privacyIndex: PublicPrivacyIndex;
   trends: PublicDashboardTrendRow[];
   decisionStats: PublicDecisionStatRow[];
@@ -302,6 +329,149 @@ const PRIVACY_INDEX_DISCLAIMER =
   "이 지수는 자동진단 결과를 바탕으로 산출한 참고 지표이며, 개별 설문의 위법 여부를 확정하는 기준은 아닙니다.";
 
 const EARLY_DATA_THRESHOLD = 30;
+
+const EMPTY_ONE_LINE =
+  "아직 충분한 진단 데이터가 없습니다.";
+
+function rangeLabel(range: PublicDashboardRange): string {
+  switch (range) {
+    case "today":
+      return "오늘";
+    case "30d":
+      return "최근 30일";
+    case "custom":
+      return "선택 기간";
+    case "7d":
+    default:
+      return "최근 7일";
+  }
+}
+
+function decisionCount(
+  rows: PublicDecisionStatRow[],
+  keys: string[],
+): number {
+  const set = new Set(keys);
+  return rows
+    .filter((row) => set.has(row.decisionKey))
+    .reduce((sum, row) => sum + row.count, 0);
+}
+
+function buildInsights(input: {
+  range: PublicDashboardRange;
+  isEarlyData: boolean;
+  summary: PublicDashboardSummary;
+  decisionStats: PublicDecisionStatRow[];
+  platformStats: PublicDashboardPlatformRow[];
+  publicSectorToolStats: PublicSectorToolStats;
+}): PublicDashboardInsights {
+  const label = rangeLabel(input.range);
+  const total = input.summary.totalScans;
+  const personal = input.summary.personalInfoCount;
+
+  // 신중한 대응: 개인정보 주의·안내 확인·공식 확인·거부/신고 검토
+  const cautionDecisionCount = decisionCount(input.decisionStats, [
+    "PII_CAUTION",
+    "NOTICE_CHECK",
+    "SECURITY_CHECK",
+    "STOP_RESPONSE",
+  ]);
+  // 응답 거부·신고 검토 또는 이에 준하는 판단
+  const reportLikeDecisionCount = decisionCount(input.decisionStats, [
+    "STOP_RESPONSE",
+    "SECURITY_CHECK",
+  ]);
+
+  const publicPersonal = input.publicSectorToolStats.publicPersonalInfoSurveyCount;
+  const publicExternalToolCheckCount = Math.max(
+    input.publicSectorToolStats.externalToolReviewCount,
+    input.publicSectorToolStats.csapOrCloudReviewCount,
+  );
+
+  const oneLineConclusion =
+    total <= 0
+      ? EMPTY_ONE_LINE
+      : `${label} 진단된 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 수집했고, ${cautionDecisionCount.toLocaleString("ko-KR")}건은 응답자 관점에서 신중한 대응이 필요한 설문으로 분류되었습니다.`;
+
+  const keyFindings: PublicKeyFindingCard[] = [
+    {
+      id: "personal_info",
+      title: "개인정보 수집 현황",
+      headline:
+        total > 0 && personal > 0
+          ? "개인정보를 수집하는 설문이 확인되었습니다."
+          : total > 0
+            ? "이번 기간에는 개인정보 포함 설문이 적거나 없었습니다."
+            : "데이터 누적 필요",
+      detail:
+        total > 0
+          ? `진단 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`
+          : "진단 데이터가 쌓이면 개인정보 수집 현황을 보여줍니다.",
+      available: total > 0,
+    },
+    {
+      id: "respondent_caution",
+      title: "응답자 관점 판단",
+      headline:
+        reportLikeDecisionCount > 0
+          ? "응답 전 신중한 확인이 필요한 설문이 확인되었습니다."
+          : total > 0
+            ? "강한 주의·신고 검토 분류는 적거나 없었습니다."
+            : "데이터 누적 필요",
+      detail:
+        total > 0
+          ? `${reportLikeDecisionCount.toLocaleString("ko-KR")}건은 ‘응답 거부·신고 검토’ 또는 이에 준하는 판단으로 분류되었습니다.`
+          : "진단 데이터가 쌓이면 응답자 관점 판단을 보여줍니다.",
+      available: total > 0,
+    },
+    {
+      id: "public_external_tool",
+      title: "공공부문 외부도구 확인",
+      headline:
+        publicPersonal > 0
+          ? "공공부문 설문은 외부도구·보안 기준 확인이 필요합니다."
+          : total > 0
+            ? "이번 기간 공공부문 개인정보 수집 설문이 없거나 적습니다."
+            : "데이터 누적 필요",
+      detail:
+        publicPersonal > 0
+          ? `공공부문 개인정보 수집 설문 ${publicPersonal.toLocaleString("ko-KR")}건 중 ${publicExternalToolCheckCount.toLocaleString("ko-KR")}건에서 외부 설문도구 또는 CSAP 확인 필요 신호가 있었습니다.`
+          : total > 0
+            ? "공공부문 개인정보 수집 설문이 누적되면 외부도구 확인 필요 신호를 집계합니다."
+            : "진단 데이터가 쌓이면 공공부문 외부도구 확인 현황을 보여줍니다.",
+      available: total > 0 && publicPersonal > 0,
+    },
+  ];
+
+  const rankedPlatforms = [...input.platformStats]
+    .filter((row) => row.surveyCount > 0)
+    .sort(
+      (a, b) =>
+        b.personalInfoRate - a.personalInfoRate ||
+        b.surveyCount - a.surveyCount,
+    );
+  const top = rankedPlatforms[0];
+
+  let platformInsight: string;
+  if (total <= 0 || !top) {
+    platformInsight =
+      "현재 플랫폼별 통계는 초기 누적 데이터 기준입니다. 진단 건수가 늘어나면 플랫폼별 경향을 더 안정적으로 확인할 수 있습니다.";
+  } else if (input.isEarlyData) {
+    platformInsight = `이번 기간에는 ${top.platform}에서 개인정보 포함 비율이 가장 높게 나타났습니다. 다만 표본이 적은 초기 통계이므로, 플랫폼 자체의 위험도를 단정하는 자료는 아닙니다.`;
+  } else {
+    platformInsight = `이번 기간에는 ${top.platform}에서 개인정보 포함 비율이 가장 높게 나타났습니다. 플랫폼별 비율은 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.`;
+  }
+
+  return {
+    rangeLabel: label,
+    oneLineConclusion,
+    keyFindings,
+    platformInsight,
+    cautionDecisionCount,
+    reportLikeDecisionCount,
+    publicExternalToolCheckCount,
+  };
+}
 
 function kstToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -980,7 +1150,7 @@ export async function buildPublicDashboard(
   const publicSectorFindingSurveys = new Set(
     findings
       .filter((f) => toPublicIssueLabel(f.finding_type, f.check_domain) ===
-        "공공부문 클라우드 사용 확인 필요")
+        "공공부문 클라우드 보안 확인 필요")
       .map((f) => f.survey_record_id),
   );
   if (publicSectorFindingSurveys.size > csapOrCloudReviewCount) {
@@ -1024,7 +1194,18 @@ export async function buildPublicDashboard(
       affectedSurveyCount: bucket.surveyIds.size,
       rateOfAllScans: rate(bucket.surveyIds.size, totalScans),
     }))
-    .sort((a, b) => b.affectedSurveyCount - a.affectedSurveyCount || b.findingCount - a.findingCount)
+    .sort((a, b) => {
+      // Keep "기타 확인 필요" at the bottom; prefer specific labels.
+      const rankDiff = issueDisplayRank(a.label) - issueDisplayRank(b.label);
+      if (a.label === "기타 확인 필요" && b.label !== "기타 확인 필요") return 1;
+      if (b.label === "기타 확인 필요" && a.label !== "기타 확인 필요") return -1;
+      // Among specific labels, sort by impact then priority rank.
+      const impact =
+        b.affectedSurveyCount - a.affectedSurveyCount ||
+        b.findingCount - a.findingCount;
+      if (impact !== 0) return impact;
+      return rankDiff;
+    })
     .slice(0, 12);
 
   // Organization type stats
@@ -1100,25 +1281,42 @@ export async function buildPublicDashboard(
     avgOverallScore: null,
   }));
 
+  const isEarlyData = totalScans > 0 && totalScans < EARLY_DATA_THRESHOLD;
+  const resolvedPlatformStats =
+    totalScans === 0 ? emptyPlatformStats : platformStats;
+  const resolvedPublicSector =
+    totalScans === 0 ? emptyPublicSectorToolStats() : publicSectorToolStats;
+  const resolvedDecisionStats =
+    totalScans === 0
+      ? DECISION_ORDER.map((d) => ({
+          decisionKey: d.key,
+          label: d.label,
+          count: 0,
+          rate: 0,
+        }))
+      : decisionStats;
+
+  const insights = buildInsights({
+    range,
+    isEarlyData,
+    summary,
+    decisionStats: resolvedDecisionStats,
+    platformStats: resolvedPlatformStats,
+    publicSectorToolStats: resolvedPublicSector,
+  });
+
   const payload: PublicDashboardPayload = {
     range,
     from,
     to,
     generatedAt: new Date().toISOString(),
     hasData: totalScans > 0,
-    isEarlyData: totalScans > 0 && totalScans < EARLY_DATA_THRESHOLD,
+    isEarlyData,
     summary,
+    insights,
     privacyIndex,
     trends,
-    decisionStats:
-      totalScans === 0
-        ? DECISION_ORDER.map((d) => ({
-            decisionKey: d.key,
-            label: d.label,
-            count: 0,
-            rate: 0,
-          }))
-        : decisionStats,
+    decisionStats: resolvedDecisionStats,
     questionStats,
     dataCategoryStats:
       totalScans === 0
@@ -1141,9 +1339,8 @@ export async function buildPublicDashboard(
             complianceRate: null,
           }))
         : noticeComplianceStats,
-    platformStats: totalScans === 0 ? emptyPlatformStats : platformStats,
-    publicSectorToolStats:
-      totalScans === 0 ? emptyPublicSectorToolStats() : publicSectorToolStats,
+    platformStats: resolvedPlatformStats,
+    publicSectorToolStats: resolvedPublicSector,
     issueStats,
     organizationTypeStats,
     diagnosisQualityStats,

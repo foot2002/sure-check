@@ -4,7 +4,6 @@ import type {
   PublicDashboardPayload,
   PublicDashboardPlatformRow,
   PublicDashboardIssueRow,
-  PublicDashboardTrendRow,
   PublicDecisionStatRow,
   PublicDataCategoryStatRow,
   PublicNoticeComplianceRow,
@@ -12,6 +11,8 @@ import type {
   PublicQuestionStats,
   PublicSectorToolStats,
   PublicDiagnosisQualityStats,
+  PublicKeyFindingCard,
+  PublicDashboardInsights,
 } from "@/lib/report/buildPublicDashboard";
 
 function formatScore(value: number | null | undefined): string {
@@ -62,32 +63,83 @@ function KpiCard({
   );
 }
 
+function noticeTone(rate: number | null): {
+  bar: string;
+  badge: string;
+  badgeText: string;
+} {
+  if (rate == null) {
+    return {
+      bar: "bg-slate-400",
+      badge: "bg-slate-100 text-slate-600",
+      badgeText: "해당 없음",
+    };
+  }
+  if (rate <= 0) {
+    return {
+      bar: "bg-rose-700",
+      badge: "bg-rose-100 text-rose-900",
+      badgeText: "매우 미흡",
+    };
+  }
+  if (rate < 50) {
+    return {
+      bar: "bg-orange-600",
+      badge: "bg-orange-100 text-orange-900",
+      badgeText: "미흡",
+    };
+  }
+  if (rate < 80) {
+    return {
+      bar: "bg-amber-500",
+      badge: "bg-amber-100 text-amber-950",
+      badgeText: "개선 필요",
+    };
+  }
+  return {
+    bar: "bg-teal-700",
+    badge: "bg-teal-100 text-teal-900",
+    badgeText: "상대적으로 양호",
+  };
+}
+
 function RateBar({
   label,
   rate,
   meta,
+  barClassName = "bg-teal-700",
+  badge,
 }: {
   label: string;
   rate: number;
   meta?: string;
+  barClassName?: string;
+  badge?: { className: string; text: string };
 }) {
   const width = Math.max(0, Math.min(100, rate));
   return (
     <div className="space-y-1.5">
       <div className="flex items-end justify-between gap-3">
-        <p className="text-sm font-medium text-slate-800">{label}</p>
-        <p className="text-right text-sm tabular-nums text-slate-600">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-800">{label}</p>
+          {badge ? (
+            <span
+              className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
+            >
+              {badge.text}
+            </span>
+          ) : null}
+        </div>
+        <p className="shrink-0 text-right text-sm tabular-nums text-slate-600">
           {formatRate(rate)}
           {meta ? (
-            <span className="ml-2 block text-xs text-slate-400 sm:ml-2 sm:inline">
-              {meta}
-            </span>
+            <span className="mt-0.5 block text-xs text-slate-400">{meta}</span>
           ) : null}
         </p>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-teal-700"
+          className={`h-full rounded-full ${barClassName}`}
           style={{ width: `${width}%` }}
           aria-hidden
         />
@@ -96,76 +148,48 @@ function RateBar({
   );
 }
 
-function TrendBars({ trends }: { trends: PublicDashboardTrendRow[] }) {
-  const maxTrendCount = Math.max(1, ...trends.map((t) => t.surveyCount));
+function OneLineConclusion({ insights }: { insights: PublicDashboardInsights }) {
   return (
-    <div className="flex h-40 items-end gap-1.5 md:gap-2">
-      {trends.map((row) => {
-        const height = Math.max(
-          6,
-          Math.round((row.surveyCount / maxTrendCount) * 100),
-        );
-        return (
-          <div
-            key={row.date}
-            className="flex min-w-0 flex-1 flex-col items-center gap-1"
-            title={`${row.date}: ${row.surveyCount}건`}
-          >
-            <span className="text-[10px] tabular-nums text-slate-500">
-              {row.surveyCount}
-            </span>
-            <div
-              className="w-full rounded-t-md bg-teal-700/90"
-              style={{ height: `${height}%` }}
-            />
-            <span className="truncate text-[10px] text-slate-400">
-              {row.date.slice(5)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
+    <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 via-white to-slate-50 p-5 md:p-6">
+      <p className="text-xs font-semibold tracking-wide text-teal-800">
+        이번 기간 한 줄 결론
+      </p>
+      <p className="mt-2 text-base font-semibold leading-relaxed text-slate-900 md:text-lg">
+        {insights.oneLineConclusion}
+      </p>
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+        자동진단 기반 참고 해석이며, 개별 설문의 위반 여부를 확정하지 않습니다.
+      </p>
+    </section>
   );
 }
 
-function PlatformTable({ rows }: { rows: PublicDashboardPlatformRow[] }) {
+function KeyFindings({ cards }: { cards: PublicKeyFindingCard[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="py-2 pr-3 font-semibold">플랫폼</th>
-            <th className="py-2 pr-3 font-semibold">진단 건수</th>
-            <th className="py-2 pr-3 font-semibold">개인정보</th>
-            <th className="py-2 pr-3 font-semibold">민감정보</th>
-            <th className="py-2 pr-3 font-semibold">고위험정보</th>
-            <th className="py-2 font-semibold">평균 점수</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.platform} className="border-b border-slate-100 last:border-0">
-              <td className="py-2.5 pr-3 font-medium text-slate-900">{row.platform}</td>
-              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
-                {row.surveyCount.toLocaleString("ko-KR")}
-              </td>
-              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
-                {formatRate(row.personalInfoRate)}
-              </td>
-              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
-                {formatRate(row.sensitiveInfoRate)}
-              </td>
-              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
-                {formatRate(row.highRiskInfoRate)}
-              </td>
-              <td className="py-2.5 tabular-nums text-slate-700">
-                {formatScore(row.avgOverallScore)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Section title="이번 기간 핵심 발견">
+      <div className="grid gap-4 md:grid-cols-3">
+        {cards.map((card) => (
+          <article
+            key={card.id}
+            className={`rounded-xl border p-4 ${
+              card.available
+                ? "border-slate-200 bg-slate-50/80"
+                : "border-dashed border-slate-200 bg-white"
+            }`}
+          >
+            <p className="text-xs font-semibold tracking-wide text-teal-800">
+              {card.title}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {card.headline}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              {card.detail}
+            </p>
+          </article>
+        ))}
+      </div>
+    </Section>
   );
 }
 
@@ -197,7 +221,7 @@ function PrivacyIndexCard({ index }: { index: PublicPrivacyIndex }) {
 
 function DecisionList({ rows }: { rows: PublicDecisionStatRow[] }) {
   if (rows.every((r) => r.count === 0)) {
-    return <p className="text-sm text-slate-500">해당 기간 응답 판단 집계가 없습니다.</p>;
+    return <p className="text-sm text-slate-500">해당 기간 응답 권고 집계가 없습니다.</p>;
   }
   return (
     <ul className="space-y-3">
@@ -274,19 +298,65 @@ function NoticeComplianceList({ rows }: { rows: PublicNoticeComplianceRow[] }) {
     );
   }
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-4">
       {rows
         .filter((r) => r.applicableCount > 0)
-        .map((row) => (
-          <li key={row.itemKey}>
-            <RateBar
-              label={row.label}
-              rate={row.complianceRate ?? 0}
-              meta={`충족 ${row.compliantCount.toLocaleString("ko-KR")} · 미흡/확인 필요 ${row.gapCount.toLocaleString("ko-KR")}`}
-            />
-          </li>
-        ))}
+        .map((row) => {
+          const tone = noticeTone(row.complianceRate);
+          return (
+            <li key={row.itemKey}>
+              <RateBar
+                label={row.label}
+                rate={row.complianceRate ?? 0}
+                barClassName={tone.bar}
+                badge={{ className: tone.badge, text: tone.badgeText }}
+                meta={`충족 ${row.compliantCount.toLocaleString("ko-KR")} · 미흡/확인 필요 ${row.gapCount.toLocaleString("ko-KR")}`}
+              />
+            </li>
+          );
+        })}
     </ul>
+  );
+}
+
+function PlatformTable({ rows }: { rows: PublicDashboardPlatformRow[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-left text-sm">
+        <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="py-2 pr-3 font-semibold">플랫폼</th>
+            <th className="py-2 pr-3 font-semibold">진단 건수</th>
+            <th className="py-2 pr-3 font-semibold">개인정보</th>
+            <th className="py-2 pr-3 font-semibold">민감정보</th>
+            <th className="py-2 pr-3 font-semibold">고위험정보</th>
+            <th className="py-2 font-semibold">평균 점수</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.platform} className="border-b border-slate-100 last:border-0">
+              <td className="py-2.5 pr-3 font-medium text-slate-900">{row.platform}</td>
+              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
+                {row.surveyCount.toLocaleString("ko-KR")}
+              </td>
+              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
+                {formatRate(row.personalInfoRate)}
+              </td>
+              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
+                {formatRate(row.sensitiveInfoRate)}
+              </td>
+              <td className="py-2.5 pr-3 tabular-nums text-slate-700">
+                {formatRate(row.highRiskInfoRate)}
+              </td>
+              <td className="py-2.5 tabular-nums text-slate-700">
+                {formatScore(row.avgOverallScore)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -301,12 +371,12 @@ function PublicSectorBlock({ stats }: { stats: PublicSectorToolStats }) {
         <KpiCard
           label="외부 설문도구 사용 확인 필요"
           value={`${stats.externalToolReviewCount.toLocaleString("ko-KR")}건`}
-          hint="개선 권고·확인 필요 신호"
+          hint="확인 필요 신호"
         />
         <KpiCard
           label="CSAP·클라우드 보안 확인 필요"
           value={`${stats.csapOrCloudReviewCount.toLocaleString("ko-KR")}건`}
-          hint="위험 신호가 아닌 확인 필요 집계"
+          hint="위반 확정이 아닌 검토·확인 필요 집계"
         />
       </div>
       {stats.byPlatform.length > 0 ? (
@@ -360,7 +430,7 @@ function IssueList({ issues }: { issues: PublicDashboardIssueRow[] }) {
           <RateBar
             label={issue.label}
             rate={issue.rateOfAllScans}
-            meta={`발견 ${issue.findingCount.toLocaleString("ko-KR")} · 영향 설문 ${issue.affectedSurveyCount.toLocaleString("ko-KR")} · 전체 대비 ${formatRate(issue.rateOfAllScans)}`}
+            meta={`영향 설문 ${issue.affectedSurveyCount.toLocaleString("ko-KR")}건 · 전체 진단 대비 ${formatRate(issue.rateOfAllScans)} · 발견 신호 ${issue.findingCount.toLocaleString("ko-KR")}건`}
           />
         </li>
       ))}
@@ -423,25 +493,79 @@ function DiagnosisQualityGrid({ stats }: { stats: PublicDiagnosisQualityStats })
   );
 }
 
+function RespondentGuide() {
+  return (
+    <Section
+      title="설문 응답 전 확인하세요"
+      description="개인정보를 입력하기 전에 아래를 먼저 확인하면 위험을 줄일 수 있습니다."
+    >
+      <ol className="list-decimal space-y-2.5 pl-5 text-sm leading-relaxed text-slate-700">
+        <li>이름·연락처·이메일을 쓰기 전에 수집 목적을 확인하세요.</li>
+        <li>보유기간과 파기 기준이 없으면 개인정보 입력을 피하세요.</li>
+        <li>
+          공공기관 설문인데 외부 설문도구를 쓰는 경우 공식 안내 여부를
+          확인하세요.
+        </li>
+        <li>
+          건강·질병·민원·피해 경험 등 민감한 내용은 특히 신중하게 응답하세요.
+        </li>
+      </ol>
+    </Section>
+  );
+}
+
+function OperatorGuide() {
+  return (
+    <Section
+      title="설문 운영자가 보완해야 할 기본 항목"
+      description="법률 자문이 아니라, 개인정보를 수집할 때 함께 확인·보완하면 좋은 기본 항목입니다."
+    >
+      <p className="mb-3 text-sm text-slate-700">
+        개인정보를 수집하는 설문은 최소한 아래 항목을 함께 안내해야 합니다.
+      </p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {[
+          "수집 목적",
+          "수집 항목",
+          "보유기간",
+          "파기 기준",
+          "동의 거부권 및 불이익",
+          "담당자 연락처",
+          "외부도구·위탁 처리 여부",
+          "국외이전 여부",
+          "공공부문 클라우드 보안 확인",
+        ].map((item) => (
+          <li
+            key={item}
+            className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) {
   if (!data.hasData) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
-        <p className="text-base font-semibold text-slate-900">
-          아직 공개 통계를 산출하기 위한 진단 데이터가 충분하지 않습니다.
-        </p>
-        <p className="mt-2 text-sm text-slate-600">
-          설문 진단이 누적되면 이곳에 기간별 개인정보 수집 실태가 표시됩니다.
-        </p>
+      <div className="space-y-8">
+        <OneLineConclusion insights={data.insights} />
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+          <p className="text-base font-semibold text-slate-900">
+            아직 공개 통계를 산출하기 위한 진단 데이터가 충분하지 않습니다.
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            설문 진단이 누적되면 이곳에 기간별 개인정보 수집 실태가 표시됩니다.
+          </p>
+        </div>
+        <KeyFindings cards={data.insights.keyFindings} />
+        <RespondentGuide />
+        <OperatorGuide />
       </div>
     );
   }
-
-  const trendAvg = (key: keyof PublicDashboardTrendRow) => {
-    if (data.trends.length === 0) return 0;
-    const sum = data.trends.reduce((s, t) => s + Number(t[key] || 0), 0);
-    return sum / data.trends.length;
-  };
 
   return (
     <div className="space-y-8">
@@ -451,6 +575,8 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
           안정적인 추세를 확인할 수 있습니다.
         </div>
       ) : null}
+
+      <OneLineConclusion insights={data.insights} />
 
       <section aria-labelledby="kpi-heading">
         <h2 id="kpi-heading" className="sr-only">
@@ -490,6 +616,8 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
         </div>
       </section>
 
+      <KeyFindings cards={data.insights.keyFindings} />
+
       <Section
         title="온라인 수집 개인정보 수준지수"
         description="자동진단 점수 평균을 바탕으로 한 참고 지표입니다."
@@ -498,33 +626,11 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
       </Section>
 
       <Section
-        title="응답 판단 분포"
-        description="일반인이 이해하기 쉬운 응답 행동 판단의 집계입니다. 개별 설문명은 표시하지 않습니다."
+        title="시민 관점 응답 권고"
+        description="개별 설문명은 공개하지 않고, 응답자가 어떤 태도로 접근하면 좋을지 자동진단 결과를 집계해 보여줍니다."
       >
         <DecisionList rows={data.decisionStats} />
       </Section>
-
-      {data.trends.length > 0 ? (
-        <Section title="기간별 추세">
-          <div className="space-y-5">
-            <TrendBars trends={data.trends} />
-            <div className="grid gap-4 md:grid-cols-3">
-              <RateBar
-                label="평균 개인정보 포함 비율"
-                rate={trendAvg("personalInfoRate")}
-              />
-              <RateBar
-                label="평균 민감정보 포함 비율"
-                rate={trendAvg("sensitiveInfoRate")}
-              />
-              <RateBar
-                label="평균 고위험정보 포함 비율"
-                rate={trendAvg("highRiskInfoRate")}
-              />
-            </div>
-          </div>
-        </Section>
-      ) : null}
 
       <Section
         title="문항 기준 개인정보 수집 현황"
@@ -540,27 +646,33 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
         <DataCategoryList rows={data.dataCategoryStats} />
       </Section>
 
-      <Section
-        title="개인정보 처리 고지 항목 충족률"
-        description="자동진단 기준의 고지 충족 여부이며, 위반 확정이 아닙니다. not_applicable은 분모에서 제외합니다."
-      >
+      <Section title="개인정보 처리 고지 항목 충족률">
+        <p className="mb-4 text-sm leading-relaxed text-slate-600">
+          개인정보를 수집하는 설문은 수집 목적, 수집 항목, 보유기간, 파기 기준,
+          동의 거부권, 담당자 연락처 등을 함께 안내해야 합니다. 아래 수치는
+          자동진단 기준으로 각 고지 항목이 얼마나 충족되었는지를 보여주는 참고
+          지표입니다. 미흡/확인 필요로 해석하며, 위반을 확정하지 않습니다.
+        </p>
         <NoticeComplianceList rows={data.noticeComplianceStats} />
       </Section>
 
-      <Section title="플랫폼별 통계">
-        <PlatformTable rows={data.platformStats} />
-      </Section>
-
       <Section
-        title="공공부문 외부 설문도구 사용 확인 필요"
-        description="개별 기관명은 공개하지 않으며, 플랫폼·기관유형 집계와 확인 필요 신호만 표시합니다."
+        title="공공기관 설문, 외부도구 사용 괜찮을까?"
+        description="공공부문이 개인정보를 수집하면서 외부 설문도구를 사용할 경우, 도구의 보안성, 위탁 처리, 공공부문 클라우드 보안 기준 확인이 필요합니다. 이 통계는 개별 기관명을 공개하지 않고 확인 필요 신호만 집계합니다."
       >
         <PublicSectorBlock stats={data.publicSectorToolStats} />
       </Section>
 
+      <Section title="플랫폼별 통계">
+        <p className="mb-4 text-sm leading-relaxed text-slate-600">
+          {data.insights.platformInsight}
+        </p>
+        <PlatformTable rows={data.platformStats} />
+      </Section>
+
       <Section
         title="자주 발견되는 미흡·확인 필요 항목"
-        description="유사 항목은 공개용 라벨로 통합했습니다. 막대는 전체 진단 대비 영향 설문 비율입니다."
+        description="구체 항목을 우선 표시하고, ‘기타 확인 필요’는 하단에 둡니다. 막대는 전체 진단 대비 영향 설문 비율입니다."
       >
         <IssueList issues={data.issueStats} />
       </Section>
@@ -571,6 +683,9 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
       >
         <OrgTypeGrid rows={data.organizationTypeStats} />
       </Section>
+
+      <RespondentGuide />
+      <OperatorGuide />
 
       <Section
         title="진단 신뢰도 및 한계"

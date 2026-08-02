@@ -3,22 +3,32 @@
  * Multiple finding_type / check_domain combinations collapse into one label.
  */
 
-export const PUBLIC_ISSUE_LABELS = [
+/** Display priority — specific items first; "기타" last. */
+export const PUBLIC_ISSUE_DISPLAY_PRIORITY = [
   "고지문 미흡",
   "동의 안내 미흡",
-  "보유기간·파기 안내 미흡",
   "운영주체 확인 필요",
   "외부 설문도구·처리경로 확인 필요",
   "국외이전 확인 필요",
   "문항 분석 제한",
   "민감정보 문항 확인 필요",
-  "공공부문 클라우드 사용 확인 필요",
+  "공공부문 클라우드 보안 확인 필요",
+  "보유기간·파기 안내 미흡",
   "개인정보 문항 확인 필요",
   "고위험정보 문항 확인 필요",
   "기타 확인 필요",
 ] as const;
 
-export type PublicIssueLabel = (typeof PUBLIC_ISSUE_LABELS)[number];
+export const PUBLIC_ISSUE_LABELS = PUBLIC_ISSUE_DISPLAY_PRIORITY;
+
+export type PublicIssueLabel = (typeof PUBLIC_ISSUE_DISPLAY_PRIORITY)[number];
+
+export function issueDisplayRank(label: string): number {
+  const index = PUBLIC_ISSUE_DISPLAY_PRIORITY.indexOf(
+    label as PublicIssueLabel,
+  );
+  return index >= 0 ? index : PUBLIC_ISSUE_DISPLAY_PRIORITY.length;
+}
 
 export function toPublicIssueLabel(
   findingType: string | null | undefined,
@@ -37,7 +47,7 @@ export function toPublicIssueLabel(
     return "국외이전 확인 필요";
   }
   if (domain === "public_sector" || type === "public_sector_cloud") {
-    return "공공부문 클라우드 사용 확인 필요";
+    return "공공부문 클라우드 보안 확인 필요";
   }
   if (
     domain === "outsourcing" ||
