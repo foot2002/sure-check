@@ -165,7 +165,7 @@ export async function listAdminCases(
   let surveyQuery = supabase
     .from("survey_records")
     .select(
-      "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, question_count",
+      "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count",
     )
     .order("observed_at", { ascending: false })
     .limit(500);
@@ -220,7 +220,11 @@ export async function listAdminCases(
     .map((r) => r.scan_report_id as string | null)
     .filter((id): id is string => Boolean(id));
 
-  const [scoresRes, evidenceRes, pubsRes, reportsRes, capturesRes] =
+  const scanJobIds = rows
+    .map((r) => r.scan_job_id as string | null | undefined)
+    .filter((id): id is string => Boolean(id));
+
+  const [scoresRes, evidenceRes, evidenceByScanRes, pubsRes, reportsRes, capturesRes] =
     await Promise.all([
       ids.length
         ? supabase
@@ -231,8 +235,14 @@ export async function listAdminCases(
       ids.length
         ? supabase
             .from("evidence_files")
-            .select("survey_record_id")
+            .select("id, survey_record_id, scan_job_id")
             .in("survey_record_id", ids)
+        : Promise.resolve({ data: [], error: null }),
+      scanJobIds.length
+        ? supabase
+            .from("evidence_files")
+            .select("id, survey_record_id, scan_job_id")
+            .in("scan_job_id", scanJobIds)
         : Promise.resolve({ data: [], error: null }),
       ids.length
         ? supabase
@@ -251,19 +261,22 @@ export async function listAdminCases(
         ? (() => {
             let cq = supabase
               .from("capture_jobs")
-              .select("id, survey_record_id, status, completeness, captured_page_count");
+              .select("id, survey_record_id, scan_job_id, status, completeness, captured_page_count");
             if (from) cq = cq.gte("observed_date_kst", from);
             if (to) cq = cq.lte("observed_date_kst", to);
             return cq;
           })()
         : supabase
             .from("capture_jobs")
-            .select("id, survey_record_id, status, completeness, captured_page_count")
+            .select("id, survey_record_id, scan_job_id, status, completeness, captured_page_count")
             .limit(2000),
     ]);
 
   if (scoresRes.error) throw new Error(`scores: ${scoresRes.error.message}`);
   if (evidenceRes.error) throw new Error(`evidence: ${evidenceRes.error.message}`);
+  if (evidenceByScanRes.error) {
+    throw new Error(`evidence by scan: ${evidenceByScanRes.error.message}`);
+  }
   if (pubsRes.error) throw new Error(`publications: ${pubsRes.error.message}`);
   if (reportsRes.error) throw new Error(`reports: ${reportsRes.error.message}`);
   if (capturesRes.error) throw new Error(`captures: ${capturesRes.error.message}`);
@@ -272,13 +285,31 @@ export async function listAdminCases(
   for (const row of scoresRes.data || []) {
     scoreMap.set(row.survey_record_id, row.overall_score);
   }
+
+  const surveyIdByScanJob = new Map<string, string>();
+  for (const row of rows) {
+    if (row.scan_job_id) {
+      surveyIdByScanJob.set(row.scan_job_id as string, row.id as string);
+    }
+  }
+
+  const evidenceIdsBySurvey = new Map<string, Set<string>>();
+  const addEvidence = (surveyId: string | null | undefined, evidenceId: string) => {
+    if (!surveyId) return;
+    const set = evidenceIdsBySurvey.get(surveyId) || new Set<string>();
+    set.add(evidenceId);
+    evidenceIdsBySurvey.set(surveyId, set);
+  };
+  for (const row of [...(evidenceRes.data || []), ...(evidenceByScanRes.data || [])]) {
+    if (row.survey_record_id) {
+      addEvidence(row.survey_record_id, row.id);
+    } else if (row.scan_job_id) {
+      addEvidence(surveyIdByScanJob.get(row.scan_job_id), row.id);
+    }
+  }
   const evidenceCountMap = new Map<string, number>();
-  for (const row of evidenceRes.data || []) {
-    if (!row.survey_record_id) continue;
-    evidenceCountMap.set(
-      row.survey_record_id,
-      (evidenceCountMap.get(row.survey_record_id) || 0) + 1,
-    );
+  for (const [surveyId, set] of evidenceIdsBySurvey.entries()) {
+    evidenceCountMap.set(surveyId, set.size);
   }
   const publicationMap = new Map<string, PublicationStatus>();
   for (const row of pubsRes.data || []) {

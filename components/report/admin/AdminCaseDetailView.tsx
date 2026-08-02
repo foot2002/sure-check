@@ -67,14 +67,20 @@ export function AdminCaseDetailView({
       { method: "POST" },
     );
     const data = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      url?: string;
       signedUrl?: string;
       error?: string;
     } | null;
-    if (!res.ok || !data?.signedUrl) {
-      setMessage(data?.error || "서명 URL 생성 실패");
+    const url = data?.url || data?.signedUrl;
+    if (!res.ok || !url) {
+      setMessage(
+        data?.error ||
+          "증빙 파일 메타데이터는 있으나 Storage 접근 URL 생성에 실패했습니다. Storage 경로, 버킷 권한, 파일 만료 여부를 확인하세요.",
+      );
       return;
     }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   async function copyHash(value: string | null) {
@@ -378,100 +384,130 @@ export function AdminCaseDetailView({
 
       {tab === "증빙자료" ? (
         <div className="space-y-5">
-          {detail.captureJobs.map((job) => (
-            <div
-              key={job.id}
-              className="rounded-xl border border-slate-700 bg-slate-950/40 p-4"
-            >
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Meta label="캡처 모드" value={job.captureMode} />
-                <Meta label="캡처 상태" value={job.status} />
-                <Meta label="전체/부분" value={job.completeness} />
-                <Meta label="캡처 페이지 수" value={job.capturedPageCount} />
-                <Meta
-                  label="임시 입력값 사용"
-                  value={job.temporaryAnswersUsed ? "예" : "아니오"}
-                />
-                <Meta
-                  label="최종 제출 감지"
-                  value={job.finalSubmitDetected ? "예" : "아니오"}
-                />
-                <Meta
-                  label="최종 제출 클릭"
-                  value={job.finalSubmitClicked ? "예" : "아니오"}
-                />
-                <Meta label="경로 범위" value={job.pathScope} />
-              </div>
-              {job.finalSubmitClicked ? (
-                <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
-                  경고: final_submit_clicked=true 입니다. 정상적으로는 false여야
-                  합니다.
+          {detail.captureJobs.length > 0 ? (
+            detail.captureJobs.map((job) => (
+              <div
+                key={job.id}
+                className="rounded-xl border border-slate-700 bg-slate-950/40 p-4"
+              >
+                <p className="mb-3 text-sm font-semibold text-slate-200">
+                  캡처 작업 요약
                 </p>
-              ) : null}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Meta label="캡처 모드" value={job.captureMode} />
+                  <Meta label="캡처 상태" value={job.status} />
+                  <Meta label="완료 수준" value={job.completeness} />
+                  <Meta label="캡처 페이지 수" value={job.capturedPageCount} />
+                  <Meta label="핵심 증거 수" value={job.keyEvidenceCount} />
+                  <Meta
+                    label="임시 입력값 사용"
+                    value={job.temporaryAnswersUsed ? "예" : "아니오"}
+                  />
+                  <Meta
+                    label="최종 제출 클릭"
+                    value={job.finalSubmitClicked ? "예" : "아니오"}
+                  />
+                  <Meta label="중단 사유" value={job.stopReason || "—"} />
+                </div>
+                {job.finalSubmitClicked ? (
+                  <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
+                    주의: 이 캡처 작업에서 최종 제출 클릭 기록이 있습니다.
+                    정상적인 증빙 캡처에서는 final_submit_clicked가 false여야
+                    합니다.
+                  </p>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+              연결된 캡처 작업(capture_jobs)이 없습니다.
             </div>
-          ))}
+          )}
 
-          <div className="overflow-x-auto rounded-xl border border-slate-700">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-700 text-xs text-slate-400">
-                <tr>
-                  {["유형", "키증거", "보관", "만료", "크기", "SHA256", "동작"].map(
-                    (h) => (
+          {detail.evidenceFiles.length === 0 ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-4">
+              <p className="font-semibold text-amber-100">
+                {detail.evidenceEmptyState.title}
+              </p>
+              <p className="mt-2 text-sm text-amber-100/80">
+                {detail.evidenceEmptyState.detail}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-700">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-slate-700 text-xs text-slate-400">
+                  <tr>
+                    {[
+                      "유형",
+                      "라벨",
+                      "페이지",
+                      "보관 수준",
+                      "만료일",
+                      "크기",
+                      "SHA256",
+                      "동작",
+                    ].map((h) => (
                       <th key={h} className="px-3 py-2 text-left">
                         {h}
                       </th>
-                    ),
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {detail.evidenceFiles.map((file) => (
-                  <tr key={file.id} className="border-b border-slate-800">
-                    <td className="px-3 py-2 text-slate-100">
-                      {file.label || file.evidenceType}
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">
-                      {file.isKeyEvidence ? "Y" : "N"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {file.retentionLevel}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {file.expiresAt || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {file.byteSize == null
-                        ? "—"
-                        : `${Math.round(file.byteSize / 1024)} KB`}
-                    </td>
-                    <td className="max-w-[10rem] truncate px-3 py-2 font-mono text-xs text-slate-500">
-                      {file.sha256 || "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEvidence(file.id)}
-                          className="rounded bg-teal-700 px-2 py-1 text-xs font-semibold text-white"
-                        >
-                          {file.evidenceType === "temporary_zip"
-                            ? "ZIP 다운로드"
-                            : "캡처 보기"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyHash(file.sha256)}
-                          className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300"
-                        >
-                          해시 복사
-                        </button>
-                      </div>
-                    </td>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {detail.evidenceFiles.map((file) => (
+                    <tr key={file.id} className="border-b border-slate-800">
+                      <td className="px-3 py-2 text-slate-100">
+                        {file.evidenceTypeLabel}
+                      </td>
+                      <td className="max-w-[12rem] truncate px-3 py-2 text-slate-300">
+                        {file.label || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-slate-400">
+                        {file.pageNumber ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-slate-400">
+                        {file.retentionLevel}
+                      </td>
+                      <td className="px-3 py-2 text-slate-400">
+                        {file.expiresAt
+                          ? new Date(file.expiresAt).toLocaleString("ko-KR")
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-slate-400">
+                        {file.byteSize == null
+                          ? "—"
+                          : `${Math.round(file.byteSize / 1024)} KB`}
+                      </td>
+                      <td className="max-w-[10rem] truncate px-3 py-2 font-mono text-xs text-slate-500">
+                        {file.sha256 || "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEvidence(file.id)}
+                            className="rounded bg-teal-700 px-2 py-1 text-xs font-semibold text-white"
+                          >
+                            {file.evidenceType === "temporary_zip"
+                              ? "ZIP 다운로드"
+                              : "캡처 보기"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copyHash(file.sha256)}
+                            className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300"
+                          >
+                            해시 복사
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       ) : null}
 

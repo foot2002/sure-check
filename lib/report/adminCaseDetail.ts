@@ -3,6 +3,13 @@ import {
   mapPublicationToPublish,
   mapPublishToPublication,
 } from "@/lib/report/adminCases";
+import {
+  buildEvidenceEmptyState,
+  evidenceTypeLabel,
+  loadAdminCaptureJobs,
+  loadAdminEvidenceFiles,
+  type EvidenceEmptyState,
+} from "@/lib/report/adminEvidence";
 import type {
   PublicationStatus,
   ReviewOutcome,
@@ -99,15 +106,18 @@ export interface AdminCaseDetail {
     status: string;
     completeness: string | null;
     capturedPageCount: number;
+    keyEvidenceCount: number;
     temporaryAnswersUsed: boolean;
     finalSubmitDetected: boolean;
     finalSubmitClicked: boolean;
     pathScope: string | null;
+    stopReason: string | null;
     limitations: string[];
   }>;
   evidenceFiles: Array<{
     id: string;
     evidenceType: string;
+    evidenceTypeLabel: string;
     isKeyEvidence: boolean;
     retentionLevel: string;
     mimeType: string | null;
@@ -119,6 +129,7 @@ export interface AdminCaseDetail {
     // Intentionally omit storage_path from default payload listing —
     // signed URL endpoint resolves by evidence file id.
   }>;
+  evidenceEmptyState: EvidenceEmptyState;
   reportJson: Record<string, unknown> | null;
   reviewCase: {
     id: string;
@@ -152,8 +163,6 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
     complianceRes,
     scoresRes,
     questionsRes,
-    capturesRes,
-    evidenceRes,
     reportRes,
     reviewRes,
     pubsRes,
@@ -188,20 +197,6 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       )
       .eq("survey_record_id", id)
       .order("sort_order", { ascending: true }),
-    supabase
-      .from("capture_jobs")
-      .select(
-        "id, capture_mode, status, completeness, captured_page_count, temporary_answers_used, final_submit_detected, final_submit_clicked, path_scope, limitations",
-      )
-      .eq("survey_record_id", id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("evidence_files")
-      .select(
-        "id, evidence_type, is_key_evidence, retention_level, mime_type, byte_size, sha256, label, expires_at, page_number",
-      )
-      .eq("survey_record_id", id)
-      .order("created_at", { ascending: true }),
     survey.scan_report_id
       ? supabase
           .from("scan_reports")
@@ -225,12 +220,23 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       .maybeSingle(),
   ]);
 
+  // Evidence linking may use survey_record_id and/or scan_job_id / capture_job_id.
+  const captureRows = await loadAdminCaptureJobs(
+    supabase,
+    id,
+    (survey.scan_job_id as string | null) || null,
+  );
+  const evidenceRows = await loadAdminEvidenceFiles(
+    supabase,
+    id,
+    (survey.scan_job_id as string | null) || null,
+    captureRows.map((row) => row.id),
+  );
+
   if (findingsRes.error) throw new Error(findingsRes.error.message);
   if (complianceRes.error) throw new Error(complianceRes.error.message);
   if (scoresRes.error) throw new Error(scoresRes.error.message);
   if (questionsRes.error) throw new Error(questionsRes.error.message);
-  if (capturesRes.error) throw new Error(capturesRes.error.message);
-  if (evidenceRes.error) throw new Error(evidenceRes.error.message);
   if (reportRes.error) throw new Error(reportRes.error.message);
   if (reviewRes.error) throw new Error(reviewRes.error.message);
   if (pubsRes.error) throw new Error(pubsRes.error.message);
@@ -268,11 +274,15 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
   }
 
   const report = reportRes.data;
-  const capture = (capturesRes.data || [])[0] || null;
+  const capture = captureRows[0] || null;
   const publicationStatus = mapPublishToPublication(
     survey.publish_status,
     pubsRes.data?.publish_status as PublicationStatus | undefined,
   );
+  const evidenceEmptyState = buildEvidenceEmptyState({
+    captureJobCount: captureRows.length,
+    evidenceFileCount: evidenceRows.length,
+  });
 
   return {
     id: survey.id,
@@ -299,7 +309,7 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       hasHighRiskInfo: Boolean(survey.has_high_risk_info),
       captureCompleteness: capture?.completeness || null,
       captureStatus: capture?.status || null,
-      evidenceCount: (evidenceRes.data || []).length,
+      evidenceCount: evidenceRows.length,
       reviewStatus: (survey.review_status || "none") as ReviewStatus,
       publishStatus: survey.publish_status,
       publicationStatus,
@@ -356,21 +366,24 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       hasHighRiskInfo: Boolean(q.has_high_risk_info),
       categories: categoriesByQuestion.get(q.id) || [],
     })),
-    captureJobs: (capturesRes.data || []).map((c) => ({
+    captureJobs: captureRows.map((c) => ({
       id: c.id,
       captureMode: c.capture_mode,
       status: c.status,
       completeness: c.completeness,
       capturedPageCount: c.captured_page_count || 0,
+      keyEvidenceCount: c.key_evidence_count || 0,
       temporaryAnswersUsed: Boolean(c.temporary_answers_used),
       finalSubmitDetected: Boolean(c.final_submit_detected),
       finalSubmitClicked: Boolean(c.final_submit_clicked),
       pathScope: c.path_scope,
+      stopReason: c.stop_reason,
       limitations: c.limitations || [],
     })),
-    evidenceFiles: (evidenceRes.data || []).map((e) => ({
+    evidenceFiles: evidenceRows.map((e) => ({
       id: e.id,
       evidenceType: e.evidence_type,
+      evidenceTypeLabel: evidenceTypeLabel(e.evidence_type),
       isKeyEvidence: Boolean(e.is_key_evidence),
       retentionLevel: e.retention_level,
       mimeType: e.mime_type,
@@ -380,6 +393,7 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       expiresAt: e.expires_at,
       pageNumber: e.page_number,
     })),
+    evidenceEmptyState,
     reportJson: (report?.report_json as Record<string, unknown> | null) || null,
     reviewCase: reviewRes.data
       ? {
