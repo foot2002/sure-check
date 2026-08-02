@@ -292,6 +292,17 @@ export async function updateScanJobProgress(
     monitoringSaved?: boolean;
     evidenceStored?: boolean;
     completedAt?: string | null;
+    extractionMode?: string | null;
+    browserUsed?: boolean;
+    browserReason?: string | null;
+    fastExtractorConfidence?: string | null;
+    fallbackTriggered?: boolean;
+    fallbackReason?: string | null;
+    totalDurationMs?: number | null;
+    extractDurationMs?: number | null;
+    analysisDurationMs?: number | null;
+    saveDurationMs?: number | null;
+    isCachedReuse?: boolean;
   },
 ): Promise<void> {
   if (!isMonitoringConfigured()) return;
@@ -313,15 +324,68 @@ export async function updateScanJobProgress(
     payload.evidence_stored = patch.evidenceStored;
   }
   if (patch.completedAt !== undefined) payload.completed_at = patch.completedAt;
-  if (patch.status === "running" && !payload.started_at) {
-    // leave started_at as-is if already set
+  if (patch.extractionMode !== undefined) {
+    payload.extraction_mode = patch.extractionMode;
+  }
+  if (patch.browserUsed !== undefined) payload.browser_used = patch.browserUsed;
+  if (patch.browserReason !== undefined) {
+    payload.browser_reason = patch.browserReason;
+  }
+  if (patch.fastExtractorConfidence !== undefined) {
+    payload.fast_extractor_confidence = patch.fastExtractorConfidence;
+  }
+  if (patch.fallbackTriggered !== undefined) {
+    payload.fallback_triggered = patch.fallbackTriggered;
+  }
+  if (patch.fallbackReason !== undefined) {
+    payload.fallback_reason = patch.fallbackReason;
+  }
+  if (patch.totalDurationMs !== undefined) {
+    payload.total_duration_ms = patch.totalDurationMs;
+  }
+  if (patch.extractDurationMs !== undefined) {
+    payload.extract_duration_ms = patch.extractDurationMs;
+  }
+  if (patch.analysisDurationMs !== undefined) {
+    payload.analysis_duration_ms = patch.analysisDurationMs;
+  }
+  if (patch.saveDurationMs !== undefined) {
+    payload.save_duration_ms = patch.saveDurationMs;
+  }
+  if (patch.isCachedReuse !== undefined) {
+    payload.is_cached_reuse = patch.isCachedReuse;
   }
 
   const { error } = await supabase
     .from("scan_jobs")
     .update(payload)
     .eq("id", scanJobId);
-  if (error) throw new Error(`updateScanJobProgress: ${error.message}`);
+  if (error) {
+    // Retry without optional metadata columns if migration 003 missing
+    const core: Record<string, unknown> = {
+      updated_at: payload.updated_at,
+      last_heartbeat_at: payload.last_heartbeat_at,
+      status: payload.status,
+      current_step: payload.current_step,
+      total_steps: payload.total_steps,
+      step_label: payload.step_label,
+      error_message: payload.error_message,
+      platform: payload.platform,
+      monitoring_saved: payload.monitoring_saved,
+      evidence_stored: payload.evidence_stored,
+      completed_at: payload.completed_at,
+    };
+    const cleaned = Object.fromEntries(
+      Object.entries(core).filter(([, v]) => v !== undefined),
+    );
+    const { error: retryError } = await supabase
+      .from("scan_jobs")
+      .update(cleaned)
+      .eq("id", scanJobId);
+    if (retryError) {
+      throw new Error(`updateScanJobProgress: ${error.message}`);
+    }
+  }
 }
 
 export async function getScanJobByExternalId(

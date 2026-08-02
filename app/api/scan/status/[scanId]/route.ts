@@ -95,6 +95,14 @@ export async function GET(
       result: terminal ? result ?? null : undefined,
       monitoringSaved: dbJob?.monitoring_saved ?? undefined,
       evidenceStored: dbJob?.evidence_stored ?? undefined,
+      extractionMode:
+        result?.debug?.extractionMode ??
+        (dbJob as { extraction_mode?: string } | null)?.extraction_mode ??
+        undefined,
+      browserUsed:
+        result?.debug?.browserUsed ??
+        (dbJob as { browser_used?: boolean } | null)?.browser_used ??
+        undefined,
       // legacy field aliases
       scanStatus: toScanStatus(memoryJob?.status ?? dbJob?.status),
     });

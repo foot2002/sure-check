@@ -293,8 +293,8 @@ export const SCAN_STEPS = [
 /** User-facing async scan progress labels (polling UI). */
 export const SCAN_PROGRESS_STEPS = [
   "대기 중",
-  "설문 접속 중",
-  "문항 추출 중",
+  "설문 접속 준비 중",
+  "설문 문항 추출 중",
   "개인정보 분석 중",
   "결과 생성 중",
   "저장 중",

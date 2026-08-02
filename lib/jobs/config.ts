@@ -11,9 +11,18 @@ export function getJobWorkerConfig() {
     captureConcurrency: readInt("CAPTURE_WORKER_CONCURRENCY", 1),
     scanTimeoutSeconds: readInt("SCAN_JOB_TIMEOUT_SECONDS", 60),
     captureTimeoutSeconds: readInt("CAPTURE_JOB_TIMEOUT_SECONDS", 180),
+    browserExtractTimeoutSeconds: readInt(
+      "BROWSER_EXTRACT_TIMEOUT_SECONDS",
+      30,
+    ),
     scanCacheTtlSeconds: readInt("SCAN_CACHE_TTL_SECONDS", 3600),
     staleScanSeconds: readInt("SCAN_JOB_STALE_SECONDS", 120),
     staleCaptureSeconds: readInt("CAPTURE_JOB_STALE_SECONDS", 240),
+    scanRateLimitPerIpPerMinute: readInt(
+      "SCAN_RATE_LIMIT_PER_IP_PER_MINUTE",
+      5,
+    ),
+    maxPendingJobsPerIp: readInt("MAX_PENDING_JOBS_PER_IP", 3),
   };
 }
 

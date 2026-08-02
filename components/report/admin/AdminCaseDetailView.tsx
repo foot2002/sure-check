@@ -230,6 +230,54 @@ export function AdminCaseDetailView({
         </div>
       ) : null}
 
+      {tab === "요약" && detail.performance ? (
+        <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+          <h3 className="text-sm font-semibold text-white">추출·성능 정보</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Meta
+              label="extractionMode"
+              value={detail.performance.extractionMode}
+            />
+            <Meta
+              label="browserUsed"
+              value={detail.performance.browserUsed ? "true" : "false"}
+            />
+            <Meta
+              label="browserReason"
+              value={detail.performance.browserReason}
+            />
+            <Meta
+              label="fastExtractorConfidence"
+              value={detail.performance.fastExtractorConfidence}
+            />
+            <Meta
+              label="fallbackTriggered"
+              value={detail.performance.fallbackTriggered ? "true" : "false"}
+            />
+            <Meta
+              label="fallbackReason"
+              value={detail.performance.fallbackReason}
+            />
+            <Meta
+              label="totalDurationMs"
+              value={detail.performance.totalDurationMs}
+            />
+            <Meta
+              label="extractDurationMs"
+              value={detail.performance.extractDurationMs}
+            />
+            <Meta
+              label="analysisDurationMs"
+              value={detail.performance.analysisDurationMs}
+            />
+            <Meta
+              label="saveDurationMs"
+              value={detail.performance.saveDurationMs}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {tab === "문제 판단" ? (
         <div className="space-y-6">
           <p className="text-sm text-slate-400">

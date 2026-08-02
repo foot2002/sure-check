@@ -68,6 +68,7 @@ async function processClaimedScanJob(
   const config = getJobWorkerConfig();
   const timeoutMs = config.scanTimeoutSeconds * 1000;
   const totalSteps = SCAN_PROGRESS_STEPS.length;
+  const jobStartedAt = Date.now();
 
   await setProgress(externalScanId, claimed, {
     status: "running",
@@ -82,7 +83,7 @@ async function processClaimedScanJob(
       stepLabel: SCAN_PROGRESS_STEPS[2],
     });
 
-    const { report, jobStatus } = await withTimeout(
+    const { report, jobStatus, meta } = await withTimeout(
       runTimedStep(claimed.id, "extract_questions", async () => {
         await setProgress(externalScanId, claimed, {
           status: "running",
@@ -113,6 +114,7 @@ async function processClaimedScanJob(
     mockStore.saveReport(report);
 
     let monitoringSaved = false;
+    const saveStarted = Date.now();
     try {
       await runTimedStep(claimed.id, "save_monitoring", async () => {
         await finalizeMonitoringSnapshotForJob(claimed.id, report);
@@ -122,8 +124,15 @@ async function processClaimedScanJob(
       console.error("[jobs] save_monitoring failed:", err);
       monitoringSaved = false;
     }
+    const saveDurationMs = Date.now() - saveStarted;
+    meta.saveDurationMs = saveDurationMs;
+    meta.totalDurationMs = Date.now() - jobStartedAt;
+    if (report.debug) {
+      report.debug.saveDurationMs = saveDurationMs;
+      report.debug.totalDurationMs = meta.totalDurationMs;
+    }
+    mockStore.saveReport(report);
 
-    // Capture is intentionally NOT part of normal diagnosis.
     await recordScanJobStep({
       scanJobId: claimed.id,
       stepName: "capture_evidence",
@@ -166,6 +175,16 @@ async function processClaimedScanJob(
       monitoringSaved,
       evidenceStored: false,
       completedAt: report.completedAt || new Date().toISOString(),
+      extractionMode: meta.extractionMode,
+      browserUsed: meta.browserUsed,
+      browserReason: meta.browserReason ?? null,
+      fastExtractorConfidence: meta.fastExtractorConfidence ?? null,
+      fallbackTriggered: meta.fallbackTriggered,
+      fallbackReason: meta.fallbackReason ?? null,
+      totalDurationMs: meta.totalDurationMs ?? null,
+      extractDurationMs: meta.extractDurationMs ?? null,
+      analysisDurationMs: meta.analysisDurationMs ?? null,
+      saveDurationMs: meta.saveDurationMs ?? null,
     });
 
     try {

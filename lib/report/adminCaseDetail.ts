@@ -49,6 +49,18 @@ export interface AdminCaseDetail {
     scanReportId: string | null;
     scanJobId: string;
   };
+  performance: {
+    extractionMode: string | null;
+    browserUsed: boolean;
+    browserReason: string | null;
+    fastExtractorConfidence: string | null;
+    fallbackTriggered: boolean;
+    fallbackReason: string | null;
+    totalDurationMs: number | null;
+    extractDurationMs: number | null;
+    analysisDurationMs: number | null;
+    saveDurationMs: number | null;
+  };
   findings: Array<{
     id: string;
     findingType: string;
@@ -237,6 +249,21 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
   if (complianceRes.error) throw new Error(complianceRes.error.message);
   if (scoresRes.error) throw new Error(scoresRes.error.message);
   if (questionsRes.error) throw new Error(questionsRes.error.message);
+
+  let scanJobPerf: Record<string, unknown> | null = null;
+  if (survey.scan_job_id) {
+    const { data: jobRow } = await supabase
+      .from("scan_jobs")
+      .select(
+        "extraction_mode, browser_used, browser_reason, fast_extractor_confidence, fallback_triggered, fallback_reason, total_duration_ms, extract_duration_ms, analysis_duration_ms, save_duration_ms",
+      )
+      .eq("id", survey.scan_job_id)
+      .maybeSingle();
+    scanJobPerf = (jobRow as Record<string, unknown> | null) || null;
+  }
+  const reportJsonDebug = (
+    reportRes.data?.report_json as { debug?: Record<string, unknown> } | null
+  )?.debug;
   if (reportRes.error) throw new Error(reportRes.error.message);
   if (reviewRes.error) throw new Error(reviewRes.error.message);
   if (pubsRes.error) throw new Error(pubsRes.error.message);
@@ -317,6 +344,48 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       observedDateKst: survey.observed_date_kst,
       scanReportId: survey.scan_report_id,
       scanJobId: survey.scan_job_id,
+    },
+    performance: {
+      extractionMode:
+        (scanJobPerf?.extraction_mode as string | null) ||
+        (reportJsonDebug?.extractionMode as string | null) ||
+        null,
+      browserUsed: Boolean(
+        scanJobPerf?.browser_used ?? reportJsonDebug?.browserUsed ?? false,
+      ),
+      browserReason:
+        (scanJobPerf?.browser_reason as string | null) ||
+        (reportJsonDebug?.browserReason as string | null) ||
+        null,
+      fastExtractorConfidence:
+        (scanJobPerf?.fast_extractor_confidence as string | null) ||
+        (reportJsonDebug?.fastExtractorConfidence as string | null) ||
+        null,
+      fallbackTriggered: Boolean(
+        scanJobPerf?.fallback_triggered ??
+          reportJsonDebug?.fallbackTriggered ??
+          false,
+      ),
+      fallbackReason:
+        (scanJobPerf?.fallback_reason as string | null) ||
+        (reportJsonDebug?.fallbackReason as string | null) ||
+        null,
+      totalDurationMs:
+        (scanJobPerf?.total_duration_ms as number | null) ??
+        (reportJsonDebug?.totalDurationMs as number | null) ??
+        null,
+      extractDurationMs:
+        (scanJobPerf?.extract_duration_ms as number | null) ??
+        (reportJsonDebug?.extractDurationMs as number | null) ??
+        null,
+      analysisDurationMs:
+        (scanJobPerf?.analysis_duration_ms as number | null) ??
+        (reportJsonDebug?.analysisDurationMs as number | null) ??
+        null,
+      saveDurationMs:
+        (scanJobPerf?.save_duration_ms as number | null) ??
+        (reportJsonDebug?.saveDurationMs as number | null) ??
+        null,
     },
     findings: (findingsRes.data || []).map((f) => ({
       id: f.id,

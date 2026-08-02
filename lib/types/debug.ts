@@ -63,6 +63,20 @@ export interface ScanDebugInfo {
   finalScore?: number | null;
   finalGrade?: RiskGrade;
   scoreBreakdown?: AnalysisResult["score"];
+  extractionMode?:
+    | "platform_parser"
+    | "fast_static"
+    | "browser_fallback"
+    | "limited";
+  browserUsed?: boolean;
+  browserReason?: string;
+  fastExtractorConfidence?: DiagnosticConfidence;
+  fallbackTriggered?: boolean;
+  fallbackReason?: string;
+  extractDurationMs?: number;
+  analysisDurationMs?: number;
+  saveDurationMs?: number;
+  totalDurationMs?: number;
 }
 
 export interface ReportBuildContext {

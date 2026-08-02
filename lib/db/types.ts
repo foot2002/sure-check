@@ -246,6 +246,17 @@ export interface ScanJobRow {
   cache_key?: string | null;
   monitoring_saved?: boolean;
   evidence_stored?: boolean;
+  is_cached_reuse?: boolean;
+  extraction_mode?: string | null;
+  browser_used?: boolean;
+  browser_reason?: string | null;
+  fast_extractor_confidence?: string | null;
+  fallback_triggered?: boolean;
+  fallback_reason?: string | null;
+  total_duration_ms?: number | null;
+  extract_duration_ms?: number | null;
+  analysis_duration_ms?: number | null;
+  save_duration_ms?: number | null;
 }
 
 export interface ScanJobStepRow {

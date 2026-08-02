@@ -4,14 +4,10 @@ import {
   DEFAULT_CACHE_TTL_MS,
   getUrlCache,
 } from "@/lib/cache/inMemoryUrlCache";
-import { extractGenericHtml } from "@/lib/extractors/GenericHtmlExtractor";
-import { extractGoogleForms } from "@/lib/extractors/GoogleFormsExtractor";
-import { extractNaverForms } from "@/lib/extractors/NaverFormsExtractor";
 import {
   GOOGLE_FORMS_DIAGNOSIS_NOTICE,
   isGoogleFormsUrl,
 } from "@/lib/extractors/googleFormsTypes";
-import { extractMoaform } from "@/lib/extractors/MoaformExtractor";
 import {
   isMoaformFinalUrl,
   isMoaformUrl,
@@ -34,6 +30,8 @@ import { safeFetchHtml } from "@/lib/security/safeFetch";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 import type { MockReportKey, NormalizedForm, ScanReport, ScanStatus } from "@/lib/types/scan";
 import type { ReportBuildContext } from "@/lib/types/debug";
+import type { ScanExtractionMeta } from "@/lib/extractors/fastExtractionTypes";
+import { extractWithAccuracyGate } from "@/lib/scan/extractWithAccuracyGate";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
 import { normalizeUrl } from "@/lib/utils/normalizeUrl";
 
@@ -174,15 +172,22 @@ async function resolveNaverFormsReport(
   html: string,
   finalUrl: string,
   urlHash: string,
-): Promise<{ report: ScanReport; jobStatus: ScanStatus }> {
-  const form = await extractNaverForms({ url: formUrl, html, finalUrl });
-
-  const buildContext = scanBuildContext(formUrl, finalUrl);
+): Promise<{ report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta }> {
+  const extracted = await extractWithAccuracyGate({
+    platform: "naver",
+    formUrl,
+    html,
+    finalUrl,
+  });
+  const form = extracted.form;
+  const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
+  const analysisStarted = Date.now();
 
   if (form.isLimited || form.questions.length === 0) {
     const report = buildNaverLimitedReport(scanId, formUrl, form, buildContext);
+    stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
-    return { report, jobStatus: "limited" };
+    return { report, jobStatus: "limited", meta: extracted.meta };
   }
 
   const report = analyzeForm(
@@ -193,8 +198,9 @@ async function resolveNaverFormsReport(
     buildContext,
   );
   annotateNaverFormsReport(report);
+  stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
   cacheReport(urlHash, report);
-  return { report, jobStatus: "completed" };
+  return { report, jobStatus: "completed", meta: extracted.meta };
 }
 
 function buildMoaformLimitedReport(
@@ -233,15 +239,22 @@ async function resolveMoaformReport(
   html: string,
   finalUrl: string,
   urlHash: string,
-): Promise<{ report: ScanReport; jobStatus: ScanStatus }> {
-  const form = await extractMoaform({ url: formUrl, html, finalUrl });
-
-  const buildContext = scanBuildContext(formUrl, finalUrl);
+): Promise<{ report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta }> {
+  const extracted = await extractWithAccuracyGate({
+    platform: "moaform",
+    formUrl,
+    html,
+    finalUrl,
+  });
+  const form = extracted.form;
+  const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
+  const analysisStarted = Date.now();
 
   if (form.isLimited || form.questions.length === 0) {
     const report = buildMoaformLimitedReport(scanId, formUrl, form, buildContext);
+    stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
-    return { report, jobStatus: "limited" };
+    return { report, jobStatus: "limited", meta: extracted.meta };
   }
 
   const report = analyzeForm(
@@ -252,8 +265,9 @@ async function resolveMoaformReport(
     buildContext,
   );
   annotateMoaformReport(report);
+  stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
   cacheReport(urlHash, report);
-  return { report, jobStatus: "completed" };
+  return { report, jobStatus: "completed", meta: extracted.meta };
 }
 
 function isPlatformUrl(formUrl: string, finalUrl: string): {
@@ -282,22 +296,22 @@ function buildPlatformLimitedReport(
   limitedReason: string,
   summary: string,
   jobStatus: Extract<ScanStatus, "failed" | "limited">,
-): { report: ScanReport; jobStatus: ScanStatus } {
-  return {
-    report: generateExtractionLimitedReport(
-      scanId,
-      formUrl,
-      { platform, title },
-      {
-        limitedReason,
-        limitationReasons: [limitedReason, EXTRACTION_LIMITED_GUIDANCE],
-        summary,
-        buildContext: scanBuildContext(formUrl),
-        diagnosisStatus: jobStatus === "failed" ? "blocked" : "limited",
-      },
-    ),
-    jobStatus,
-  };
+): { report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta } {
+  const report = generateExtractionLimitedReport(
+    scanId,
+    formUrl,
+    { platform, title },
+    {
+      limitedReason,
+      limitationReasons: [limitedReason, EXTRACTION_LIMITED_GUIDANCE],
+      summary,
+      buildContext: scanBuildContext(formUrl),
+      diagnosisStatus: jobStatus === "failed" ? "blocked" : "limited",
+    },
+  );
+  const meta = emptyMeta({ extractionMode: "limited" });
+  stampExtractionMeta(report, meta, 0);
+  return { report, jobStatus, meta };
 }
 function buildGoogleLimitedReport(
   scanId: string,
@@ -323,21 +337,28 @@ function buildGoogleLimitedReport(
   });
 }
 
-function resolveGoogleFormsReport(
+async function resolveGoogleFormsReport(
   scanId: string,
   formUrl: string,
   html: string,
   finalUrl: string,
   urlHash: string,
-): { report: ScanReport; jobStatus: ScanStatus } {
-  const form = extractGoogleForms({ url: formUrl, html, finalUrl });
-
-  const buildContext = scanBuildContext(formUrl, finalUrl);
+): Promise<{ report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta }> {
+  const extracted = await extractWithAccuracyGate({
+    platform: "google",
+    formUrl,
+    html,
+    finalUrl,
+  });
+  const form = extracted.form;
+  const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
+  const analysisStarted = Date.now();
 
   if (form.isLimited || form.questions.length === 0) {
     const report = buildGoogleLimitedReport(scanId, formUrl, form, buildContext);
+    stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
-    return { report, jobStatus: "limited" };
+    return { report, jobStatus: "limited", meta: extracted.meta };
   }
 
   const report = analyzeForm(
@@ -348,27 +369,35 @@ function resolveGoogleFormsReport(
     buildContext,
   );
   annotateGoogleFormsReport(report);
+  stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
   cacheReport(urlHash, report);
-  return { report, jobStatus: "completed" };
+  return { report, jobStatus: "completed", meta: extracted.meta };
 }
 
-function resolveGenericHtmlReport(
+async function resolveGenericHtmlReport(
   scanId: string,
   formUrl: string,
   html: string,
   finalUrl: string,
   urlHash: string,
-): { report: ScanReport; jobStatus: ScanStatus } {
-  const form = extractGenericHtml({ url: formUrl, html, finalUrl });
-
-  const buildContext = scanBuildContext(formUrl, finalUrl);
+): Promise<{ report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta }> {
+  const extracted = await extractWithAccuracyGate({
+    platform: "generic",
+    formUrl,
+    html,
+    finalUrl,
+  });
+  const form = extracted.form;
+  const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
+  const analysisStarted = Date.now();
 
   if (form.questions.length === 0) {
     const report = generateExtractionLimitedReport(scanId, formUrl, form, {
       buildContext,
     });
+    stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
-    return { report, jobStatus: "limited" };
+    return { report, jobStatus: "limited", meta: extracted.meta };
   }
 
   const report = analyzeForm(
@@ -379,15 +408,59 @@ function resolveGenericHtmlReport(
     buildContext,
   );
   annotateGenericReport(report, form);
+  stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
   cacheReport(urlHash, report);
-  return { report, jobStatus: "completed" };
+  return { report, jobStatus: "completed", meta: extracted.meta };
+}
+
+function stampExtractionMeta(
+  report: ScanReport,
+  meta: ScanExtractionMeta,
+  analysisDurationMs: number,
+): void {
+  meta.analysisDurationMs = analysisDurationMs;
+  report.debug = {
+    ...(report.debug || {
+      inputUrl: report.formUrl,
+      normalizedUrl: report.formUrl,
+      platform: report.platform,
+      extractorName: "resolveScanReport",
+      questionCount: report.form.questions.length,
+      partialScan: Boolean(report.form.partialScan),
+      isLimited: Boolean(report.isLimited),
+      contextLabels: [],
+      publicSectorDetected: false,
+      publicSectorEvidence: [],
+      obligations: [],
+      missingNotices: [],
+      managementItems: [],
+      overrideRules: [],
+    }),
+    extractionMode: meta.extractionMode,
+    browserUsed: meta.browserUsed,
+    browserReason: meta.browserReason || undefined,
+    fastExtractorConfidence: meta.fastExtractorConfidence || undefined,
+    fallbackTriggered: meta.fallbackTriggered,
+    fallbackReason: meta.fallbackReason || undefined,
+    extractDurationMs: meta.extractDurationMs ?? undefined,
+    analysisDurationMs: meta.analysisDurationMs ?? undefined,
+  };
+}
+
+function emptyMeta(partial?: Partial<ScanExtractionMeta>): ScanExtractionMeta {
+  return {
+    extractionMode: "limited",
+    browserUsed: false,
+    fallbackTriggered: false,
+    ...partial,
+  };
 }
 
 function resolveFetchFailure(
   scanId: string,
   formUrl: string,
   fetchResult: Awaited<ReturnType<typeof safeFetchHtml>>,
-): { report: ScanReport; jobStatus: ScanStatus } {
+): { report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta } {
   const platforms = isPlatformUrl(formUrl, formUrl);
 
   if (fetchResult.failedReason) {
@@ -424,12 +497,12 @@ function resolveFetchFailure(
         "failed",
       );
     }
-    return {
-      report: generateRestrictedReport(scanId, formUrl, "failed", [
-        fetchResult.failedReason,
-      ]),
-      jobStatus: "failed",
-    };
+    const report = generateRestrictedReport(scanId, formUrl, "failed", [
+      fetchResult.failedReason,
+    ]);
+    const meta = emptyMeta({ extractionMode: "limited" });
+    stampExtractionMeta(report, meta, 0);
+    return { report, jobStatus: "failed", meta };
   }
 
   const reasons: string[] = [];
@@ -476,16 +549,16 @@ function resolveFetchFailure(
     );
   }
 
-  return {
-    report: generateRestrictedReport(scanId, formUrl, "limited", reasons),
-    jobStatus: "limited",
-  };
+  const report = generateRestrictedReport(scanId, formUrl, "limited", reasons);
+  const meta = emptyMeta({ extractionMode: "limited" });
+  stampExtractionMeta(report, meta, 0);
+  return { report, jobStatus: "limited", meta };
 }
 
 export async function resolveScanReport(
   scanId: string,
   formUrl: string,
-): Promise<{ report: ScanReport; jobStatus: ScanStatus }> {
+): Promise<{ report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta }> {
   if (isFixtureUrl(formUrl)) {
     const mockKey = resolveFixtureKey(formUrl);
     const form = getFixtureByUrl(formUrl);
@@ -494,7 +567,12 @@ export async function resolveScanReport(
       normalizedUrl: normalized,
       finalUrl: form.url,
     });
-    return { report, jobStatus: "completed" };
+    const meta = emptyMeta({
+      extractionMode: "platform_parser",
+      fastExtractorConfidence: form.confidence ?? "high",
+    });
+    stampExtractionMeta(report, meta, 0);
+    return { report, jobStatus: "completed", meta };
   }
 
   const normalized = normalizeUrl(formUrl);
@@ -503,7 +581,14 @@ export async function resolveScanReport(
   const cached = cache.get(urlHash);
   if (cached) {
     const report = cloneReportForScan(cached, scanId, formUrl);
-    return { report, jobStatus: report.scanStatus ?? "completed" };
+    const meta = emptyMeta({
+      extractionMode: report.debug?.extractionMode || "platform_parser",
+      browserUsed: Boolean(report.debug?.browserUsed),
+      fastExtractorConfidence: report.debug?.fastExtractorConfidence,
+      fallbackTriggered: Boolean(report.debug?.fallbackTriggered),
+      fallbackReason: report.debug?.fallbackReason as ScanExtractionMeta["fallbackReason"],
+    });
+    return { report, jobStatus: report.scanStatus ?? "completed", meta };
   }
 
   const safety = await safeUrlCheck(formUrl);
@@ -546,7 +631,9 @@ export async function resolveScanReport(
     const report = generateRestrictedReport(scanId, formUrl, "failed", [
       safety.reason ?? "URL 안전검사에서 차단됨",
     ]);
-    return { report, jobStatus: "failed" };
+    const meta = emptyMeta({ extractionMode: "limited" });
+    stampExtractionMeta(report, meta, 0);
+    return { report, jobStatus: "failed", meta };
   }
 
   const fetchResult = await safeFetchHtml(formUrl);

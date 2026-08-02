@@ -8,6 +8,11 @@ import {
   findRunningScanByCacheKey,
   toApiScanStatus,
 } from "@/lib/jobs/scanJobQueue";
+import {
+  checkScanRateLimit,
+  getClientIp,
+  recordScanStart,
+} from "@/lib/jobs/scanRateLimit";
 import { mockStore } from "@/lib/mock/mockStore";
 import {
   createPendingScanId,
@@ -24,6 +29,15 @@ export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
+    const clientIp = getClientIp(request);
+    const rate = checkScanRateLimit(clientIp);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { ok: false, error: rate.reason },
+        { status: 429 },
+      );
+    }
+
     const body = await request.json();
     const formUrl = typeof body.formUrl === "string" ? body.formUrl.trim() : "";
 
@@ -58,7 +72,6 @@ export async function POST(request: Request) {
       urlHost = null;
     }
 
-    // Reuse in-flight job for same URL
     if (isMonitoringConfigured()) {
       try {
         const running = await findRunningScanByCacheKey(cacheKey);
@@ -70,6 +83,7 @@ export async function POST(request: Request) {
             status: toApiScanStatus(running.status),
             pollUrl: `/api/scan/status/${scanId}`,
             cached: false,
+            reusedRunningJob: true,
             reused: true,
           });
         }
@@ -97,6 +111,7 @@ export async function POST(request: Request) {
             status: "completed" as const,
             pollUrl: `/api/scan/status/${scanId}`,
             cached: true,
+            reusedRunningJob: false,
             reused: false,
           });
         }
@@ -107,7 +122,6 @@ export async function POST(request: Request) {
 
     const repository = getScanRepository();
     const pending = await repository.createScanJob({ formUrl });
-    // Prefer deterministic id from repository; keep generate helper available
     const scanId = pending.scanId || createPendingScanId();
 
     if (isMonitoringConfigured()) {
@@ -125,12 +139,15 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: false,
-            error: "진단 대기열에 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            error:
+              "진단 대기열에 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
           },
           { status: 503 },
         );
       }
     }
+
+    recordScanStart(clientIp);
 
     after(() => {
       void processScanJob(scanId).catch((err) => {
@@ -144,6 +161,7 @@ export async function POST(request: Request) {
       status: "queued" as const,
       pollUrl: `/api/scan/status/${scanId}`,
       cached: false,
+      reusedRunningJob: false,
       reused: false,
     });
   } catch {

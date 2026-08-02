@@ -22,6 +22,8 @@
     "monitoring:check": "tsx scripts/check-monitoring-save.ts",
     "evidence:check": "tsx scripts/check-evidence-storage.ts",
     "evidence:backfill-links": "tsx scripts/backfill-evidence-links.ts",
+    "evidence:preservation": "tsx scripts/check-evidence-preservation.ts",
+    "diagnosis:regression": "tsx scripts/check-diagnosis-regression.ts",
     "report:public-safety": "tsx scripts/check-public-report-safety.ts"
   },
   "dependencies": {
