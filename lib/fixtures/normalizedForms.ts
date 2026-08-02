@@ -345,14 +345,40 @@ export const NORMALIZED_FORM_FIXTURES: Record<MockReportKey, NormalizedForm> = {
 
 export function resolveFixtureKey(formUrl: string): MockReportKey {
   const url = formUrl.toLowerCase();
-  if (url.includes("moaform")) return "moaform_employee_high_risk";
-  if (url.includes("wiseon")) return "wiseon_csap_caution";
+  if (
+    url.includes("google_public_high_risk") ||
+    url.includes("google-forms-basic") ||
+    url.includes("/fixture/google")
+  ) {
+    return "google_public_high_risk";
+  }
+  if (
+    url.includes("naver_company_event_risk") ||
+    url.includes("naver-form-personal") ||
+    url.includes("/fixture/naver")
+  ) {
+    return "naver_company_event_risk";
+  }
+  if (url.includes("moaform") || url.includes("/fixture/moaform")) {
+    return "moaform_employee_high_risk";
+  }
+  if (url.includes("wiseon") || url.includes("/fixture/wiseon")) {
+    return "wiseon_csap_caution";
+  }
+  if (url.includes("generic_unknown") || url.includes("/fixture/generic")) {
+    return "generic_unknown_warning";
+  }
   return "generic_unknown_warning";
 }
 
 export function isFixtureUrl(formUrl: string): boolean {
   const url = formUrl.toLowerCase();
-  return url.includes("wiseon");
+  return (
+    url.includes("wiseon") ||
+    url.includes("sure-check.verify/fixture/") ||
+    url.includes("fixture.sure-check.local/") ||
+    /sure-check\.verify\/fixture\//.test(url)
+  );
 }
 
 export function getFixtureByKey(key: MockReportKey): NormalizedForm {

@@ -66,6 +66,8 @@ scripts/live-*
 scripts/scan-moaform*
 scripts/search-*
 scripts/verify-*
+!scripts/verify-production-readiness.ts
+!scripts/verify-evidence-capture.ts
 scripts/walk-*
 scripts/smoke-*
 dev-notes/archive/

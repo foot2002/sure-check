@@ -1,0 +1,108 @@
+{
+  "generatedAt": "2026-08-02T17:05:00.000Z",
+  "baseUrl": "http://localhost:8080",
+  "modes": "smoke+load+admin+side-checks",
+  "loadConcurrency": 10,
+  "loadRequests": 30,
+  "fixtureUrls": 5,
+  "notes": [
+    "Fixture URLs (sure-check.verify/fixture/*) used to avoid third-party platform hammering",
+    "Local server run with SCAN_RATE_LIMIT_PER_IP_PER_MINUTE=120 and MAX_PENDING_JOBS_PER_IP=50 for load window",
+    "Smoke start p95 elevated by cold start; load p95 within budget"
+  ],
+  "smoke": {
+    "totalRequests": 3,
+    "successfulStartCount": 3,
+    "failedStartCount": 0,
+    "p50StartLatencyMs": 203,
+    "p95StartLatencyMs": 3753,
+    "completedCount": 3,
+    "limitedCount": 0,
+    "failedCount": 0,
+    "timeoutCount": 0,
+    "p50CompletionMs": 1132,
+    "p95CompletionMs": 2853,
+    "cachedCount": 0,
+    "reusedRunningJobCount": 0,
+    "browserFallbackCount": 0,
+    "platformParserCount": 3,
+    "averageQueueWaitMs": 1701,
+    "stuckRunningJobs": 0,
+    "http500Count": 0,
+    "rateLimitedCount": 0
+  },
+  "load": {
+    "totalRequests": 30,
+    "successfulStartCount": 30,
+    "failedStartCount": 0,
+    "p50StartLatencyMs": 593,
+    "p95StartLatencyMs": 1507,
+    "completedCount": 30,
+    "limitedCount": 0,
+    "failedCount": 0,
+    "timeoutCount": 0,
+    "p50CompletionMs": 634,
+    "p95CompletionMs": 4719,
+    "cachedCount": 24,
+    "reusedRunningJobCount": 2,
+    "browserFallbackCount": 0,
+    "platformParserCount": 6,
+    "averageQueueWaitMs": 1223,
+    "stuckRunningJobs": 0,
+    "http500Count": 0,
+    "rateLimitedCount": 0
+  },
+  "admin": {
+    "unauthenticatedBlocked": true,
+    "loginOk": true,
+    "queueVisible": true,
+    "casesApiOk": true,
+    "detailOk": true,
+    "evidenceVisible": true,
+    "signedUrlApiExists": true,
+    "reviewApiExists": true,
+    "publicationApiExists": true,
+    "notes": []
+  },
+  "accuracy": {
+    "diagnosisRegression": "PASS",
+    "totalCases": 5,
+    "pass": 5,
+    "fallback": 0,
+    "fail": 0,
+    "riskDowngradeDetected": 0,
+    "personalInfoLossDetected": 0,
+    "sensitiveInfoLossDetected": 0,
+    "highRiskLossDetected": 0
+  },
+  "evidence": {
+    "preservation": "PASS",
+    "temporaryZip": true,
+    "keyScreenshots": 3,
+    "signedUrl": true,
+    "finalSubmitClickedFalse": true
+  },
+  "checks": {
+    "verify:smoke": "PASS",
+    "verify:load": "PASS",
+    "verify:admin": "PASS",
+    "diagnosis:regression": "PASS",
+    "evidence:preservation": "PASS",
+    "report:public-safety": "PASS",
+    "monitoring:check": "PASS",
+    "evidence:check": "PASS",
+    "lint": "PASS",
+    "build": "PASS"
+  },
+  "decision": {
+    "readiness": "PASS",
+    "risks": [
+      "Smoke start p95=3753ms on cold start only; load p95=1507ms within budget"
+    ],
+    "next": [
+      "Keep INTERNAL_WORKER_TOKEN cron kicking /api/internal/jobs/run-next on Vercel if needed",
+      "For production load windows, temporarily raise SCAN_RATE_LIMIT_PER_IP_PER_MINUTE / MAX_PENDING_JOBS_PER_IP",
+      "Re-run verify:smoke against VERIFY_BASE_URL=https://sure-check.vercel.app after deploy of fixture URL support"
+    ]
+  }
+}

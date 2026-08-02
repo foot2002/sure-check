@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarRange, Info } from "lucide-react";
+import { CalendarRange, Info } from "lucide-react";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PublicDashboardView } from "@/components/report/PublicDashboardView";
@@ -46,16 +46,8 @@ export default async function PublicReportPage({
       <main className="flex-1">
         <section className="border-b border-slate-200 bg-gradient-to-b from-teal-50/80 via-white to-[#f8fafc]">
           <div className="mx-auto max-w-[72rem] px-5 py-5 md:px-8 md:py-7">
-            <Link
-              href="/"
-              className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-teal-800"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              진단으로 돌아가기
-            </Link>
-
             <p className="text-xs font-semibold tracking-wide text-teal-800">
-              SURE Check 공개 모니터링
+              SURE Check 수집실태 리포트
             </p>
             <h1 className="mt-1.5 max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
               대한민국 온라인 수집 개인정보 모니터링

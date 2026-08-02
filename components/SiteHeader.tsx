@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { HeaderNav } from "@/components/HeaderNav";
 
 export function SiteHeader({ compact = false }: { compact?: boolean }) {
   return (
@@ -9,13 +9,10 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
           compact ? "py-2 md:py-2.5" : "py-3.5 md:py-4"
         }`}
       >
-        <Logo size={compact ? "headerCompact" : "header"} />
-        <Link
-          href="/report"
-          className="shrink-0 whitespace-nowrap text-sm font-semibold text-slate-600 transition hover:text-teal-800"
-        >
-          공개 모니터링
-        </Link>
+        <div className="min-w-0 flex-1">
+          <Logo size={compact ? "headerCompact" : "header"} />
+        </div>
+        <HeaderNav />
       </div>
     </header>
   );

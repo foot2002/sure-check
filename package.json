@@ -24,7 +24,11 @@
     "evidence:backfill-links": "tsx scripts/backfill-evidence-links.ts",
     "evidence:preservation": "tsx scripts/check-evidence-preservation.ts",
     "diagnosis:regression": "tsx scripts/check-diagnosis-regression.ts",
-    "report:public-safety": "tsx scripts/check-public-report-safety.ts"
+    "report:public-safety": "tsx scripts/check-public-report-safety.ts",
+    "verify:smoke": "tsx scripts/verify-production-readiness.ts --mode=smoke",
+    "verify:load": "tsx scripts/verify-production-readiness.ts --mode=load --concurrency=10 --requests=30",
+    "verify:admin": "tsx scripts/verify-production-readiness.ts --mode=admin",
+    "verify:full": "tsx scripts/verify-production-readiness.ts --mode=full --concurrency=10 --requests=30"
   },
   "dependencies": {
     "@fontsource/noto-sans-kr": "^5.3.0",

@@ -1,0 +1,32 @@
+[
+  {
+    "label": "Google Forms - high risk fixture",
+    "url": "https://sure-check.verify/fixture/google_public_high_risk",
+    "platform": "google_forms",
+    "expectPersonalInfo": true
+  },
+  {
+    "label": "Naver Form - personal fixture",
+    "url": "https://sure-check.verify/fixture/naver_company_event_risk",
+    "platform": "naver_form",
+    "expectPersonalInfo": true
+  },
+  {
+    "label": "Moaform - employee high risk fixture",
+    "url": "https://sure-check.verify/fixture/moaform_employee_high_risk",
+    "platform": "moaform",
+    "expectPersonalInfo": true
+  },
+  {
+    "label": "Wiseon CSAP - caution fixture",
+    "url": "https://sure-check.verify/fixture/wiseon_csap_caution",
+    "platform": "wiseon_csap",
+    "expectPersonalInfo": false
+  },
+  {
+    "label": "Generic - unknown warning fixture",
+    "url": "https://sure-check.verify/fixture/generic_unknown_warning",
+    "platform": "generic",
+    "expectPersonalInfo": false
+  }
+]
