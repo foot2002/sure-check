@@ -237,6 +237,27 @@ export interface ScanJobRow {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  attempt_count?: number;
+  locked_at?: string | null;
+  locked_by?: string | null;
+  last_heartbeat_at?: string | null;
+  priority?: number;
+  queued_at?: string | null;
+  cache_key?: string | null;
+  monitoring_saved?: boolean;
+  evidence_stored?: boolean;
+}
+
+export interface ScanJobStepRow {
+  id: string;
+  scan_job_id: string;
+  step_name: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  error_message: string | null;
+  created_at: string;
 }
 
 export interface ScanReportRow {
@@ -423,6 +444,18 @@ export interface CaptureJobRow {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  attempt_count?: number;
+  locked_at?: string | null;
+  locked_by?: string | null;
+  last_heartbeat_at?: string | null;
+  priority?: number;
+  queued_at?: string | null;
+  external_capture_id?: string | null;
+  survey_url?: string | null;
+  final_url?: string | null;
+  diagnosis_external_id?: string | null;
+  result_json?: Record<string, unknown> | null;
+  error_message?: string | null;
 }
 
 export interface EvidenceFileRow {
@@ -609,6 +642,12 @@ export interface Database {
         Insert: Partial<ScanJobRow> &
           Pick<ScanJobRow, "source_kind" | "observed_date_kst">;
         Update: Partial<ScanJobRow>;
+      };
+      scan_job_steps: {
+        Row: ScanJobStepRow;
+        Insert: Partial<ScanJobStepRow> &
+          Pick<ScanJobStepRow, "scan_job_id" | "step_name" | "status">;
+        Update: Partial<ScanJobStepRow>;
       };
       scan_reports: {
         Row: ScanReportRow;

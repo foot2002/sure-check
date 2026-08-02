@@ -93,8 +93,10 @@ async function buildTemporaryEvidenceZip(
 export async function persistCaptureEvidence(params: {
   diagnosisId: string;
   result: CaptureSurveyResult;
+  /** When set, update this capture_jobs row instead of inserting a new one. */
+  existingCaptureJobId?: string;
 }): Promise<PersistCaptureEvidenceResult> {
-  const { diagnosisId, result } = params;
+  const { diagnosisId, result, existingCaptureJobId } = params;
   if (!diagnosisId) {
     return {
       evidenceStored: false,
@@ -149,41 +151,60 @@ export async function persistCaptureEvidence(params: {
   );
 
   const supabase = createSupabaseServerClient();
-  const { data: captureJob, error: captureError } = await supabase
-    .from("capture_jobs")
-    .insert({
-      scan_job_id: linked.scanJobId,
-      survey_record_id: linked.surveyRecordId,
-      capture_mode: result.mode,
-      capture_provider: mapCaptureProvider(result.captureProvider),
-      status: mapCaptureStatus(result.status),
-      completeness: result.captureCompleteness ?? null,
-      path_scope: result.capturePathScope ?? null,
-      expected_page_count:
-        result.expectedCapturablePageCount ?? result.expectedPageCount ?? null,
-      captured_page_count: result.screenshots.length,
-      key_evidence_count: keySelections.length,
-      temporary_answers_used: Boolean(result.temporaryAnswersUsed),
-      final_submit_detected: Boolean(result.finalSubmitDetected),
-      final_submit_clicked: Boolean(result.finalSubmitClicked),
-      stop_reason: result.stopReason ?? null,
-      stop_page: result.stopPage ?? null,
-      limitations: result.limitations ?? [],
-      observed_at: observedAt,
-      observed_date_kst: observedDateKst,
-      started_at: result.startedAt ?? observedAt,
-      completed_at: result.finishedAt ?? observedAt,
-    })
-    .select("id")
-    .single();
+  const capturePayload = {
+    scan_job_id: linked.scanJobId,
+    survey_record_id: linked.surveyRecordId,
+    capture_mode: result.mode,
+    capture_provider: mapCaptureProvider(result.captureProvider),
+    status: mapCaptureStatus(result.status),
+    completeness: result.captureCompleteness ?? null,
+    path_scope: result.capturePathScope ?? null,
+    expected_page_count:
+      result.expectedCapturablePageCount ?? result.expectedPageCount ?? null,
+    captured_page_count: result.screenshots.length,
+    key_evidence_count: keySelections.length,
+    temporary_answers_used: Boolean(result.temporaryAnswersUsed),
+    final_submit_detected: Boolean(result.finalSubmitDetected),
+    final_submit_clicked: Boolean(result.finalSubmitClicked),
+    stop_reason: result.stopReason ?? null,
+    stop_page: result.stopPage ?? null,
+    limitations: result.limitations ?? [],
+    observed_at: observedAt,
+    observed_date_kst: observedDateKst,
+    started_at: result.startedAt ?? observedAt,
+    completed_at: result.finishedAt ?? observedAt,
+    locked_at: null,
+    locked_by: null,
+  };
 
-  if (captureError || !captureJob?.id) {
-    throw new Error(
-      `capture_jobs insert failed: ${captureError?.message || "missing id"}`,
-    );
+  let captureJobId: string;
+  if (existingCaptureJobId) {
+    const { data: updated, error: updateError } = await supabase
+      .from("capture_jobs")
+      .update(capturePayload)
+      .eq("id", existingCaptureJobId)
+      .select("id")
+      .single();
+    if (updateError || !updated?.id) {
+      throw new Error(
+        `capture_jobs update failed: ${updateError?.message || "missing id"}`,
+      );
+    }
+    captureJobId = updated.id as string;
+  } else {
+    const { data: captureJob, error: captureError } = await supabase
+      .from("capture_jobs")
+      .insert(capturePayload)
+      .select("id")
+      .single();
+
+    if (captureError || !captureJob?.id) {
+      throw new Error(
+        `capture_jobs insert failed: ${captureError?.message || "missing id"}`,
+      );
+    }
+    captureJobId = captureJob.id as string;
   }
-
-  const captureJobId = captureJob.id as string;
   const bucket = getEvidenceBucketName();
   const evidenceRows: Array<Record<string, unknown>> = [];
   let storedEvidenceFiles = 0;

@@ -614,9 +614,9 @@ export function reportToMonitoringRows(report: ScanReport): MonitoringSnapshotRo
       survey_url_hash: finalParts.hash || formParts.hash,
       platform,
       status: jobStatus,
-      current_step: 5,
-      total_steps: 5,
-      step_label: "개인정보보호법 기준 리포트 생성",
+      current_step: 7,
+      total_steps: 7,
+      step_label: "완료",
       error_message:
         jobStatus === "failed" || jobStatus === "limited"
           ? report.summary || report.limitedReason || null

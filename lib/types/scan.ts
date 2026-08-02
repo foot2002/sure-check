@@ -289,3 +289,14 @@ export const SCAN_STEPS = [
   "개인정보 항목 탐지",
   "개인정보보호법 기준 리포트 생성",
 ] as const;
+
+/** User-facing async scan progress labels (polling UI). */
+export const SCAN_PROGRESS_STEPS = [
+  "대기 중",
+  "설문 접속 중",
+  "문항 추출 중",
+  "개인정보 분석 중",
+  "결과 생성 중",
+  "저장 중",
+  "완료",
+] as const;

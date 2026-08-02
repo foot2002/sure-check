@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getQueueCounts } from "@/lib/jobs/scanJobQueue";
 import type {
   OverallRiskLevel,
   Platform,
@@ -34,6 +35,15 @@ export interface AdminKpi {
   publicationCandidateCount: number;
 }
 
+export interface AdminQueueSummary {
+  scanPending: number;
+  scanRunning: number;
+  scanFailed: number;
+  scanLimited: number;
+  capturePending: number;
+  captureRunning: number;
+}
+
 export interface AdminCaseListItem {
   id: string;
   observedAt: string;
@@ -62,6 +72,7 @@ export interface AdminCaseListPayload {
   from: string | null;
   to: string | null;
   kpi: AdminKpi;
+  queue: AdminQueueSummary;
   cases: AdminCaseListItem[];
   generatedAt: string;
 }
@@ -429,11 +440,26 @@ export async function listAdminCases(
     ).length,
   };
 
+  let queue: AdminQueueSummary = {
+    scanPending: 0,
+    scanRunning: 0,
+    scanFailed: 0,
+    scanLimited: 0,
+    capturePending: 0,
+    captureRunning: 0,
+  };
+  try {
+    queue = await getQueueCounts();
+  } catch (err) {
+    console.warn("[admin] getQueueCounts failed:", err);
+  }
+
   return {
     range,
     from,
     to,
     kpi,
+    queue,
     cases,
     generatedAt: new Date().toISOString(),
   };

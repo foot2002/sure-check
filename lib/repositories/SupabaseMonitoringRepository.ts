@@ -191,7 +191,112 @@ export class SupabaseMonitoringRepository {
   ): Promise<MonitoringSaveResult> {
     const snapshot = rows ?? reportToMonitoringRows(report);
 
+    const existing = await this.findMonitoringIdsByExternalScanId(report.scanId);
+    if (existing?.scanJobId) {
+      return this.finalizeMonitoringSnapshotForJob(
+        existing.scanJobId,
+        report,
+        snapshot,
+      );
+    }
+
     const scanJobId = await this.saveScanJob(snapshot.scanJob);
+    return this.insertMonitoringChildren(scanJobId, snapshot);
+  }
+
+  /**
+   * Update an already-queued scan_jobs row, then insert report/survey children.
+   * Used by the async job worker so we do not create duplicate scan_jobs.
+   */
+  async finalizeMonitoringSnapshotForJob(
+    scanJobId: string,
+    report: ScanReport,
+    rows?: MonitoringSnapshotRows,
+  ): Promise<MonitoringSaveResult> {
+    const snapshot = rows ?? reportToMonitoringRows(report);
+    const supabase = createSupabaseServerClient();
+
+    const { error: updateError } = await supabase
+      .from("scan_jobs")
+      .update({
+        form_url: snapshot.scanJob.form_url,
+        file_name: snapshot.scanJob.file_name,
+        url_host: snapshot.scanJob.url_host,
+        form_url_hash: snapshot.scanJob.form_url_hash,
+        survey_url_hash: snapshot.scanJob.survey_url_hash,
+        platform: snapshot.scanJob.platform,
+        status: snapshot.scanJob.status,
+        current_step: snapshot.scanJob.current_step,
+        total_steps: snapshot.scanJob.total_steps,
+        step_label: snapshot.scanJob.step_label,
+        error_message: snapshot.scanJob.error_message,
+        started_at: snapshot.scanJob.started_at,
+        completed_at: snapshot.scanJob.completed_at,
+        monitoring_saved: true,
+        locked_at: null,
+        locked_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", scanJobId);
+    if (updateError) {
+      // Migration 002 may not be applied yet — retry without queue columns.
+      const { error: retryError } = await supabase
+        .from("scan_jobs")
+        .update({
+          form_url: snapshot.scanJob.form_url,
+          file_name: snapshot.scanJob.file_name,
+          url_host: snapshot.scanJob.url_host,
+          form_url_hash: snapshot.scanJob.form_url_hash,
+          survey_url_hash: snapshot.scanJob.survey_url_hash,
+          platform: snapshot.scanJob.platform,
+          status: snapshot.scanJob.status,
+          current_step: snapshot.scanJob.current_step,
+          total_steps: snapshot.scanJob.total_steps,
+          step_label: snapshot.scanJob.step_label,
+          error_message: snapshot.scanJob.error_message,
+          started_at: snapshot.scanJob.started_at,
+          completed_at: snapshot.scanJob.completed_at,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", scanJobId);
+      throwOnError("finalizeMonitoringSnapshotForJob.update", retryError);
+    } else {
+      // ok
+    }
+
+    const { data: existingReport } = await supabase
+      .from("scan_reports")
+      .select("id")
+      .eq("scan_job_id", scanJobId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingReport?.id) {
+      const { data: survey } = await supabase
+        .from("survey_records")
+        .select("id")
+        .eq("scan_job_id", scanJobId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return {
+        scanJobId,
+        scanReportId: existingReport.id as string,
+        surveyRecordId: (survey?.id as string | undefined) || "",
+        questionCount: 0,
+        findingCount: 0,
+        complianceCheckCount: 0,
+      };
+    }
+
+    return this.insertMonitoringChildren(scanJobId, snapshot);
+  }
+
+  private async insertMonitoringChildren(
+    scanJobId: string,
+    snapshot: MonitoringSnapshotRows,
+  ): Promise<MonitoringSaveResult> {
     const scanReportId = await this.saveScanReport(
       scanJobId,
       snapshot.scanReport,
@@ -289,4 +394,14 @@ export async function saveMonitoringSnapshot(
   report: ScanReport,
 ): Promise<MonitoringSaveResult> {
   return getSupabaseMonitoringRepository().saveMonitoringSnapshot(report);
+}
+
+export async function finalizeMonitoringSnapshotForJob(
+  scanJobId: string,
+  report: ScanReport,
+): Promise<MonitoringSaveResult> {
+  return getSupabaseMonitoringRepository().finalizeMonitoringSnapshotForJob(
+    scanJobId,
+    report,
+  );
 }

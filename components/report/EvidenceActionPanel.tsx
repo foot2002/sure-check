@@ -33,7 +33,6 @@ import {
   type ManualEvidenceFile,
 } from "@/lib/evidence/evidenceTypes";
 import {
-  CAPTURE_CLIENT_TIMEOUT_MS,
   EVIDENCE_FULL_CLIENT_TIMEOUT_MS,
 } from "@/lib/evidence/capture/captureConfig";
 import type { CaptureMode } from "@/lib/evidence/capture/captureTypes";
@@ -89,22 +88,9 @@ function shouldAutoCapture(
   return Boolean(url && /^https?:\/\//i.test(url));
 }
 
-/** 신고 검토 대상 → 결과 표시 직후 evidence_full_walkthrough 자동 실행 */
-function shouldAutoRunFullEvidenceCapture(
-  report: ScanReport,
-  audienceReport: AudienceReport,
-): boolean {
-  if (!shouldAutoCapture(report, audienceReport)) return false;
-  if (audienceReport.safetyType.typeId === "JUDGMENT_UNKNOWN") return false;
-  if (audienceReport.safetyType.typeId === "STOP_RESPONSE") return true;
-  if (audienceReport.safetyType.needsReportOrInquire) return true;
-  if (audienceReport.safetyType.displayName === "응답 거부·신고 검토") {
-    return true;
-  }
-  return (
-    audienceReport.respondentDecision === "DO_NOT_RESPOND" ||
-    audienceReport.respondentDecision === "REPORT_OR_INQUIRE"
-  );
+/** 신고용 전체 캡처는 수동 버튼으로만 실행 (일반 진단과 분리). */
+function shouldAutoRunFullEvidenceCapture(): boolean {
+  return false;
 }
 
 export function EvidenceActionPanel({
@@ -113,17 +99,12 @@ export function EvidenceActionPanel({
 }: EvidenceActionPanelProps) {
   const inputId = useId();
   const enableAutoCapture = shouldAutoCapture(report, audienceReport);
-  const autoRunFullCapture = shouldAutoRunFullEvidenceCapture(
-    report,
-    audienceReport,
-  );
+  const autoRunFullCapture = shouldAutoRunFullEvidenceCapture();
   const [manualFiles, setManualFiles] = useState<ManualEvidenceFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
-  const [captureStatus, setCaptureStatus] = useState<CaptureUiStatus>(() =>
-    enableAutoCapture ? "capturing" : "skipped",
-  );
+  const [captureStatus, setCaptureStatus] = useState<CaptureUiStatus>("idle");
   const [autoScreenshots, setAutoScreenshots] = useState<
     AutoCaptureEvidenceFile[]
   >([]);
@@ -137,14 +118,10 @@ export function EvidenceActionPanel({
   const [showCaptureWaitPrompt, setShowCaptureWaitPrompt] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [fullRetryKey, setFullRetryKey] = useState(0);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>(() =>
-    autoRunFullCapture ? "evidence_full_walkthrough" : "safe_public_only",
-  );
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("safe_public_only");
   const [pageMetas, setPageMetas] = useState<CapturePageMetaEvidence[]>([]);
   const [temporaryAnswersUsed, setTemporaryAnswersUsed] = useState(false);
-  const [fullWalkStatus, setFullWalkStatus] = useState<CaptureUiStatus>(() =>
-    autoRunFullCapture && enableAutoCapture ? "capturing" : "idle",
-  );
+  const [fullWalkStatus, setFullWalkStatus] = useState<CaptureUiStatus>("idle");
   const [captureProvider, setCaptureProvider] = useState<string | null>(null);
   const [expectedPageCount, setExpectedPageCount] = useState<number | null>(
     null,
@@ -322,85 +299,16 @@ export function EvidenceActionPanel({
   }, []);
 
   useEffect(() => {
-    // 신고 검토 대상은 safe_public_only를 실행하지 않음
-    if (!enableAutoCapture || autoRunFullCapture) return;
-
-    preferFullWalkRef.current = false;
-    let cancelled = false;
-    const controller = new AbortController();
-    safeAbortRef.current = controller;
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-      if (cancelled || preferFullWalkRef.current) return;
-      setCaptureStatus((prev) =>
-        prev === "capturing" ? "timeout" : prev,
-      );
-      setCaptureLimitations((prev) =>
-        prev.length > 0
-          ? prev
-          : [
-              "자동 화면 캡처 시간이 초과되었습니다.",
-              "문항 원문과 고지문 원문은 증빙자료에 포함되며, 캡처 없이도 다운로드할 수 있습니다.",
-            ],
-      );
-    }, CAPTURE_CLIENT_TIMEOUT_MS);
-
-    const surveyUrl =
-      report.debug?.inputUrl || report.formUrl || report.form.url || "";
-    const finalUrl =
-      report.debug?.finalUrl || report.form.url || report.formUrl || "";
-
-    const run = async () => {
-      try {
-        const response = await fetch("/api/evidence/capture", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            surveyUrl,
-            finalUrl,
-            diagnosisId: report.scanId,
-            mode: "safe_public_only",
-          }),
-          signal: controller.signal,
-        });
-        const data = await response.json();
-        if (cancelled || preferFullWalkRef.current) return;
-        window.clearTimeout(timeoutId);
-        applyCaptureResult(data, setCaptureStatus);
-      } catch (err) {
-        if (cancelled || preferFullWalkRef.current) return;
-        window.clearTimeout(timeoutId);
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        setAutoScreenshots([]);
-        setSafeScreenshots([]);
-        setCaptureStatus("failed");
-        setCaptureLimitations([
-          "자동 화면 캡처에 실패했습니다.",
-          "설문 페이지가 접근을 차단했거나 로딩 시간이 초과되었습니다.",
-        ]);
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-      controller.abort();
-      if (safeAbortRef.current === controller) {
-        safeAbortRef.current = null;
-      }
-    };
+    // Phase 1: do not auto-run safe_public_only during normal diagnosis.
+    // Capture starts only when the user clicks the evidence capture button.
+    void enableAutoCapture;
+    void autoRunFullCapture;
+    void retryKey;
+    void applyCaptureResult;
   }, [
     enableAutoCapture,
     autoRunFullCapture,
     retryKey,
-    report.scanId,
-    report.debug?.inputUrl,
-    report.debug?.finalUrl,
-    report.formUrl,
-    report.form.url,
     applyCaptureResult,
   ]);
 
@@ -427,23 +335,6 @@ export function EvidenceActionPanel({
 
     const controller = new AbortController();
     fullAbortRef.current = controller;
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-      setFullWalkStatus((prev) =>
-        prev === "capturing" ? "timeout" : prev,
-      );
-      setCaptureStatus((prev) =>
-        prev === "capturing" ? "timeout" : prev,
-      );
-      setCaptureLimitations((prev) =>
-        prev.length > 0
-          ? prev
-          : [
-              "신고용 전체 화면 캡처 시간이 초과되었습니다.",
-              "확보된 화면까지는 ZIP에 포함되며, 캡처 없이도 다운로드할 수 있습니다.",
-            ],
-      );
-    }, EVIDENCE_FULL_CLIENT_TIMEOUT_MS);
 
     const surveyUrl =
       report.debug?.inputUrl || report.formUrl || report.form.url || "";
@@ -451,7 +342,6 @@ export function EvidenceActionPanel({
       report.debug?.finalUrl || report.form.url || report.formUrl || "";
 
     if (!surveyUrl && !finalUrl) {
-      window.clearTimeout(timeoutId);
       setFullWalkStatus("failed");
       setCaptureStatus("failed");
       setCaptureLimitations([
@@ -462,7 +352,7 @@ export function EvidenceActionPanel({
     }
 
     try {
-      const response = await fetch("/api/evidence/capture", {
+      const startRes = await fetch("/api/evidence/capture/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -475,16 +365,85 @@ export function EvidenceActionPanel({
         }),
         signal: controller.signal,
       });
-      const data = await response.json();
-      window.clearTimeout(timeoutId);
-      if (fullAbortRef.current !== controller) return;
-      preferFullWalkRef.current = true;
-      applyCaptureResult(data, (status) => {
-        setCaptureStatus(status);
-        setFullWalkStatus(status);
-      });
+      const startData = await startRes.json();
+
+      // Fallback to sync capture if async queue is unavailable
+      if (!startRes.ok || !startData.captureJobId) {
+        const response = await fetch("/api/evidence/capture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surveyUrl,
+            finalUrl,
+            diagnosisId: report.scanId,
+            mode: "evidence_full_walkthrough",
+            captureMode: "evidence_full_walkthrough",
+            includeFullWalkthrough: true,
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (fullAbortRef.current !== controller) return;
+        preferFullWalkRef.current = true;
+        applyCaptureResult(data, (status) => {
+          setCaptureStatus(status);
+          setFullWalkStatus(status);
+        });
+        return;
+      }
+
+      const captureJobId = startData.captureJobId as string;
+      const pollStarted = Date.now();
+      const hardDeadline = pollStarted + EVIDENCE_FULL_CLIENT_TIMEOUT_MS;
+
+      while (Date.now() < hardDeadline) {
+        if (controller.signal.aborted) return;
+        const delay = Date.now() - pollStarted < 10_000 ? 1000 : 2500;
+        await new Promise((r) => setTimeout(r, delay));
+        if (controller.signal.aborted) return;
+
+        const statusRes = await fetch(
+          `/api/evidence/capture/status/${captureJobId}`,
+          { signal: controller.signal },
+        );
+        if (!statusRes.ok) continue;
+        const statusData = await statusRes.json();
+        const st = statusData.status as string;
+        if (
+          st === "success" ||
+          st === "partial" ||
+          st === "failed" ||
+          st === "timeout" ||
+          st === "skipped"
+        ) {
+          if (fullAbortRef.current !== controller) return;
+          preferFullWalkRef.current = true;
+          const result = statusData.result || {
+            success: false,
+            status: st,
+            mode: "evidence_full_walkthrough",
+            screenshots: [],
+            pageMetas: [],
+            temporaryAnswersUsed: false,
+            limitations: statusData.errorMessage
+              ? [statusData.errorMessage]
+              : ["캡처가 완료되지 않았습니다."],
+          };
+          applyCaptureResult(result, (status) => {
+            setCaptureStatus(status);
+            setFullWalkStatus(status);
+          });
+          return;
+        }
+      }
+
+      setFullWalkStatus("timeout");
+      setCaptureStatus("timeout");
+      setCaptureLimitations([
+        "신고용 전체 화면 캡처 시간이 초과되었습니다.",
+        "확보된 화면까지는 ZIP에 포함되며, 캡처 없이도 다운로드할 수 있습니다.",
+      ]);
     } catch (err) {
-      window.clearTimeout(timeoutId);
       if (fullAbortRef.current !== controller) return;
       if (err instanceof DOMException && err.name === "AbortError") {
         return;
@@ -510,16 +469,10 @@ export function EvidenceActionPanel({
     applyCaptureResult,
   ]);
 
-  // 신고 검토 대상: 결과 표시 직후 전체 캡처 자동 시작
+  // Auto full-walk disabled in Phase 1 (manual button only).
   useEffect(() => {
-    if (!autoRunFullCapture) return;
-    const startId = window.setTimeout(() => {
-      void runFullWalkthrough();
-    }, 0);
-    return () => {
-      window.clearTimeout(startId);
-      fullAbortRef.current?.abort();
-    };
+    void autoRunFullCapture;
+    void fullRetryKey;
   }, [autoRunFullCapture, fullRetryKey, runFullWalkthrough]);
 
   if (!shouldShowEvidenceActionPanel(audienceReport)) {

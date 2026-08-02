@@ -40,10 +40,11 @@ async function waitForScanComplete(scanId: string): Promise<void> {
 
     notFoundRetries = 0;
     const job = await res.json();
+    const status = job.status === "queued" ? "pending" : job.status;
     if (
-      job.status === "completed" ||
-      job.status === "limited" ||
-      job.status === "failed"
+      status === "completed" ||
+      status === "limited" ||
+      status === "failed"
     ) {
       return;
     }

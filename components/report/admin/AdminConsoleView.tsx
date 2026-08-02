@@ -130,6 +130,35 @@ export function AdminConsoleView({
         </section>
       ) : null}
 
+      {data?.queue ? (
+        <section className="mb-6 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+          <h2 className="text-sm font-semibold text-white">작업 큐 상태</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            대기/실행 중인 진단·캡처 작업 요약입니다.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[
+              ["대기 중 진단", data.queue.scanPending],
+              ["실행 중 진단", data.queue.scanRunning],
+              ["실패 진단", data.queue.scanFailed],
+              ["제한 진단", data.queue.scanLimited],
+              ["대기 중 캡처", data.queue.capturePending],
+              ["실행 중 캡처", data.queue.captureRunning],
+            ].map(([label, value]) => (
+              <div
+                key={String(label)}
+                className="rounded-lg border border-slate-700/80 bg-slate-950/50 px-3 py-2"
+              >
+                <p className="text-[11px] text-slate-400">{label}</p>
+                <p className="mt-0.5 text-lg font-bold text-teal-200">
+                  {Number(value).toLocaleString("ko-KR")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <form
         onSubmit={applyFilters}
         className="mb-5 grid gap-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4 md:grid-cols-3 lg:grid-cols-4"

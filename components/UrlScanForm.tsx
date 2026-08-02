@@ -9,7 +9,7 @@ import { copyToClipboard } from "@/lib/utils/copy";
 interface UrlScanFormProps {
   onScanStart?: () => void;
   onScanComplete: (scanId: string) => void;
-  /** Prefer this when /api/scan/start returns the report inline (Vercel-safe). */
+  /** Called when status polling returns a full result payload. */
   onReportReady?: (report: ScanReport) => void;
   onUrlClear?: () => void;
 }
@@ -25,10 +25,12 @@ export function UrlScanForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [statusHint, setStatusHint] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setStatusHint(null);
     onScanStart?.();
 
     const trimmed = url.trim();
@@ -55,31 +57,30 @@ export function UrlScanForm({
         return;
       }
 
-      // Synchronous diagnosis: report comes back with /start (avoids lost
-      // in-memory state across Vercel isolates + removes poll round-trips).
-      if (data.report && onReportReady) {
-        setIsSubmitting(false);
-        onReportReady(data.report as ScanReport);
+      const scanId = data.scanId as string;
+      if (data.cached) {
+        setStatusHint("최근 동일 URL 진단 결과를 불러옵니다.");
+      } else if (data.reused) {
+        setStatusHint("동일 URL 진단이 이미 진행 중입니다.");
+      } else {
+        setStatusHint("진단 작업을 시작했습니다. 잠시만 기다려 주세요.");
+      }
+
+      // Cached completed — status endpoint will return result immediately
+      if (data.status === "completed" || data.status === "limited") {
+        setActiveScanId(scanId);
         return;
       }
 
-      if (
-        data.status === "completed" ||
-        data.status === "limited" ||
-        data.status === "failed"
-      ) {
+      if (data.status === "failed") {
         setIsSubmitting(false);
-        if (data.status === "failed") {
-          setError(
-            (data.errorMessage as string) || "진단 중 오류가 발생했습니다.",
-          );
-          return;
-        }
-        onScanComplete(data.scanId as string);
+        setError(
+          (data.errorMessage as string) || "진단 중 오류가 발생했습니다.",
+        );
         return;
       }
 
-      setActiveScanId(data.scanId);
+      setActiveScanId(scanId);
     } catch {
       setError("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");
       setIsSubmitting(false);
@@ -90,15 +91,25 @@ export function UrlScanForm({
     setError(msg);
     setIsSubmitting(false);
     setActiveScanId(null);
+    setStatusHint(null);
   }, []);
 
   const handleProgressComplete = useCallback(
-    (job: ScanJob) => {
+    (job: ScanJob, report?: ScanReport | null) => {
       setIsSubmitting(false);
       setActiveScanId(null);
+      setStatusHint(null);
+      if (job.status === "failed") {
+        setError(job.errorMessage || "진단 중 오류가 발생했습니다.");
+        return;
+      }
+      if (report && onReportReady) {
+        onReportReady(report);
+        return;
+      }
       onScanComplete(job.scanId);
     },
-    [onScanComplete],
+    [onReportReady, onScanComplete],
   );
 
   function handleClearUrl() {
@@ -107,6 +118,7 @@ export function UrlScanForm({
     setCopiedUrl(false);
     setIsSubmitting(false);
     setActiveScanId(null);
+    setStatusHint(null);
     onUrlClear?.();
   }
 
@@ -180,6 +192,12 @@ export function UrlScanForm({
             role="alert"
           >
             {error}
+          </p>
+        )}
+
+        {statusHint && !error && (
+          <p className="rounded-xl border border-border-subtle bg-background px-4 py-2.5 text-sm text-muted">
+            {statusHint}
           </p>
         )}
 
