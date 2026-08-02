@@ -41,7 +41,7 @@ export default async function PublicReportPage({
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f8fafc]">
-      <SiteHeader compact />
+      <SiteHeader />
 
       <main className="flex-1">
         <section className="border-b border-slate-200 bg-gradient-to-b from-teal-50/80 via-white to-[#f8fafc]">

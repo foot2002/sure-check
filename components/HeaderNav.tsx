@@ -36,7 +36,7 @@ export function HeaderNav() {
             href={item.href}
             aria-current={isActive ? "page" : undefined}
             className={[
-              "inline-flex items-center justify-center rounded-full border px-3.5 py-2 text-[13px] leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:px-4 sm:text-sm",
+              "inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-3.5 text-[13px] leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:h-10 sm:px-4 sm:text-sm",
               isActive
                 ? "border-[var(--brand-deep)] bg-[var(--brand-deep)] font-bold text-white shadow-none"
                 : "border-slate-200 bg-white font-semibold text-[var(--brand-deep)] hover:border-teal-300 hover:bg-[var(--brand-light)]",
