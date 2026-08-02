@@ -20,7 +20,8 @@
     "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform",
     "supabase:check": "tsx scripts/check-supabase.ts",
     "monitoring:check": "tsx scripts/check-monitoring-save.ts",
-    "evidence:check": "tsx scripts/check-evidence-storage.ts"
+    "evidence:check": "tsx scripts/check-evidence-storage.ts",
+    "report:public-safety": "tsx scripts/check-public-report-safety.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-kr": "^5.3.0",
