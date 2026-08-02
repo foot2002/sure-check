@@ -19,7 +19,8 @@
     "capture:verify:naver": "tsx scripts/verify-evidence-capture.ts naver",
     "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform",
     "supabase:check": "tsx scripts/check-supabase.ts",
-    "monitoring:check": "tsx scripts/check-monitoring-save.ts"
+    "monitoring:check": "tsx scripts/check-monitoring-save.ts",
+    "evidence:check": "tsx scripts/check-evidence-storage.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-kr": "^5.3.0",

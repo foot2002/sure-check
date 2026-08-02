@@ -7,6 +7,7 @@ import {
 import { captureSurveyScreenshots } from "@/lib/evidence/capture/captureSurveyScreenshots";
 import type { CaptureMode } from "@/lib/evidence/capture/captureTypes";
 import { fitScreenshotsForResponse } from "@/lib/evidence/capture/fitCaptureResponse";
+import { persistCaptureEvidence } from "@/lib/monitoring/persistCaptureEvidence";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
 export const runtime = "nodejs";
@@ -63,6 +64,8 @@ export async function POST(request: Request) {
             "캡처 없이도 신고용 증빙자료를 다운로드할 수 있습니다.",
           ],
           diagnosisId: diagnosisId || null,
+          evidenceStored: false,
+          storedEvidenceFiles: 0,
         },
         { status: 400 },
       );
@@ -85,6 +88,8 @@ export async function POST(request: Request) {
             "캡처 없이도 신고용 증빙자료를 다운로드할 수 있습니다.",
           ],
           diagnosisId: diagnosisId || null,
+          evidenceStored: false,
+          storedEvidenceFiles: 0,
         },
         { status: 400 },
       );
@@ -95,6 +100,33 @@ export async function POST(request: Request) {
       finalUrl: finalUrl || safety.normalizedUrl,
       mode,
     });
+
+    let evidenceStored = false;
+    let storedEvidenceFiles = 0;
+    if (
+      mode === "evidence_full_walkthrough" &&
+      diagnosisId &&
+      result.screenshots.length > 0
+    ) {
+      try {
+        const persisted = await persistCaptureEvidence({
+          diagnosisId,
+          result,
+        });
+        evidenceStored = persisted.evidenceStored;
+        storedEvidenceFiles = persisted.storedEvidenceFiles;
+        if (!persisted.evidenceStored && persisted.errorMessage) {
+          console.error(
+            "[evidence] persistCaptureEvidence skipped:",
+            persisted.errorMessage,
+          );
+        }
+      } catch (error) {
+        console.error("[evidence] persistCaptureEvidence failed:", error);
+        evidenceStored = false;
+        storedEvidenceFiles = 0;
+      }
+    }
 
     const fitted = fitScreenshotsForResponse(result.screenshots);
     const limitations = [
@@ -144,6 +176,8 @@ export async function POST(request: Request) {
           ? EVIDENCE_FULL_TIMEOUT_MS
           : CAPTURE_TOTAL_TIMEOUT_MS,
       runtime: isServerlessCaptureRuntime() ? "serverless" : "local",
+      evidenceStored,
+      storedEvidenceFiles,
     });
   } catch (error) {
     const message =
@@ -161,6 +195,8 @@ export async function POST(request: Request) {
         `상세: ${message.slice(0, 240)}`,
         "캡처 없이도 신고용 증빙자료를 다운로드할 수 있습니다.",
       ],
+      evidenceStored: false,
+      storedEvidenceFiles: 0,
     });
   }
 }

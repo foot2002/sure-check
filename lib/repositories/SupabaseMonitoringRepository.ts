@@ -231,6 +231,38 @@ export class SupabaseMonitoringRepository {
     };
   }
 
+  /**
+   * Resolve monitoring row ids from URL scan id (scan_jobs.external_scan_id).
+   */
+  async findMonitoringIdsByExternalScanId(
+    externalScanId: string,
+  ): Promise<{ scanJobId: string; surveyRecordId: string | null } | null> {
+    const supabase = createSupabaseServerClient();
+    const { data: job, error: jobError } = await supabase
+      .from("scan_jobs")
+      .select("id")
+      .eq("external_scan_id", externalScanId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    throwOnError("findMonitoringIdsByExternalScanId.scan_jobs", jobError);
+    if (!job?.id) return null;
+
+    const { data: survey, error: surveyError } = await supabase
+      .from("survey_records")
+      .select("id")
+      .eq("scan_job_id", job.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    throwOnError("findMonitoringIdsByExternalScanId.survey_records", surveyError);
+
+    return {
+      scanJobId: job.id as string,
+      surveyRecordId: (survey?.id as string | undefined) ?? null,
+    };
+  }
+
   /** Cascade-delete monitoring rows for a test/external scan id. */
   async deleteByExternalScanId(externalScanId: string): Promise<number> {
     const supabase = createSupabaseServerClient();
