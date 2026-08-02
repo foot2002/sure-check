@@ -41,14 +41,14 @@ export default async function PublicReportPage({
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f8fafc]">
-      <SiteHeader />
+      <SiteHeader compact />
 
       <main className="flex-1">
         <section className="border-b border-slate-200 bg-gradient-to-b from-teal-50/80 via-white to-[#f8fafc]">
-          <div className="mx-auto max-w-[72rem] px-5 py-8 md:px-8 md:py-12">
+          <div className="mx-auto max-w-[72rem] px-5 py-5 md:px-8 md:py-7">
             <Link
               href="/"
-              className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-teal-800"
+              className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-teal-800"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
               진단으로 돌아가기
@@ -57,16 +57,16 @@ export default async function PublicReportPage({
             <p className="text-xs font-semibold tracking-wide text-teal-800">
               SURE Check 공개 모니터링
             </p>
-            <h1 className="mt-2 max-w-3xl text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+            <h1 className="mt-1.5 max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
               대한민국 온라인 수집 개인정보 모니터링
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600 md:text-lg">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 md:text-base">
               공개 설문·온라인 조사에서 개인정보가 어떻게 수집되고 있는지 자동진단
               데이터를 바탕으로 보여줍니다.
             </p>
 
             <div
-              className="mt-6 flex flex-wrap gap-2"
+              className="mt-4 flex flex-wrap gap-2"
               role="tablist"
               aria-label="기간 필터"
             >
@@ -91,7 +91,7 @@ export default async function PublicReportPage({
               })}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
               <div className="flex gap-2">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 <p>

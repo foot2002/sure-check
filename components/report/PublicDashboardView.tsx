@@ -14,6 +14,7 @@ import type {
   PublicKeyFindingCard,
   PublicDashboardInsights,
 } from "@/lib/report/buildPublicDashboard";
+import { PressShareSummaryBox } from "@/components/report/PressShareSummaryBox";
 
 function formatScore(value: number | null | undefined): string {
   if (value == null) return "—";
@@ -77,14 +78,14 @@ function noticeTone(rate: number | null): {
   }
   if (rate <= 0) {
     return {
-      bar: "bg-rose-700",
+      bar: "bg-rose-600",
       badge: "bg-rose-100 text-rose-900",
       badgeText: "매우 미흡",
     };
   }
   if (rate < 50) {
     return {
-      bar: "bg-orange-600",
+      bar: "bg-orange-500",
       badge: "bg-orange-100 text-orange-900",
       badgeText: "미흡",
     };
@@ -97,17 +98,41 @@ function noticeTone(rate: number | null): {
     };
   }
   return {
-    bar: "bg-teal-700",
-    badge: "bg-teal-100 text-teal-900",
+    bar: "bg-emerald-600",
+    badge: "bg-emerald-100 text-emerald-900",
     badgeText: "상대적으로 양호",
   };
+}
+
+function decisionTone(decisionKey: string): string {
+  switch (decisionKey) {
+    case "SAFE_RESPOND":
+      return "bg-emerald-600";
+    case "PII_CAUTION":
+      return "bg-slate-500";
+    case "NOTICE_CHECK":
+    case "SECURITY_CHECK":
+      return "bg-amber-500";
+    case "STOP_RESPONSE":
+      return "bg-orange-600";
+    case "JUDGMENT_UNKNOWN":
+      return "bg-slate-400";
+    default:
+      return "bg-slate-500";
+  }
+}
+
+function issueTone(rate: number): string {
+  if (rate >= 70) return "bg-orange-600";
+  if (rate >= 40) return "bg-amber-500";
+  return "bg-slate-500";
 }
 
 function RateBar({
   label,
   rate,
   meta,
-  barClassName = "bg-teal-700",
+  barClassName = "bg-slate-500",
   badge,
 }: {
   label: string;
@@ -159,8 +184,34 @@ function OneLineConclusion({ insights }: { insights: PublicDashboardInsights }) 
       </p>
       <p className="mt-3 text-xs leading-relaxed text-slate-500">
         자동진단 기반 참고 해석이며, 개별 설문의 위반 여부를 확정하지 않습니다.
+        주의 필요 = 응답 거부·신고 검토 + 안내 없으면 입력 금지 + 공식 확인 후
+        응답.
       </p>
     </section>
+  );
+}
+
+function KeySignals({ insights }: { insights: PublicDashboardInsights }) {
+  return (
+    <Section title="한눈에 보는 이번 기간 핵심 신호">
+      <ol className="space-y-4">
+        {insights.keySignals.map((signal) => (
+          <li key={signal.order} className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-white">
+              {signal.order}
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                {signal.headline}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                {signal.detail}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Section>
   );
 }
 
@@ -230,6 +281,7 @@ function DecisionList({ rows }: { rows: PublicDecisionStatRow[] }) {
           <RateBar
             label={row.label}
             rate={row.rate}
+            barClassName={decisionTone(row.decisionKey)}
             meta={`${row.count.toLocaleString("ko-KR")}건`}
           />
         </li>
@@ -283,6 +335,7 @@ function DataCategoryList({ rows }: { rows: PublicDataCategoryStatRow[] }) {
             <RateBar
               label={row.label}
               rate={row.rate}
+              barClassName="bg-slate-600"
               meta={`${row.count.toLocaleString("ko-KR")}건`}
             />
           </li>
@@ -430,6 +483,7 @@ function IssueList({ issues }: { issues: PublicDashboardIssueRow[] }) {
           <RateBar
             label={issue.label}
             rate={issue.rateOfAllScans}
+            barClassName={issueTone(issue.rateOfAllScans)}
             meta={`영향 설문 ${issue.affectedSurveyCount.toLocaleString("ko-KR")}건 · 전체 진단 대비 ${formatRate(issue.rateOfAllScans)} · 발견 신호 ${issue.findingCount.toLocaleString("ko-KR")}건`}
           />
         </li>
@@ -456,9 +510,21 @@ function OrgTypeGrid({ rows }: { rows: PublicDashboardOrgTypeRow[] }) {
             </p>
           </div>
           <div className="mt-3 space-y-2.5">
-            <RateBar label="개인정보 포함" rate={row.personalInfoRate} />
-            <RateBar label="민감정보 포함" rate={row.sensitiveInfoRate} />
-            <RateBar label="고위험정보 포함" rate={row.highRiskInfoRate} />
+            <RateBar
+              label="개인정보 포함"
+              rate={row.personalInfoRate}
+              barClassName="bg-slate-600"
+            />
+            <RateBar
+              label="민감정보 포함"
+              rate={row.sensitiveInfoRate}
+              barClassName="bg-amber-500"
+            />
+            <RateBar
+              label="고위험정보 포함"
+              rate={row.highRiskInfoRate}
+              barClassName="bg-orange-600"
+            />
           </div>
         </div>
       ))}
@@ -468,7 +534,7 @@ function OrgTypeGrid({ rows }: { rows: PublicDashboardOrgTypeRow[] }) {
 
 function DiagnosisQualityGrid({ stats }: { stats: PublicDiagnosisQualityStats }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-3">
       <KpiCard
         label="진단 완료 건수"
         value={`${stats.completedDiagnosisCount.toLocaleString("ko-KR")}건`}
@@ -481,14 +547,6 @@ function DiagnosisQualityGrid({ stats }: { stats: PublicDiagnosisQualityStats })
         label="증빙 캡처 확보 건수"
         value={`${stats.evidenceCaptureCount.toLocaleString("ko-KR")}건`}
       />
-      <KpiCard
-        label="전체 경로 캡처 완료"
-        value={`${stats.fullPathCaptureCount.toLocaleString("ko-KR")}건`}
-      />
-      <KpiCard
-        label="평균 캡처 페이지 수"
-        value={formatScore(stats.avgCapturedPageCount)}
-      />
     </div>
   );
 }
@@ -497,7 +555,7 @@ function RespondentGuide() {
   return (
     <Section
       title="설문 응답 전 확인하세요"
-      description="개인정보를 입력하기 전에 아래를 먼저 확인하면 위험을 줄일 수 있습니다."
+      description="개인정보를 입력하기 전 아래 항목이 안내되어 있는지 먼저 확인하세요."
     >
       <ol className="list-decimal space-y-2.5 pl-5 text-sm leading-relaxed text-slate-700">
         <li>이름·연락처·이메일을 쓰기 전에 수집 목적을 확인하세요.</li>
@@ -518,11 +576,8 @@ function OperatorGuide() {
   return (
     <Section
       title="설문 운영자가 보완해야 할 기본 항목"
-      description="법률 자문이 아니라, 개인정보를 수집할 때 함께 확인·보완하면 좋은 기본 항목입니다."
+      description="개인정보를 수집하는 설문 운영자는 아래 항목을 함께 안내하는 것이 좋습니다."
     >
-      <p className="mb-3 text-sm text-slate-700">
-        개인정보를 수집하는 설문은 최소한 아래 항목을 함께 안내해야 합니다.
-      </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {[
           "수집 목적",
@@ -552,6 +607,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
     return (
       <div className="space-y-8">
         <OneLineConclusion insights={data.insights} />
+        <KeySignals insights={data.insights} />
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-base font-semibold text-slate-900">
             아직 공개 통계를 산출하기 위한 진단 데이터가 충분하지 않습니다.
@@ -560,9 +616,9 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
             설문 진단이 누적되면 이곳에 기간별 개인정보 수집 실태가 표시됩니다.
           </p>
         </div>
-        <KeyFindings cards={data.insights.keyFindings} />
         <RespondentGuide />
         <OperatorGuide />
+        <PressShareSummaryBox summary={data.insights.pressShareSummary} />
       </div>
     );
   }
@@ -577,6 +633,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
       ) : null}
 
       <OneLineConclusion insights={data.insights} />
+      <KeySignals insights={data.insights} />
 
       <section aria-labelledby="kpi-heading">
         <h2 id="kpi-heading" className="sr-only">
@@ -599,14 +656,14 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
             hint={`${data.summary.sensitiveInfoCount.toLocaleString("ko-KR")}건`}
           />
           <KpiCard
-            label="고위험정보 포함 비율"
-            value={formatRate(data.summary.highRiskInfoRate)}
-            hint={`${data.summary.highRiskInfoCount.toLocaleString("ko-KR")}건`}
+            label="주의 필요 설문 비율"
+            value={formatRate(data.summary.attentionNeededRate)}
+            hint={`${data.summary.attentionNeededCount.toLocaleString("ko-KR")}건 · 거부·신고/안내확인/공식확인`}
           />
           <KpiCard
-            label="주의 필요 설문 비율"
-            value={formatRate(data.summary.highOrCriticalRate)}
-            hint={`${data.summary.highOrCriticalCount.toLocaleString("ko-KR")}건`}
+            label="문항 분석 불가"
+            value={formatRate(data.summary.judgmentUnknownRate)}
+            hint={`${data.summary.judgmentUnknownCount.toLocaleString("ko-KR")}건 · 주의 필요와 별도`}
           />
           <KpiCard
             label="평균 개인정보 보호 점수"
@@ -631,6 +688,9 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
       >
         <DecisionList rows={data.decisionStats} />
       </Section>
+
+      <RespondentGuide />
+      <OperatorGuide />
 
       <Section
         title="문항 기준 개인정보 수집 현황"
@@ -672,7 +732,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
 
       <Section
         title="자주 발견되는 미흡·확인 필요 항목"
-        description="구체 항목을 우선 표시하고, ‘기타 확인 필요’는 하단에 둡니다. 막대는 전체 진단 대비 영향 설문 비율입니다."
+        description="구체 항목을 우선 표시합니다. ‘기타 확인 필요’는 구체 항목이 없을 때만 표시합니다. 막대 색은 확인 필요 강도(중립~주의)를 나타냅니다."
       >
         <IssueList issues={data.issueStats} />
       </Section>
@@ -684,12 +744,11 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
         <OrgTypeGrid rows={data.organizationTypeStats} />
       </Section>
 
-      <RespondentGuide />
-      <OperatorGuide />
+      <PressShareSummaryBox summary={data.insights.pressShareSummary} />
 
       <Section
         title="진단 신뢰도 및 한계"
-        description="증빙 파일 경로·ZIP·signed URL은 공개하지 않으며, 집계 수치만 표시합니다."
+        description="자동진단은 설문 페이지 접근 가능 여부와 플랫폼 구조에 따라 일부 제한될 수 있습니다. 아래 수치는 공개 통계의 해석 범위를 이해하기 위한 참고 정보입니다."
       >
         <DiagnosisQualityGrid stats={data.diagnosisQualityStats} />
       </Section>

@@ -24,8 +24,15 @@ export interface PublicDashboardSummary {
   sensitiveInfoRate: number;
   highRiskInfoCount: number;
   highRiskInfoRate: number;
+  /** @deprecated Prefer attentionNeededCount — kept for compatibility. */
   highOrCriticalCount: number;
   highOrCriticalRate: number;
+  /** 주의 필요 = 응답 거부·신고 검토 + 안내 없으면 입력 금지 + 공식 확인 후 응답 */
+  attentionNeededCount: number;
+  attentionNeededRate: number;
+  /** 문항 분석 불가 (JUDGMENT_UNKNOWN) — 주의 필요와 분리 */
+  judgmentUnknownCount: number;
+  judgmentUnknownRate: number;
   avgOverallScore: number | null;
 }
 
@@ -140,9 +147,19 @@ export interface PublicKeyFindingCard {
 export interface PublicDashboardInsights {
   rangeLabel: string;
   oneLineConclusion: string;
+  keySignals: Array<{
+    order: number;
+    headline: string;
+    detail: string;
+  }>;
   keyFindings: PublicKeyFindingCard[];
   platformInsight: string;
+  pressShareSummary: string;
+  /** Same as summary.attentionNeededCount */
   cautionDecisionCount: number;
+  /** Same as summary.attentionNeededCount (alias for readers) */
+  attentionNeededCount: number;
+  judgmentUnknownCount: number;
   reportLikeDecisionCount: number;
   publicExternalToolCheckCount: number;
 }
@@ -357,6 +374,13 @@ function decisionCount(
     .reduce((sum, row) => sum + row.count, 0);
 }
 
+/** Unified public definition of "주의 필요 설문". */
+const ATTENTION_NEEDED_KEYS = [
+  "STOP_RESPONSE",
+  "NOTICE_CHECK",
+  "SECURITY_CHECK",
+] as const;
+
 function buildInsights(input: {
   range: PublicDashboardRange;
   isEarlyData: boolean;
@@ -368,19 +392,8 @@ function buildInsights(input: {
   const label = rangeLabel(input.range);
   const total = input.summary.totalScans;
   const personal = input.summary.personalInfoCount;
-
-  // 신중한 대응: 개인정보 주의·안내 확인·공식 확인·거부/신고 검토
-  const cautionDecisionCount = decisionCount(input.decisionStats, [
-    "PII_CAUTION",
-    "NOTICE_CHECK",
-    "SECURITY_CHECK",
-    "STOP_RESPONSE",
-  ]);
-  // 응답 거부·신고 검토 또는 이에 준하는 판단
-  const reportLikeDecisionCount = decisionCount(input.decisionStats, [
-    "STOP_RESPONSE",
-    "SECURITY_CHECK",
-  ]);
+  const attentionNeededCount = input.summary.attentionNeededCount;
+  const judgmentUnknownCount = input.summary.judgmentUnknownCount;
 
   const publicPersonal = input.publicSectorToolStats.publicPersonalInfoSurveyCount;
   const publicExternalToolCheckCount = Math.max(
@@ -391,7 +404,51 @@ function buildInsights(input: {
   const oneLineConclusion =
     total <= 0
       ? EMPTY_ONE_LINE
-      : `${label} 진단된 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 수집했고, ${cautionDecisionCount.toLocaleString("ko-KR")}건은 응답자 관점에서 신중한 대응이 필요한 설문으로 분류되었습니다.`;
+      : [
+          `${label} 진단된 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 수집했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`,
+          `문항 분석이 제한된 설문은 ${judgmentUnknownCount.toLocaleString("ko-KR")}건입니다.`,
+        ].join(" ");
+
+  const earlyNote = input.isEarlyData ? " (초기 누적 데이터 기준)" : "";
+
+  const keySignals =
+    total <= 0
+      ? [
+          {
+            order: 1,
+            headline: "아직 충분한 진단 데이터가 없습니다.",
+            detail: "진단이 누적되면 핵심 신호가 여기에 표시됩니다.",
+          },
+        ]
+      : [
+          {
+            order: 1,
+            headline:
+              personal > total / 2
+                ? `개인정보 수집 설문이 많았습니다.${earlyNote}`
+                : `개인정보 수집 설문이 확인되었습니다.${earlyNote}`,
+            detail: `${label} 진단 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`,
+          },
+          {
+            order: 2,
+            headline:
+              attentionNeededCount > 0
+                ? `응답 전 확인이 필요한 설문이 확인되었습니다.${earlyNote}`
+                : `응답 전 강한 주의 분류는 적거나 없었습니다.${earlyNote}`,
+            detail: `${attentionNeededCount.toLocaleString("ko-KR")}건은 응답 거부·신고 검토 또는 이에 준하는 주의 판단으로 분류되었습니다.`,
+          },
+          {
+            order: 3,
+            headline:
+              publicPersonal > 0
+                ? `공공부문 외부도구 사용 확인 신호가 있었습니다.${earlyNote}`
+                : `이번 기간 공공부문 개인정보 수집 설문이 없거나 적습니다.${earlyNote}`,
+            detail:
+              publicPersonal > 0
+                ? `공공부문 개인정보 수집 설문 ${publicPersonal.toLocaleString("ko-KR")}건 중 ${publicExternalToolCheckCount.toLocaleString("ko-KR")}건에서 외부도구 또는 CSAP 확인 필요 신호가 있었습니다.`
+                : "공공부문 설문이 누적되면 외부도구·보안 확인 필요 신호를 집계합니다.",
+          },
+        ];
 
   const keyFindings: PublicKeyFindingCard[] = [
     {
@@ -413,14 +470,14 @@ function buildInsights(input: {
       id: "respondent_caution",
       title: "응답자 관점 판단",
       headline:
-        reportLikeDecisionCount > 0
-          ? "응답 전 신중한 확인이 필요한 설문이 확인되었습니다."
+        attentionNeededCount > 0
+          ? "응답 전 확인이 필요한 설문이 확인되었습니다."
           : total > 0
-            ? "강한 주의·신고 검토 분류는 적거나 없었습니다."
+            ? "주의 필요 분류는 적거나 없었습니다."
             : "데이터 누적 필요",
       detail:
         total > 0
-          ? `${reportLikeDecisionCount.toLocaleString("ko-KR")}건은 ‘응답 거부·신고 검토’ 또는 이에 준하는 판단으로 분류되었습니다.`
+          ? `${attentionNeededCount.toLocaleString("ko-KR")}건은 응답 거부·신고 검토 또는 이에 준하는 주의 판단으로 분류되었습니다.`
           : "진단 데이터가 쌓이면 응답자 관점 판단을 보여줍니다.",
       available: total > 0,
     },
@@ -462,13 +519,33 @@ function buildInsights(input: {
     platformInsight = `이번 기간에는 ${top.platform}에서 개인정보 포함 비율이 가장 높게 나타났습니다. 플랫폼별 비율은 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.`;
   }
 
+  const pressShareSummary =
+    total <= 0
+      ? "아직 충분한 진단 데이터가 없어 보도·공유용 요약을 작성할 수 없습니다."
+      : [
+          `${label}간 SURE Check가 자동진단한 공개 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`,
+          publicPersonal > 0
+            ? `공공부문 개인정보 수집 설문 ${publicPersonal.toLocaleString("ko-KR")}건에서는 외부 설문도구 또는 공공부문 클라우드 보안 확인 필요 신호가 확인되었습니다.`
+            : null,
+          judgmentUnknownCount > 0
+            ? `문항 분석이 제한된 설문은 ${judgmentUnknownCount.toLocaleString("ko-KR")}건입니다.`
+            : null,
+          "본 통계는 자동진단 기반 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
   return {
     rangeLabel: label,
     oneLineConclusion,
+    keySignals,
     keyFindings,
     platformInsight,
-    cautionDecisionCount,
-    reportLikeDecisionCount,
+    pressShareSummary,
+    cautionDecisionCount: attentionNeededCount,
+    attentionNeededCount,
+    judgmentUnknownCount,
+    reportLikeDecisionCount: attentionNeededCount,
     publicExternalToolCheckCount,
   };
 }
@@ -542,6 +619,10 @@ function emptySummary(): PublicDashboardSummary {
     highRiskInfoRate: 0,
     highOrCriticalCount: 0,
     highOrCriticalRate: 0,
+    attentionNeededCount: 0,
+    attentionNeededRate: 0,
+    judgmentUnknownCount: 0,
+    judgmentUnknownRate: 0,
     avgOverallScore: null,
   };
 }
@@ -886,6 +967,10 @@ export async function buildPublicDashboard(
                 ).length
               : summaryTotals.highOrCriticalCount,
           highOrCriticalRate: 0,
+          attentionNeededCount: 0,
+          attentionNeededRate: 0,
+          judgmentUnknownCount: 0,
+          judgmentUnknownRate: 0,
           avgOverallScore: avg(summaryTotals.scores),
         };
 
@@ -1187,26 +1272,27 @@ export async function buildPublicDashboard(
       });
     }
   }
-  const issueStats: PublicDashboardIssueRow[] = [...issueMap.entries()]
-    .map(([label, bucket]) => ({
-      label,
-      findingCount: bucket.findingCount,
-      affectedSurveyCount: bucket.surveyIds.size,
-      rateOfAllScans: rate(bucket.surveyIds.size, totalScans),
-    }))
+  const issueRows = [...issueMap.entries()].map(([label, bucket]) => ({
+    label,
+    findingCount: bucket.findingCount,
+    affectedSurveyCount: bucket.surveyIds.size,
+    rateOfAllScans: rate(bucket.surveyIds.size, totalScans),
+  }));
+  const specificIssues = issueRows
+    .filter((row) => row.label !== "기타 확인 필요")
     .sort((a, b) => {
-      // Keep "기타 확인 필요" at the bottom; prefer specific labels.
-      const rankDiff = issueDisplayRank(a.label) - issueDisplayRank(b.label);
-      if (a.label === "기타 확인 필요" && b.label !== "기타 확인 필요") return 1;
-      if (b.label === "기타 확인 필요" && a.label !== "기타 확인 필요") return -1;
-      // Among specific labels, sort by impact then priority rank.
       const impact =
         b.affectedSurveyCount - a.affectedSurveyCount ||
         b.findingCount - a.findingCount;
       if (impact !== 0) return impact;
-      return rankDiff;
-    })
-    .slice(0, 12);
+      return issueDisplayRank(a.label) - issueDisplayRank(b.label);
+    });
+  const otherIssues = issueRows.filter((row) => row.label === "기타 확인 필요");
+  // Prefer concrete labels; only expose "기타" when no specific issues exist.
+  const issueStats: PublicDashboardIssueRow[] =
+    specificIssues.length > 0
+      ? specificIssues.slice(0, 10)
+      : otherIssues.slice(0, 3);
 
   // Organization type stats
   const orgMap = new Map<
@@ -1295,6 +1381,21 @@ export async function buildPublicDashboard(
           rate: 0,
         }))
       : decisionStats;
+
+  // Unify "주의 필요" with citizen decision labels (exclude 문항 분석 불가).
+  const attentionNeededCount = decisionCount(resolvedDecisionStats, [
+    ...ATTENTION_NEEDED_KEYS,
+  ]);
+  const judgmentUnknownCount = decisionCount(resolvedDecisionStats, [
+    "JUDGMENT_UNKNOWN",
+  ]);
+  summary.attentionNeededCount = attentionNeededCount;
+  summary.attentionNeededRate = rate(attentionNeededCount, totalScans);
+  summary.judgmentUnknownCount = judgmentUnknownCount;
+  summary.judgmentUnknownRate = rate(judgmentUnknownCount, totalScans);
+  // Align legacy KPI field with the unified attention definition.
+  summary.highOrCriticalCount = attentionNeededCount;
+  summary.highOrCriticalRate = summary.attentionNeededRate;
 
   const insights = buildInsights({
     range,

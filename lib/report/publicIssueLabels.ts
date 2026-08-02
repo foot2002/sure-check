@@ -3,15 +3,15 @@
  * Multiple finding_type / check_domain combinations collapse into one label.
  */
 
-/** Display priority — specific items first; "기타" last. */
+/** Display priority — specific items first; "기타" last / excluded from top. */
 export const PUBLIC_ISSUE_DISPLAY_PRIORITY = [
   "고지문 미흡",
   "동의 안내 미흡",
   "운영주체 확인 필요",
   "외부 설문도구·처리경로 확인 필요",
   "국외이전 확인 필요",
-  "문항 분석 제한",
   "민감정보 문항 확인 필요",
+  "문항 분석 제한",
   "공공부문 클라우드 보안 확인 필요",
   "보유기간·파기 안내 미흡",
   "개인정보 문항 확인 필요",

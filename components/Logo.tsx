@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 interface LogoProps {
-  size?: "header" | "hero";
+  size?: "header" | "headerCompact" | "hero";
 }
 
 /**
@@ -12,6 +12,8 @@ interface LogoProps {
 const sizeStyles = {
   header:
     "h-auto w-full max-w-[min(100%,240px)] sm:max-w-[min(100%,290px)] md:max-w-[min(100%,340px)]",
+  headerCompact:
+    "h-auto w-full max-w-[min(100%,160px)] sm:max-w-[min(100%,190px)] md:max-w-[min(100%,220px)]",
   hero: "h-auto w-full max-w-[min(100%,300px)] sm:max-w-[min(100%,360px)] md:max-w-[min(100%,420px)]",
 };
 
@@ -23,7 +25,7 @@ export function Logo({ size = "header" }: LogoProps) {
         alt="SURE Check"
         width={1200}
         height={360}
-        priority={size === "header"}
+        priority={size === "header" || size === "headerCompact"}
         className={`${sizeStyles[size]} transition-opacity group-hover:opacity-90`}
       />
     </Link>
