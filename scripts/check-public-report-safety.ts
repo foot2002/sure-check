@@ -50,6 +50,7 @@ function mockSafePayload(): PublicDashboardPayload {
     to: "2026-08-01",
     generatedAt: new Date().toISOString(),
     hasData: true,
+    isEarlyData: true,
     summary: {
       totalScans: 10,
       personalInfoCount: 4,
@@ -62,6 +63,13 @@ function mockSafePayload(): PublicDashboardPayload {
       highOrCriticalRate: 30,
       avgOverallScore: 62.5,
     },
+    privacyIndex: {
+      avgScore: 62.5,
+      grade: "개선 필요",
+      interpretation: "60~79점: 개선 필요",
+      disclaimer:
+        "이 지수는 자동진단 결과를 바탕으로 산출한 참고 지표이며, 개별 설문의 위법 여부를 확정하는 기준은 아닙니다.",
+    },
     trends: [
       {
         date: "2026-08-01",
@@ -70,6 +78,40 @@ function mockSafePayload(): PublicDashboardPayload {
         sensitiveInfoRate: 0,
         highRiskInfoRate: 0,
         avgOverallScore: 70,
+      },
+    ],
+    decisionStats: [
+      {
+        decisionKey: "SAFE_RESPOND",
+        label: "응답 가능",
+        count: 2,
+        rate: 20,
+      },
+    ],
+    questionStats: {
+      totalQuestions: 40,
+      personalInfoQuestions: 8,
+      sensitiveQuestions: 1,
+      highRiskQuestions: 0,
+      personalInfoQuestionRate: 20,
+    },
+    dataCategoryStats: [
+      {
+        categoryKey: "name",
+        label: "이름",
+        riskCategory: "direct_identifier",
+        count: 5,
+        rate: 50,
+      },
+    ],
+    noticeComplianceStats: [
+      {
+        itemKey: "purpose",
+        label: "수집 목적 안내",
+        applicableCount: 10,
+        compliantCount: 4,
+        gapCount: 6,
+        complianceRate: 40,
       },
     ],
     platformStats: [
@@ -82,13 +124,19 @@ function mockSafePayload(): PublicDashboardPayload {
         avgOverallScore: 60,
       },
     ],
+    publicSectorToolStats: {
+      publicPersonalInfoSurveyCount: 2,
+      externalToolReviewCount: 2,
+      csapOrCloudReviewCount: 2,
+      byPlatform: [{ platform: "Google Forms", surveyCount: 2 }],
+      byOrgType: [{ typeLabel: "공공기관", surveyCount: 2 }],
+    },
     issueStats: [
       {
-        findingType: "notice_gap",
-        checkDomain: "notice",
-        severity: "needs_review",
-        findingCount: 4,
         label: "고지문 미흡",
+        findingCount: 4,
+        affectedSurveyCount: 3,
+        rateOfAllScans: 30,
       },
     ],
     organizationTypeStats: [
@@ -101,6 +149,13 @@ function mockSafePayload(): PublicDashboardPayload {
         avgOverallScore: null,
       },
     ],
+    diagnosisQualityStats: {
+      completedDiagnosisCount: 8,
+      limitedQuestionAnalysisCount: 2,
+      evidenceCaptureCount: 5,
+      fullPathCaptureCount: 3,
+      avgCapturedPageCount: 4.2,
+    },
     disclosurePolicy: {
       mode: "aggregate_only",
       message: "aggregate only",
@@ -122,6 +177,8 @@ async function main(): Promise<void> {
       survey_url: "https://example.com/form",
       operator_name: "테스트기관",
       storage_path: "evidence/x/package.zip",
+      question_label: "이름을 입력하세요",
+      report_json: { x: 1 },
     },
   };
   const dirtyCheck = checkPublicReportSafe(dirty);
@@ -139,12 +196,30 @@ async function main(): Promise<void> {
     try {
       const live = await buildPublicDashboard({ range: "7d" });
       assertPublicReportSafe(live);
+      assert(
+        Array.isArray(live.decisionStats),
+        "decisionStats missing",
+      );
+      assert(live.questionStats != null, "questionStats missing");
+      assert(Array.isArray(live.dataCategoryStats), "dataCategoryStats missing");
+      assert(
+        Array.isArray(live.noticeComplianceStats),
+        "noticeComplianceStats missing",
+      );
+      assert(live.publicSectorToolStats != null, "publicSectorToolStats missing");
+      assert(live.diagnosisQualityStats != null, "diagnosisQualityStats missing");
+      assert(live.privacyIndex != null, "privacyIndex missing");
+      // Labels should be unique in issueStats
+      const labels = live.issueStats.map((i) => i.label);
+      assert(
+        new Set(labels).size === labels.length,
+        "issueStats labels must be unique",
+      );
       console.log(
-        `live dashboard: OK (hasData=${live.hasData}, totalScans=${live.summary.totalScans})`,
+        `live dashboard: OK (hasData=${live.hasData}, totalScans=${live.summary.totalScans}, issues=${live.issueStats.length})`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // Clock skew / transient Supabase auth issues should not fail policy checks.
       if (/JWT|issued at future|fetch failed|network/i.test(message)) {
         console.log(`live dashboard: SKIP (${message})`);
       } else {

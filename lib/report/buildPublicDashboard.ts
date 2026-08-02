@@ -3,6 +3,7 @@ import {
   assertPublicReportSafe,
   PUBLIC_DISCLOSURE_MESSAGE,
 } from "@/lib/report/publicReportPolicy";
+import { toPublicIssueLabel } from "@/lib/report/publicIssueLabels";
 
 export type PublicDashboardRange = "today" | "7d" | "30d" | "custom";
 
@@ -44,11 +45,10 @@ export interface PublicDashboardPlatformRow {
 }
 
 export interface PublicDashboardIssueRow {
-  findingType: string;
-  checkDomain: string | null;
-  severity: string;
-  findingCount: number;
   label: string;
+  findingCount: number;
+  affectedSurveyCount: number;
+  rateOfAllScans: number;
 }
 
 export interface PublicDashboardOrgTypeRow {
@@ -60,17 +60,86 @@ export interface PublicDashboardOrgTypeRow {
   avgOverallScore: number | null;
 }
 
+export type PrivacyIndexGrade =
+  | "양호"
+  | "개선 필요"
+  | "주의"
+  | "고위험 검토";
+
+export interface PublicPrivacyIndex {
+  avgScore: number | null;
+  grade: PrivacyIndexGrade | null;
+  interpretation: string;
+  disclaimer: string;
+}
+
+export interface PublicDecisionStatRow {
+  decisionKey: string;
+  label: string;
+  count: number;
+  rate: number;
+}
+
+export interface PublicQuestionStats {
+  totalQuestions: number;
+  personalInfoQuestions: number;
+  sensitiveQuestions: number;
+  highRiskQuestions: number;
+  personalInfoQuestionRate: number;
+}
+
+export interface PublicDataCategoryStatRow {
+  categoryKey: string;
+  label: string;
+  riskCategory: string | null;
+  count: number;
+  rate: number;
+}
+
+export interface PublicNoticeComplianceRow {
+  itemKey: string;
+  label: string;
+  applicableCount: number;
+  compliantCount: number;
+  gapCount: number;
+  complianceRate: number | null;
+}
+
+export interface PublicSectorToolStats {
+  publicPersonalInfoSurveyCount: number;
+  externalToolReviewCount: number;
+  csapOrCloudReviewCount: number;
+  byPlatform: Array<{ platform: string; surveyCount: number }>;
+  byOrgType: Array<{ typeLabel: string; surveyCount: number }>;
+}
+
+export interface PublicDiagnosisQualityStats {
+  completedDiagnosisCount: number;
+  limitedQuestionAnalysisCount: number;
+  evidenceCaptureCount: number;
+  fullPathCaptureCount: number;
+  avgCapturedPageCount: number | null;
+}
+
 export interface PublicDashboardPayload {
   range: PublicDashboardRange;
   from: string;
   to: string;
   generatedAt: string;
   hasData: boolean;
+  isEarlyData: boolean;
   summary: PublicDashboardSummary;
+  privacyIndex: PublicPrivacyIndex;
   trends: PublicDashboardTrendRow[];
+  decisionStats: PublicDecisionStatRow[];
+  questionStats: PublicQuestionStats;
+  dataCategoryStats: PublicDataCategoryStatRow[];
+  noticeComplianceStats: PublicNoticeComplianceRow[];
   platformStats: PublicDashboardPlatformRow[];
+  publicSectorToolStats: PublicSectorToolStats;
   issueStats: PublicDashboardIssueRow[];
   organizationTypeStats: PublicDashboardOrgTypeRow[];
+  diagnosisQualityStats: PublicDiagnosisQualityStats;
   disclosurePolicy: {
     mode: "aggregate_only";
     message: string;
@@ -96,21 +165,143 @@ const SUBJECT_LABEL: Record<string, string> = {
   unknown: "확인 불가",
 };
 
-const FINDING_LABEL: Record<string, string> = {
-  personal_info_risk: "개인정보 문항 포함",
-  sensitive_info_risk: "민감정보 문항 포함",
-  high_risk_info: "고위험정보 문항 포함",
-  notice_gap: "고지문 미흡",
-  consent_gap: "동의 안내 미흡",
-  tool_governance: "외부 설문도구·처리경로 확인 필요",
-  management_gap: "관리·운영 기준 미흡",
-  operator_unclear: "운영주체 확인 필요",
-  overseas_transfer: "국외이전 확인 필요",
-  outsourcing: "위탁 안내 미흡",
-  public_sector_cloud: "공공기관 외부 SaaS 사용 확인 필요",
-  limited_diagnosis: "문항 분석 제한",
-  other: "기타 확인 필요",
-};
+const DECISION_ORDER: Array<{ key: string; label: string; aliases: string[] }> = [
+  {
+    key: "SAFE_RESPOND",
+    label: "응답 가능",
+    aliases: ["응답 가능", "SAFE_RESPOND"],
+  },
+  {
+    key: "PII_CAUTION",
+    label: "개인정보 없이 응답 권장",
+    aliases: ["개인정보 없이 응답", "개인정보 없이 응답 권장", "PII_CAUTION"],
+  },
+  {
+    key: "NOTICE_CHECK",
+    label: "안내 없으면 입력 금지",
+    aliases: ["안내 없으면 입력 금지", "NOTICE_CHECK"],
+  },
+  {
+    key: "SECURITY_CHECK",
+    label: "공식 확인 후 응답",
+    aliases: ["공식 확인 후 응답", "SECURITY_CHECK"],
+  },
+  {
+    key: "STOP_RESPONSE",
+    label: "응답 거부·신고 검토",
+    aliases: ["응답 거부·신고 검토", "STOP_RESPONSE"],
+  },
+  {
+    key: "JUDGMENT_UNKNOWN",
+    label: "문항 분석 불가",
+    aliases: ["문항 분석 불가", "JUDGMENT_UNKNOWN"],
+  },
+];
+
+const DATA_CATEGORY_BUCKETS: Array<{
+  key: string;
+  label: string;
+  codes: string[];
+  labelHints: string[];
+}> = [
+  {
+    key: "name",
+    label: "이름",
+    codes: ["name"],
+    labelHints: ["이름"],
+  },
+  {
+    key: "phone",
+    label: "연락처",
+    codes: ["phone"],
+    labelHints: ["연락처", "전화"],
+  },
+  {
+    key: "email",
+    label: "이메일",
+    codes: ["email"],
+    labelHints: ["이메일", "e-mail"],
+  },
+  {
+    key: "affiliation",
+    label: "소속/직장",
+    codes: ["affiliation", "organization_identifier", "department", "position"],
+    labelHints: ["소속", "직장", "부서", "직급"],
+  },
+  {
+    key: "age",
+    label: "연령",
+    codes: ["respondent_age", "age_range", "birthdate"],
+    labelHints: ["연령", "나이", "생년월일"],
+  },
+  {
+    key: "gender",
+    label: "성별",
+    codes: ["gender"],
+    labelHints: ["성별"],
+  },
+  {
+    key: "residence",
+    label: "거주지역",
+    codes: ["residence_area", "address"],
+    labelHints: ["거주", "주소", "권역"],
+  },
+  {
+    key: "health",
+    label: "건강 관련 정보",
+    codes: ["sensitive_health"],
+    labelHints: ["건강"],
+  },
+  {
+    key: "child",
+    label: "자녀 정보",
+    codes: ["child_age_range"],
+    labelHints: ["자녀"],
+  },
+  {
+    key: "other",
+    label: "기타",
+    codes: [],
+    labelHints: [],
+  },
+];
+
+const NOTICE_ITEMS: Array<{ key: string; label: string; match: RegExp }> = [
+  { key: "purpose", label: "수집 목적 안내", match: /수집\s*목적/ },
+  { key: "items", label: "수집 항목 안내", match: /수집\s*항목/ },
+  { key: "retention", label: "보유기간 안내", match: /보유\s*기간/ },
+  { key: "destruction", label: "파기 기준 안내", match: /파기/ },
+  {
+    key: "refusal",
+    label: "동의 거부권 및 불이익 안내",
+    match: /거부권|불이익/,
+  },
+  {
+    key: "contact",
+    label: "담당자 연락처 안내",
+    match: /담당|문의처|연락처/,
+  },
+  {
+    key: "trustee",
+    label: "위탁/외부도구 안내",
+    match: /위탁|외부도구/,
+  },
+  {
+    key: "overseas",
+    label: "국외이전 안내",
+    match: /국외/,
+  },
+  {
+    key: "csap",
+    label: "공공부문 CSAP 확인",
+    match: /CSAP|클라우드\s*보안/,
+  },
+];
+
+const PRIVACY_INDEX_DISCLAIMER =
+  "이 지수는 자동진단 결과를 바탕으로 산출한 참고 지표이며, 개별 설문의 위법 여부를 확정하는 기준은 아닙니다.";
+
+const EARLY_DATA_THRESHOLD = 30;
 
 function kstToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -163,7 +354,9 @@ function rate(count: number, total: number): number {
 }
 
 function avg(values: Array<number | null | undefined>): number | null {
-  const nums = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+  const nums = values.filter(
+    (v): v is number => typeof v === "number" && !Number.isNaN(v),
+  );
   if (nums.length === 0) return null;
   return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100;
 }
@@ -192,8 +385,93 @@ function subjectLabel(subject: string | null | undefined): string {
   return SUBJECT_LABEL[subject] || SUBJECT_LABEL.unknown;
 }
 
-function findingLabel(findingType: string): string {
-  return FINDING_LABEL[findingType] || findingType;
+function privacyGrade(score: number | null): {
+  grade: PrivacyIndexGrade | null;
+  interpretation: string;
+} {
+  if (score == null) {
+    return {
+      grade: null,
+      interpretation: "아직 평균 점수를 산출할 진단 데이터가 충분하지 않습니다.",
+    };
+  }
+  if (score >= 80) {
+    return { grade: "양호", interpretation: "80점 이상: 양호" };
+  }
+  if (score >= 60) {
+    return { grade: "개선 필요", interpretation: "60~79점: 개선 필요" };
+  }
+  if (score >= 40) {
+    return { grade: "주의", interpretation: "40~59점: 주의" };
+  }
+  return { grade: "고위험 검토", interpretation: "40점 미만: 고위험 검토" };
+}
+
+function resolveDecision(
+  safetyTypeId: string | null | undefined,
+  userDecisionLabel: string | null | undefined,
+): { key: string; label: string } {
+  const id = (safetyTypeId || "").trim();
+  const label = (userDecisionLabel || "").trim();
+  for (const row of DECISION_ORDER) {
+    if (id === row.key) return { key: row.key, label: row.label };
+    if (row.aliases.includes(label)) return { key: row.key, label: row.label };
+  }
+  if (label) {
+    return { key: "OTHER", label: "기타 판단" };
+  }
+  return { key: "JUDGMENT_UNKNOWN", label: "문항 분석 불가" };
+}
+
+function mapDataCategoryBucket(
+  categoryCode: string,
+  categoryLabel: string,
+): { key: string; label: string } {
+  const code = (categoryCode || "").toLowerCase();
+  const label = categoryLabel || "";
+  for (const bucket of DATA_CATEGORY_BUCKETS) {
+    if (bucket.key === "other") continue;
+    if (bucket.codes.includes(code)) {
+      return { key: bucket.key, label: bucket.label };
+    }
+    if (bucket.labelHints.some((hint) => label.includes(hint))) {
+      return { key: bucket.key, label: bucket.label };
+    }
+  }
+  // Skip pure opinion categories from TOP personal-info list
+  if (
+    [
+      "general_opinion",
+      "satisfaction",
+      "preference",
+      "policy_opinion",
+      "service_feedback",
+      "improvement_opinion",
+      "program_preference",
+      "visit_purpose",
+    ].includes(code)
+  ) {
+    return { key: "__skip__", label: "" };
+  }
+  return { key: "other", label: "기타" };
+}
+
+function mapNoticeItem(checkItem: string): { key: string; label: string } | null {
+  for (const item of NOTICE_ITEMS) {
+    if (item.match.test(checkItem)) {
+      return { key: item.key, label: item.label };
+    }
+  }
+  return null;
+}
+
+function isGapStatus(status: string): boolean {
+  return (
+    status === "missing" ||
+    status === "insufficient" ||
+    status === "needs_review" ||
+    status === "improvement_recommended"
+  );
 }
 
 interface DailyRow {
@@ -216,20 +494,78 @@ interface PlatformRow {
   avg_overall_score: number | null;
 }
 
-interface IssueRow {
-  observed_date_kst: string;
-  finding_type: string;
-  check_domain: string | null;
-  severity: string;
-  finding_count: number;
-}
-
 interface SurveyAggRow {
+  id: string;
   subject_type: string | null;
+  public_private_type: string | null;
+  platform: string | null;
   has_personal_info: boolean;
   has_sensitive_info: boolean;
   has_high_risk_info: boolean;
   overall_risk_level: string | null;
+  user_decision_label: string | null;
+  safety_type_id: string | null;
+  question_count: number | null;
+  personal_info_question_count: number | null;
+  sensitive_question_count: number | null;
+  high_risk_question_count: number | null;
+}
+
+interface FindingAggRow {
+  survey_record_id: string;
+  finding_type: string;
+  check_domain: string | null;
+}
+
+interface ComplianceAggRow {
+  check_item: string;
+  status: string;
+}
+
+interface ScanReportAggRow {
+  diagnosis_status: string | null;
+}
+
+interface CaptureAggRow {
+  completeness: string | null;
+  captured_page_count: number | null;
+  status: string | null;
+}
+
+interface CategoryAggRow {
+  category_code: string;
+  category_label: string;
+  risk_category: string | null;
+}
+
+function emptyQuestionStats(): PublicQuestionStats {
+  return {
+    totalQuestions: 0,
+    personalInfoQuestions: 0,
+    sensitiveQuestions: 0,
+    highRiskQuestions: 0,
+    personalInfoQuestionRate: 0,
+  };
+}
+
+function emptyPublicSectorToolStats(): PublicSectorToolStats {
+  return {
+    publicPersonalInfoSurveyCount: 0,
+    externalToolReviewCount: 0,
+    csapOrCloudReviewCount: 0,
+    byPlatform: [],
+    byOrgType: [],
+  };
+}
+
+function emptyDiagnosisQualityStats(): PublicDiagnosisQualityStats {
+  return {
+    completedDiagnosisCount: 0,
+    limitedQuestionAnalysisCount: 0,
+    evidenceCaptureCount: 0,
+    fullPathCaptureCount: 0,
+    avgCapturedPageCount: null,
+  };
 }
 
 export async function buildPublicDashboard(
@@ -238,7 +574,16 @@ export async function buildPublicDashboard(
   const { range, from, to } = resolvePublicDashboardRange(query);
   const supabase = createSupabaseServerClient();
 
-  const [dailyRes, platformRes, issueRes, surveyRes] = await Promise.all([
+  const [
+    dailyRes,
+    platformRes,
+    surveyRes,
+    findingRes,
+    complianceRes,
+    reportRes,
+    captureRes,
+    categoryRes,
+  ] = await Promise.all([
     supabase
       .from("v_dashboard_daily_overview")
       .select(
@@ -255,30 +600,66 @@ export async function buildPublicDashboard(
       .gte("observed_date_kst", from)
       .lte("observed_date_kst", to),
     supabase
-      .from("v_dashboard_issue_stats")
+      .from("survey_records")
       .select(
-        "observed_date_kst, finding_type, check_domain, severity, finding_count",
+        "id, subject_type, public_private_type, platform, has_personal_info, has_sensitive_info, has_high_risk_info, overall_risk_level, user_decision_label, safety_type_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
       )
       .gte("observed_date_kst", from)
       .lte("observed_date_kst", to),
     supabase
-      .from("survey_records")
-      .select(
-        "subject_type, has_personal_info, has_sensitive_info, has_high_risk_info, overall_risk_level",
-      )
+      .from("survey_findings")
+      .select("survey_record_id, finding_type, check_domain")
       .gte("observed_date_kst", from)
       .lte("observed_date_kst", to),
+    supabase
+      .from("survey_compliance_checks")
+      .select("check_item, status")
+      .gte("observed_date_kst", from)
+      .lte("observed_date_kst", to),
+    supabase
+      .from("scan_reports")
+      .select("diagnosis_status")
+      .gte("observed_date_kst", from)
+      .lte("observed_date_kst", to),
+    supabase
+      .from("capture_jobs")
+      .select("completeness, captured_page_count, status")
+      .gte("observed_date_kst", from)
+      .lte("observed_date_kst", to),
+    supabase
+      .from("question_data_categories")
+      .select(
+        "category_code, category_label, risk_category, survey_questions!inner(observed_date_kst)",
+      )
+      .gte("survey_questions.observed_date_kst", from)
+      .lte("survey_questions.observed_date_kst", to),
   ]);
 
   if (dailyRes.error) throw new Error(`daily overview: ${dailyRes.error.message}`);
-  if (platformRes.error) throw new Error(`platform stats: ${platformRes.error.message}`);
-  if (issueRes.error) throw new Error(`issue stats: ${issueRes.error.message}`);
+  if (platformRes.error) {
+    throw new Error(`platform stats: ${platformRes.error.message}`);
+  }
   if (surveyRes.error) throw new Error(`survey records: ${surveyRes.error.message}`);
+  if (findingRes.error) throw new Error(`survey findings: ${findingRes.error.message}`);
+  if (complianceRes.error) {
+    throw new Error(`compliance checks: ${complianceRes.error.message}`);
+  }
+  if (reportRes.error) throw new Error(`scan reports: ${reportRes.error.message}`);
+  if (captureRes.error) throw new Error(`capture jobs: ${captureRes.error.message}`);
+  // Category join may fail on older schemas — fall back to empty rather than hard-fail.
+  const categoryError = categoryRes.error;
+  if (categoryError) {
+    console.warn("[public-dashboard] data categories:", categoryError.message);
+  }
 
   const daily = (dailyRes.data || []) as DailyRow[];
   const platforms = (platformRes.data || []) as PlatformRow[];
-  const issues = (issueRes.data || []) as IssueRow[];
   const surveys = (surveyRes.data || []) as SurveyAggRow[];
+  const findings = (findingRes.data || []) as FindingAggRow[];
+  const complianceRows = (complianceRes.data || []) as ComplianceAggRow[];
+  const scanReports = (reportRes.data || []) as ScanReportAggRow[];
+  const captures = (captureRes.data || []) as CaptureAggRow[];
+  const categories = (categoryError ? [] : categoryRes.data || []) as CategoryAggRow[];
 
   const summaryTotals = daily.reduce(
     (acc, row) => {
@@ -287,7 +668,9 @@ export async function buildPublicDashboard(
       acc.sensitiveInfoCount += row.sensitive_info_count || 0;
       acc.highRiskInfoCount += row.high_risk_info_count || 0;
       acc.highOrCriticalCount += row.high_or_critical_count || 0;
-      if (row.avg_overall_score != null) acc.scores.push(Number(row.avg_overall_score));
+      if (row.avg_overall_score != null) {
+        acc.scores.push(Number(row.avg_overall_score));
+      }
       return acc;
     },
     {
@@ -300,33 +683,56 @@ export async function buildPublicDashboard(
     },
   );
 
+  // Prefer survey_records count when available (more precise for related joins).
+  const totalScans =
+    surveys.length > 0 ? surveys.length : summaryTotals.totalScans;
+
   const summary: PublicDashboardSummary =
-    summaryTotals.totalScans === 0
+    totalScans === 0
       ? emptySummary()
       : {
-          totalScans: summaryTotals.totalScans,
-          personalInfoCount: summaryTotals.personalInfoCount,
-          personalInfoRate: rate(
-            summaryTotals.personalInfoCount,
-            summaryTotals.totalScans,
-          ),
-          sensitiveInfoCount: summaryTotals.sensitiveInfoCount,
-          sensitiveInfoRate: rate(
-            summaryTotals.sensitiveInfoCount,
-            summaryTotals.totalScans,
-          ),
-          highRiskInfoCount: summaryTotals.highRiskInfoCount,
-          highRiskInfoRate: rate(
-            summaryTotals.highRiskInfoCount,
-            summaryTotals.totalScans,
-          ),
-          highOrCriticalCount: summaryTotals.highOrCriticalCount,
-          highOrCriticalRate: rate(
-            summaryTotals.highOrCriticalCount,
-            summaryTotals.totalScans,
-          ),
+          totalScans,
+          personalInfoCount:
+            surveys.length > 0
+              ? surveys.filter((s) => s.has_personal_info).length
+              : summaryTotals.personalInfoCount,
+          personalInfoRate: 0,
+          sensitiveInfoCount:
+            surveys.length > 0
+              ? surveys.filter((s) => s.has_sensitive_info).length
+              : summaryTotals.sensitiveInfoCount,
+          sensitiveInfoRate: 0,
+          highRiskInfoCount:
+            surveys.length > 0
+              ? surveys.filter((s) => s.has_high_risk_info).length
+              : summaryTotals.highRiskInfoCount,
+          highRiskInfoRate: 0,
+          highOrCriticalCount:
+            surveys.length > 0
+              ? surveys.filter(
+                  (s) =>
+                    s.overall_risk_level === "high" ||
+                    s.overall_risk_level === "critical",
+                ).length
+              : summaryTotals.highOrCriticalCount,
+          highOrCriticalRate: 0,
           avgOverallScore: avg(summaryTotals.scores),
         };
+
+  if (totalScans > 0) {
+    summary.personalInfoRate = rate(summary.personalInfoCount, totalScans);
+    summary.sensitiveInfoRate = rate(summary.sensitiveInfoCount, totalScans);
+    summary.highRiskInfoRate = rate(summary.highRiskInfoCount, totalScans);
+    summary.highOrCriticalRate = rate(summary.highOrCriticalCount, totalScans);
+  }
+
+  const gradeInfo = privacyGrade(summary.avgOverallScore);
+  const privacyIndex: PublicPrivacyIndex = {
+    avgScore: summary.avgOverallScore,
+    grade: gradeInfo.grade,
+    interpretation: gradeInfo.interpretation,
+    disclaimer: PRIVACY_INDEX_DISCLAIMER,
+  };
 
   const trends: PublicDashboardTrendRow[] = daily.map((row) => {
     const count = row.survey_count || 0;
@@ -351,7 +757,6 @@ export async function buildPublicDashboard(
       scores: number[];
     }
   >();
-
   for (const key of Object.keys(PLATFORM_LABEL)) {
     platformMap.set(key, {
       surveyCount: 0,
@@ -361,7 +766,6 @@ export async function buildPublicDashboard(
       scores: [],
     });
   }
-
   for (const row of platforms) {
     const key = row.platform in PLATFORM_LABEL ? row.platform : "unknown";
     const bucket = platformMap.get(key)!;
@@ -369,9 +773,10 @@ export async function buildPublicDashboard(
     bucket.personalInfoCount += row.personal_info_count || 0;
     bucket.sensitiveInfoCount += row.sensitive_info_count || 0;
     bucket.highRiskInfoCount += row.high_risk_info_count || 0;
-    if (row.avg_overall_score != null) bucket.scores.push(Number(row.avg_overall_score));
+    if (row.avg_overall_score != null) {
+      bucket.scores.push(Number(row.avg_overall_score));
+    }
   }
-
   const platformStats: PublicDashboardPlatformRow[] = [...platformMap.entries()]
     .map(([platform, bucket]) => ({
       platform: platformLabel(platform),
@@ -381,29 +786,248 @@ export async function buildPublicDashboard(
       highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
       avgOverallScore: avg(bucket.scores),
     }))
-    .filter((row) => row.surveyCount > 0 || summary.totalScans === 0)
+    .filter((row) => row.surveyCount > 0 || totalScans === 0)
     .sort((a, b) => b.surveyCount - a.surveyCount);
 
-  const issueMap = new Map<string, PublicDashboardIssueRow>();
-  for (const row of issues) {
-    const key = `${row.finding_type}|${row.check_domain || ""}|${row.severity}`;
-    const existing = issueMap.get(key);
+  // Decision distribution
+  const decisionMap = new Map<string, PublicDecisionStatRow>();
+  for (const row of DECISION_ORDER) {
+    decisionMap.set(row.key, {
+      decisionKey: row.key,
+      label: row.label,
+      count: 0,
+      rate: 0,
+    });
+  }
+  for (const survey of surveys) {
+    const resolved = resolveDecision(
+      survey.safety_type_id,
+      survey.user_decision_label,
+    );
+    const existing = decisionMap.get(resolved.key);
     if (existing) {
-      existing.findingCount += row.finding_count || 0;
+      existing.count += 1;
     } else {
-      issueMap.set(key, {
-        findingType: row.finding_type,
-        checkDomain: row.check_domain,
-        severity: row.severity,
-        findingCount: row.finding_count || 0,
-        label: findingLabel(row.finding_type),
+      decisionMap.set(resolved.key, {
+        decisionKey: resolved.key,
+        label: resolved.label,
+        count: 1,
+        rate: 0,
       });
     }
   }
-  const issueStats = [...issueMap.values()]
-    .sort((a, b) => b.findingCount - a.findingCount)
+  const decisionStats = [...decisionMap.values()]
+    .map((row) => ({
+      ...row,
+      rate: rate(row.count, totalScans),
+    }))
+    .filter((row) => row.count > 0 || totalScans === 0)
+    .sort((a, b) => {
+      const ai = DECISION_ORDER.findIndex((d) => d.key === a.decisionKey);
+      const bi = DECISION_ORDER.findIndex((d) => d.key === b.decisionKey);
+      if (ai >= 0 && bi >= 0) return ai - bi;
+      if (ai >= 0) return -1;
+      if (bi >= 0) return 1;
+      return b.count - a.count;
+    });
+
+  // Question-level aggregates from survey_records
+  const questionStats: PublicQuestionStats =
+    surveys.length === 0
+      ? emptyQuestionStats()
+      : (() => {
+          const totalQuestions = surveys.reduce(
+            (s, row) => s + (row.question_count || 0),
+            0,
+          );
+          const personalInfoQuestions = surveys.reduce(
+            (s, row) => s + (row.personal_info_question_count || 0),
+            0,
+          );
+          const sensitiveQuestions = surveys.reduce(
+            (s, row) => s + (row.sensitive_question_count || 0),
+            0,
+          );
+          const highRiskQuestions = surveys.reduce(
+            (s, row) => s + (row.high_risk_question_count || 0),
+            0,
+          );
+          return {
+            totalQuestions,
+            personalInfoQuestions,
+            sensitiveQuestions,
+            highRiskQuestions,
+            personalInfoQuestionRate: rate(personalInfoQuestions, totalQuestions),
+          };
+        })();
+
+  // Data category TOP (aggregate labels only)
+  const categoryCount = new Map<
+    string,
+    { label: string; riskCategory: string | null; count: number }
+  >();
+  for (const row of categories) {
+    const bucket = mapDataCategoryBucket(row.category_code, row.category_label);
+    if (bucket.key === "__skip__") continue;
+    const existing = categoryCount.get(bucket.key);
+    if (existing) {
+      existing.count += 1;
+      if (!existing.riskCategory && row.risk_category) {
+        existing.riskCategory = row.risk_category;
+      }
+    } else {
+      categoryCount.set(bucket.key, {
+        label: bucket.label,
+        riskCategory: row.risk_category,
+        count: 1,
+      });
+    }
+  }
+  const categoryTotal = [...categoryCount.values()].reduce(
+    (s, row) => s + row.count,
+    0,
+  );
+  const dataCategoryStats: PublicDataCategoryStatRow[] = DATA_CATEGORY_BUCKETS.map(
+    (bucket) => {
+      const found = categoryCount.get(bucket.key);
+      const count = found?.count || 0;
+      return {
+        categoryKey: bucket.key,
+        label: bucket.label,
+        riskCategory: found?.riskCategory || null,
+        count,
+        rate: rate(count, categoryTotal),
+      };
+    },
+  ).filter((row) => row.count > 0 || totalScans === 0);
+
+  // Notice compliance rates
+  const noticeMap = new Map<
+    string,
+    { label: string; applicable: number; compliant: number; gap: number }
+  >();
+  for (const item of NOTICE_ITEMS) {
+    noticeMap.set(item.key, {
+      label: item.label,
+      applicable: 0,
+      compliant: 0,
+      gap: 0,
+    });
+  }
+  for (const row of complianceRows) {
+    if (row.status === "not_applicable") continue;
+    const mapped = mapNoticeItem(row.check_item || "");
+    if (!mapped) continue;
+    const bucket = noticeMap.get(mapped.key);
+    if (!bucket) continue;
+    bucket.applicable += 1;
+    if (row.status === "compliant") bucket.compliant += 1;
+    else if (isGapStatus(row.status)) bucket.gap += 1;
+  }
+
+  // CSAP proxy: public + personal info surveys not on WiseON
+  const publicPersonalSurveys = surveys.filter(
+    (s) => s.public_private_type === "public" && s.has_personal_info,
+  );
+  const csapBucket = noticeMap.get("csap");
+  if (csapBucket && publicPersonalSurveys.length > 0) {
+    for (const survey of publicPersonalSurveys) {
+      csapBucket.applicable += 1;
+      if (survey.platform === "wiseon_csap") {
+        csapBucket.compliant += 1;
+      } else {
+        csapBucket.gap += 1;
+      }
+    }
+  }
+
+  const noticeComplianceStats: PublicNoticeComplianceRow[] = [...noticeMap.entries()]
+    .map(([itemKey, bucket]) => ({
+      itemKey,
+      label: bucket.label,
+      applicableCount: bucket.applicable,
+      compliantCount: bucket.compliant,
+      gapCount: bucket.gap,
+      complianceRate:
+        bucket.applicable > 0
+          ? rate(bucket.compliant, bucket.applicable)
+          : null,
+    }))
+    .filter((row) => row.applicableCount > 0 || totalScans === 0);
+
+  // Public sector external tool stats
+  const publicSectorByPlatform = new Map<string, number>();
+  const publicSectorByOrgType = new Map<string, number>();
+  let externalToolReviewCount = 0;
+  let csapOrCloudReviewCount = 0;
+  for (const survey of publicPersonalSurveys) {
+    const platform = platformLabel(survey.platform || "unknown");
+    publicSectorByPlatform.set(
+      platform,
+      (publicSectorByPlatform.get(platform) || 0) + 1,
+    );
+    const orgType = subjectLabel(survey.subject_type);
+    publicSectorByOrgType.set(
+      orgType,
+      (publicSectorByOrgType.get(orgType) || 0) + 1,
+    );
+    if (survey.platform !== "wiseon_csap") {
+      externalToolReviewCount += 1;
+      csapOrCloudReviewCount += 1;
+    }
+  }
+  // Also count public_sector_cloud findings as confirmation signals (survey-level unique)
+  const publicSectorFindingSurveys = new Set(
+    findings
+      .filter((f) => toPublicIssueLabel(f.finding_type, f.check_domain) ===
+        "공공부문 클라우드 사용 확인 필요")
+      .map((f) => f.survey_record_id),
+  );
+  if (publicSectorFindingSurveys.size > csapOrCloudReviewCount) {
+    csapOrCloudReviewCount = publicSectorFindingSurveys.size;
+  }
+
+  const publicSectorToolStats: PublicSectorToolStats = {
+    publicPersonalInfoSurveyCount: publicPersonalSurveys.length,
+    externalToolReviewCount,
+    csapOrCloudReviewCount,
+    byPlatform: [...publicSectorByPlatform.entries()]
+      .map(([platform, surveyCount]) => ({ platform, surveyCount }))
+      .sort((a, b) => b.surveyCount - a.surveyCount),
+    byOrgType: [...publicSectorByOrgType.entries()]
+      .map(([typeLabel, surveyCount]) => ({ typeLabel, surveyCount }))
+      .sort((a, b) => b.surveyCount - a.surveyCount),
+  };
+
+  // Issue stats — dedupe by public label; rate = affected surveys / all scans
+  const issueMap = new Map<
+    string,
+    { findingCount: number; surveyIds: Set<string> }
+  >();
+  for (const row of findings) {
+    const label = toPublicIssueLabel(row.finding_type, row.check_domain);
+    const existing = issueMap.get(label);
+    if (existing) {
+      existing.findingCount += 1;
+      existing.surveyIds.add(row.survey_record_id);
+    } else {
+      issueMap.set(label, {
+        findingCount: 1,
+        surveyIds: new Set([row.survey_record_id]),
+      });
+    }
+  }
+  const issueStats: PublicDashboardIssueRow[] = [...issueMap.entries()]
+    .map(([label, bucket]) => ({
+      label,
+      findingCount: bucket.findingCount,
+      affectedSurveyCount: bucket.surveyIds.size,
+      rateOfAllScans: rate(bucket.surveyIds.size, totalScans),
+    }))
+    .sort((a, b) => b.affectedSurveyCount - a.affectedSurveyCount || b.findingCount - a.findingCount)
     .slice(0, 12);
 
+  // Organization type stats
   const orgMap = new Map<
     string,
     {
@@ -411,7 +1035,6 @@ export async function buildPublicDashboard(
       personalInfoCount: number;
       sensitiveInfoCount: number;
       highRiskInfoCount: number;
-      highOrCriticalCount: number;
     }
   >();
   for (const label of Object.values(SUBJECT_LABEL)) {
@@ -420,7 +1043,6 @@ export async function buildPublicDashboard(
       personalInfoCount: 0,
       sensitiveInfoCount: 0,
       highRiskInfoCount: 0,
-      highOrCriticalCount: 0,
     });
   }
   for (const row of surveys) {
@@ -430,14 +1052,7 @@ export async function buildPublicDashboard(
     if (row.has_personal_info) bucket.personalInfoCount += 1;
     if (row.has_sensitive_info) bucket.sensitiveInfoCount += 1;
     if (row.has_high_risk_info) bucket.highRiskInfoCount += 1;
-    if (
-      row.overall_risk_level === "high" ||
-      row.overall_risk_level === "critical"
-    ) {
-      bucket.highOrCriticalCount += 1;
-    }
   }
-
   const organizationTypeStats: PublicDashboardOrgTypeRow[] = [...orgMap.entries()]
     .map(([typeLabel, bucket]) => ({
       typeLabel,
@@ -450,27 +1065,88 @@ export async function buildPublicDashboard(
     .filter((row) => row.surveyCount > 0)
     .sort((a, b) => b.surveyCount - a.surveyCount);
 
+  // Diagnosis quality
+  const diagnosisQualityStats: PublicDiagnosisQualityStats =
+    totalScans === 0 && scanReports.length === 0 && captures.length === 0
+      ? emptyDiagnosisQualityStats()
+      : {
+          completedDiagnosisCount: scanReports.filter(
+            (r) => r.diagnosis_status === "completed",
+          ).length,
+          limitedQuestionAnalysisCount: scanReports.filter(
+            (r) => r.diagnosis_status === "limited",
+          ).length,
+          evidenceCaptureCount: captures.filter(
+            (c) =>
+              c.status === "completed" ||
+              c.completeness === "complete" ||
+              c.completeness === "partial" ||
+              (c.captured_page_count || 0) > 0,
+          ).length,
+          fullPathCaptureCount: captures.filter(
+            (c) => c.completeness === "complete",
+          ).length,
+          avgCapturedPageCount: avg(
+            captures.map((c) => c.captured_page_count ?? null),
+          ),
+        };
+
+  const emptyPlatformStats = Object.values(PLATFORM_LABEL).map((platform) => ({
+    platform,
+    surveyCount: 0,
+    personalInfoRate: 0,
+    sensitiveInfoRate: 0,
+    highRiskInfoRate: 0,
+    avgOverallScore: null,
+  }));
+
   const payload: PublicDashboardPayload = {
     range,
     from,
     to,
     generatedAt: new Date().toISOString(),
-    hasData: summary.totalScans > 0,
+    hasData: totalScans > 0,
+    isEarlyData: totalScans > 0 && totalScans < EARLY_DATA_THRESHOLD,
     summary,
+    privacyIndex,
     trends,
-    platformStats:
-      summary.totalScans === 0
-        ? Object.values(PLATFORM_LABEL).map((platform) => ({
-            platform,
-            surveyCount: 0,
-            personalInfoRate: 0,
-            sensitiveInfoRate: 0,
-            highRiskInfoRate: 0,
-            avgOverallScore: null,
+    decisionStats:
+      totalScans === 0
+        ? DECISION_ORDER.map((d) => ({
+            decisionKey: d.key,
+            label: d.label,
+            count: 0,
+            rate: 0,
           }))
-        : platformStats,
+        : decisionStats,
+    questionStats,
+    dataCategoryStats:
+      totalScans === 0
+        ? DATA_CATEGORY_BUCKETS.map((b) => ({
+            categoryKey: b.key,
+            label: b.label,
+            riskCategory: null,
+            count: 0,
+            rate: 0,
+          }))
+        : dataCategoryStats,
+    noticeComplianceStats:
+      totalScans === 0
+        ? NOTICE_ITEMS.map((item) => ({
+            itemKey: item.key,
+            label: item.label,
+            applicableCount: 0,
+            compliantCount: 0,
+            gapCount: 0,
+            complianceRate: null,
+          }))
+        : noticeComplianceStats,
+    platformStats: totalScans === 0 ? emptyPlatformStats : platformStats,
+    publicSectorToolStats:
+      totalScans === 0 ? emptyPublicSectorToolStats() : publicSectorToolStats,
     issueStats,
     organizationTypeStats,
+    diagnosisQualityStats,
     disclosurePolicy: {
       mode: "aggregate_only",
       message: PUBLIC_DISCLOSURE_MESSAGE,
