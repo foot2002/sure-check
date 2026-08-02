@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getScanRepository } from "@/lib/repositories/MockScanRepository";
+import { saveMonitoringSnapshot } from "@/lib/repositories/SupabaseMonitoringRepository";
+import { isFileSourceReport } from "@/lib/reporting/buildFilePreDeployReport";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +35,24 @@ export async function POST(request: Request) {
     // does not lose the result between /start and /report.
     const report = await repository.getReport(job.scanId);
 
+    let monitoringSaved = false;
+    if (report && !isFileSourceReport(report)) {
+      try {
+        await saveMonitoringSnapshot(report);
+        monitoringSaved = true;
+      } catch (error) {
+        console.error("[monitoring] saveMonitoringSnapshot failed:", error);
+        monitoringSaved = false;
+      }
+    }
+
     return NextResponse.json({
       scanId: job.scanId,
       status: job.status,
       stepLabel: job.stepLabel,
       errorMessage: job.errorMessage,
       report: report ?? null,
+      monitoringSaved,
     });
   } catch {
     return NextResponse.json(

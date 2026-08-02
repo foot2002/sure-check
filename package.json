@@ -17,11 +17,14 @@
     "capture:verify": "tsx scripts/verify-evidence-capture.ts all",
     "capture:verify:google": "tsx scripts/verify-evidence-capture.ts google",
     "capture:verify:naver": "tsx scripts/verify-evidence-capture.ts naver",
-    "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform"
+    "capture:verify:moaform": "tsx scripts/verify-evidence-capture.ts moaform",
+    "supabase:check": "tsx scripts/check-supabase.ts",
+    "monitoring:check": "tsx scripts/check-monitoring-save.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-kr": "^5.3.0",
     "@sparticuz/chromium": "^149.0.0",
+    "@supabase/supabase-js": "^2.111.0",
     "cheerio": "^1.2.0",
     "fast-xml-parser": "^5.10.1",
     "jszip": "^3.10.1",
