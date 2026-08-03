@@ -5,20 +5,113 @@ import { EvidenceActionPanel } from "@/components/report/EvidenceActionPanel";
 import { FilePreDeployReport } from "@/components/report/FilePreDeployReport";
 import { OperatorImprovementPanel } from "@/components/report/OperatorImprovementPanel";
 import { ReportAudienceZone } from "@/components/report/ReportAudienceZone";
+import { SafetyTypeCard } from "@/components/report/SafetyTypeCard";
 import { SurveySourceAppendix } from "@/components/report/SurveySourceAppendix";
 import { UserSafetyReport } from "@/components/report/UserSafetyReport";
 import { InfoCallout } from "@/components/report/ui/InfoCallout";
 import { TrustNoticePanel } from "@/components/report/ui/TrustNoticePanel";
 import { composeAudienceReport } from "@/lib/reporting/composeAudienceReport";
 import { isFileSourceReport } from "@/lib/reporting/buildFilePreDeployReport";
+import {
+  ENDED_SURVEY_HEADLINE,
+  isEndedSurveyReport,
+} from "@/lib/scan/nonActionableForm";
 import type { ScanReport } from "@/lib/types/scan";
 
 interface ReportViewProps {
   report: ScanReport;
 }
 
+function EndedSurveyReportView({ report }: { report: ScanReport }) {
+  const reason =
+    report.limitedReason ||
+    report.form?.limitedReason ||
+    "응답이 종료되었거나 마감된 설문입니다.";
+
+  return (
+    <div className="report-readable report-stack">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-wide text-teal-800">
+            SURE Check
+          </p>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
+            개인정보 리스크 진단 리포트
+          </h1>
+        </div>
+        <ShareActions report={report} variant="toolbar" />
+      </div>
+
+      <section className="report-inner-card p-5 md:p-7">
+        <p className="text-xs font-semibold tracking-wide text-slate-500">
+          응답 판단
+        </p>
+        <span className="mt-2 inline-flex rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+          종료된 설문
+        </span>
+        <h2 className="mt-3 text-2xl font-bold leading-snug tracking-tight text-slate-900 md:text-[1.75rem]">
+          {ENDED_SURVEY_HEADLINE}
+        </h2>
+        <p className="mt-2 text-[15px] font-semibold leading-relaxed text-slate-600">
+          응답이 종료되어 더 이상 문항을 확인할 수 없습니다.
+        </p>
+        <p className="mt-4 text-sm leading-relaxed text-slate-500">{reason}</p>
+      </section>
+
+      <TrustNoticePanel report={report} />
+    </div>
+  );
+}
+
 export function ReportView({ report }: ReportViewProps) {
-  const audienceReport = composeAudienceReport(report);
+  if (!report?.form) {
+    return (
+      <div className="rounded-2xl border border-[#f5c2cc] bg-[#fdf0f2] p-8 text-center">
+        <p className="text-sm text-[#9e2a3e]">
+          진단 결과를 표시할 수 없습니다. 잠시 후 다시 시도해 주세요.
+        </p>
+      </div>
+    );
+  }
+
+  if (isEndedSurveyReport(report)) {
+    return <EndedSurveyReportView report={report} />;
+  }
+
+  let audienceReport;
+  try {
+    audienceReport = composeAudienceReport(report);
+  } catch (err) {
+    console.error("[ReportView] composeAudienceReport failed:", err);
+    return (
+      <div className="rounded-2xl border border-[#f5c2cc] bg-[#fdf0f2] p-8 text-center">
+        <p className="text-sm text-[#9e2a3e]">
+          리포트 생성 중 오류가 발생했습니다. 다시 진단해 주세요.
+        </p>
+      </div>
+    );
+  }
+
+  if (audienceReport.safetyType.hideJudgmentDetails) {
+    return (
+      <div className="report-readable report-stack">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-teal-800">
+              SURE Check
+            </p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900 md:text-[1.75rem]">
+              개인정보 리스크 진단 리포트
+            </h1>
+          </div>
+          <ShareActions report={report} variant="toolbar" />
+        </div>
+        <SafetyTypeCard safetyType={audienceReport.safetyType} />
+        <TrustNoticePanel report={report} />
+      </div>
+    );
+  }
+
   const showDeveloperDiagnostics = process.env.NODE_ENV === "development";
   const isFileReport = isFileSourceReport(report);
 

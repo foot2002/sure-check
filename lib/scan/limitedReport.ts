@@ -44,9 +44,11 @@ function buildLimitedForm(formUrl: string, title: string, platform: NormalizedFo
 }
 
 export function isExtractionLimitedReport(report: ScanReport): boolean {
+  const questions = report.form?.questions;
   return Boolean(
     report.isLimited &&
-      report.form.questions.length === 0 &&
+      Array.isArray(questions) &&
+      questions.length === 0 &&
       report.score == null,
   );
 }

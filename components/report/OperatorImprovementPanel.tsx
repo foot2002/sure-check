@@ -55,12 +55,16 @@ export function OperatorImprovementPanel({
   const [legalOpen, setLegalOpen] = useState(false);
   const report = audienceReport.operatorImprovement;
   const core = report.coreProblems;
-  const topThree = core.problems.slice(0, 3);
+  const topThree = core?.problems?.slice(0, 3) ?? [];
   const [openIds, setOpenIds] = useState<Set<string>>(
     () => new Set(topThree.map((p) => p.id)),
   );
 
-  if (audienceReport.isLimited) {
+  if (
+    audienceReport.isLimited ||
+    audienceReport.safetyType.hideJudgmentDetails ||
+    !core
+  ) {
     return (
       <div className="space-y-6">
         <section className="report-inner-card p-5">
@@ -68,10 +72,13 @@ export function OperatorImprovementPanel({
             설문 개선 리포트
           </h3>
           <p className="mt-2 text-[15px] text-slate-600">
-            문항을 확인하지 못해 운영자 보완사항을 최소화했습니다.
+            {audienceReport.safetyType.hideJudgmentDetails
+              ? "종료된 설문은 분석 대상이 아니므로 운영자 보완사항을 안내하지 않습니다."
+              : "문항을 확인하지 못해 운영자 보완사항을 최소화했습니다."}
           </p>
         </section>
-        {report.templates.length > 0 ? (
+        {!audienceReport.safetyType.hideJudgmentDetails &&
+        (report.templates?.length ?? 0) > 0 ? (
           <CopyableNoticeTemplates templates={report.templates} />
         ) : null}
       </div>

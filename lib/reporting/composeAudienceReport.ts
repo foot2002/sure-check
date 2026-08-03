@@ -766,7 +766,38 @@ function buildKeyReasons(
   return [...deduped.values()].slice(0, 4);
 }
 
-function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
+function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
+  const report: ScanReport = {
+    ...input,
+    form: input.form ?? {
+      platform: input.platform || "generic",
+      title: "진단 제한",
+      url: input.formUrl || "",
+      questions: [],
+      hasPrivacyNotice: false,
+      hasConsent: false,
+      hasRetentionNotice: false,
+      hasOverseasTransferNotice: false,
+      isLimited: true,
+      limitedReason:
+        input.limitedReason || "설문 문항을 자동으로 확인하지 못했습니다.",
+    },
+    summary: input.summary || input.limitedReason || "진단이 제한되었습니다.",
+    sections: input.sections ?? {
+      dataCollectionRisk: "",
+      toolProcessingRisk: "",
+      noticeConsentGap: "",
+      managementRisk: "",
+      detectedPersonalData: [],
+      missingObligations: [],
+      respondentGuidance: [],
+      operatorRecommendations: [],
+      evidenceItems: [],
+      legalBasisSummary: "",
+      disclaimer: "",
+    },
+    findings: input.findings ?? [],
+  };
   const isMoaform = report.platform === "moaform";
   const limitedReason =
     report.limitedReason ??
@@ -970,7 +1001,13 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
 }
 
 export function composeAudienceReport(report: ScanReport): AudienceReport {
-  if (isExtractionLimitedReport(report) || report.form.questions.length === 0) {
+  const questions = report.form?.questions;
+  if (
+    !report.form ||
+    !Array.isArray(questions) ||
+    isExtractionLimitedReport(report) ||
+    questions.length === 0
+  ) {
     return buildLimitedAudienceReport(report);
   }
 
