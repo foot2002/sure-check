@@ -67,19 +67,25 @@ export function isInProgressScanStale(
 /**
  * Mark zombie pending/running rows failed so they stop blocking reuse and concurrency.
  */
-export async function recoverStaleScanJobs(): Promise<number> {
+export async function recoverStaleScanJobs(
+  staleSecondsOverride?: number,
+): Promise<number> {
   if (!isMonitoringConfigured()) return 0;
-  const { staleScanSeconds } = getJobWorkerConfig();
+  const { staleScanSeconds, scanStatusStaleSeconds } = getJobWorkerConfig();
+  const staleSeconds =
+    staleSecondsOverride ??
+    Math.min(staleScanSeconds, scanStatusStaleSeconds);
   const cutoff = new Date(
-    Date.now() - Math.max(staleScanSeconds, 30) * 1000,
+    Date.now() - Math.max(staleSeconds, 30) * 1000,
   ).toISOString();
   const supabase = createSupabaseServerClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("scan_jobs")
     .update({
-      status: "failed",
-      error_message: STALE_FAIL_MESSAGE,
+      status: "limited",
+      error_message:
+        "진단 시간이 초과되어 제한 처리되었습니다. 다시 시도해 주세요.",
       locked_at: null,
       locked_by: null,
       completed_at: now,
@@ -94,6 +100,37 @@ export async function recoverStaleScanJobs(): Promise<number> {
     return 0;
   }
   return data?.length ?? 0;
+}
+
+export async function markScanJobClientTimeout(
+  externalScanId: string,
+): Promise<QueuedScanJobRow | null> {
+  if (!isMonitoringConfigured()) return null;
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("scan_jobs")
+    .update({
+      status: "limited",
+      error_message:
+        "진단 시간이 길어져 자동으로 중단했습니다. 설문이 종료되었거나 접근이 제한되었을 수 있습니다. 잠시 후 다시 시도해 주세요.",
+      locked_at: null,
+      locked_by: null,
+      completed_at: now,
+      updated_at: now,
+      step_label: "완료",
+    })
+    .eq("external_scan_id", externalScanId)
+    .in("status", ["pending", "running", "idle"])
+    .select(
+      "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at",
+    )
+    .maybeSingle();
+  if (error) {
+    console.warn("[jobs] markScanJobClientTimeout:", error.message);
+    return null;
+  }
+  return (data as QueuedScanJobRow | null) ?? null;
 }
 
 export async function failStaleScanJob(job: QueuedScanJobRow): Promise<void> {
@@ -229,25 +266,11 @@ export async function enqueuePendingScanJob(input: {
     return first.data as QueuedScanJobRow;
   }
 
-  // Migration 002 may not be applied — retry with core columns only.
-  const fallback = await supabase
-    .from("scan_jobs")
-    .insert(baseRow)
-    .select(
-      "id, external_scan_id, form_url, form_url_hash, status, current_step, total_steps, step_label, error_message, completed_at, created_at, updated_at",
-    )
-    .single();
-  if (fallback.error || !fallback.data) {
-    throw new Error(
-      `enqueuePendingScanJob: ${first.error?.message || fallback.error?.message || "missing row"}`,
-    );
-  }
-  return {
-    ...(fallback.data as QueuedScanJobRow),
-    cache_key: input.cacheKey,
-    monitoring_saved: false,
-    evidence_stored: false,
-  };
+  // Do not silently fall back to a schema without queue columns — that traps jobs.
+  throw new Error(
+    `enqueuePendingScanJob: ${first.error?.message || "queue schema insert failed"}. ` +
+      "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.",
+  );
 }
 
 export async function claimScanJobByExternalId(
@@ -267,67 +290,15 @@ export async function claimScanJobByExternalId(
     ),
   });
   if (error) {
-    // Fallback when migration not yet applied: optimistic update
-    console.warn("[jobs] claim_scan_job_by_external_id RPC failed:", error.message);
-    return claimScanJobByExternalIdFallback(externalScanId, workerId);
+    // RPC missing / broken schema must not silently claim — callers should fail clearly.
+    console.error("[jobs] claim_scan_job_by_external_id RPC failed:", error.message);
+    throw new Error(
+      `claim_scan_job_by_external_id unavailable: ${error.message}. ` +
+        "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.",
+    );
   }
   const row = Array.isArray(data) ? data[0] : data;
   return (row as QueuedScanJobRow | undefined) ?? null;
-}
-
-async function claimScanJobByExternalIdFallback(
-  externalScanId: string,
-  workerId: string,
-): Promise<QueuedScanJobRow | null> {
-  const config = getJobWorkerConfig();
-  const supabase = createSupabaseServerClient();
-  await recoverStaleScanJobs();
-
-  const { data: existing } = await supabase
-    .from("scan_jobs")
-    .select(
-      "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at",
-    )
-    .eq("external_scan_id", externalScanId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!existing) return null;
-  if (
-    existing.status === "completed" ||
-    existing.status === "failed" ||
-    existing.status === "limited"
-  ) {
-    return existing as QueuedScanJobRow;
-  }
-
-  const { count } = await supabase
-    .from("scan_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "running")
-    .neq("id", existing.id);
-  if ((count ?? 0) >= config.scanConcurrency) return null;
-
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("scan_jobs")
-    .update({
-      status: "running",
-      locked_at: now,
-      locked_by: workerId,
-      last_heartbeat_at: now,
-      started_at: now,
-      attempt_count: 1,
-      updated_at: now,
-    })
-    .eq("id", existing.id)
-    .in("status", ["pending", "running", "idle"])
-    .select(
-      "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at",
-    )
-    .maybeSingle();
-  if (error) throw new Error(`claimScanJobByExternalIdFallback: ${error.message}`);
-  return (data as QueuedScanJobRow | null) ?? null;
 }
 
 export async function claimNextScanJob(
@@ -345,8 +316,11 @@ export async function claimNextScanJob(
     ),
   });
   if (error) {
-    console.warn("[jobs] claim_next_scan_job RPC failed:", error.message);
-    return null;
+    console.error("[jobs] claim_next_scan_job RPC failed:", error.message);
+    throw new Error(
+      `claim_next_scan_job unavailable: ${error.message}. ` +
+        "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.",
+    );
   }
   const row = Array.isArray(data) ? data[0] : data;
   return (row as QueuedScanJobRow | undefined) ?? null;

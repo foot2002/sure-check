@@ -367,8 +367,23 @@ export function EvidenceActionPanel({
       });
       const startData = await startRes.json();
 
-      // Fallback to sync capture if async queue is unavailable
+      // Production: never fall back to sync capture (causes timeouts / hangs).
+      // Dev-only sync fallback keeps local debugging workable.
       if (!startRes.ok || !startData.captureJobId) {
+        const allowSyncFallback =
+          process.env.NODE_ENV === "development" &&
+          process.env.NEXT_PUBLIC_ALLOW_SYNC_CAPTURE_FALLBACK === "1";
+        if (!allowSyncFallback) {
+          setFullWalkStatus("failed");
+          setCaptureStatus("failed");
+          setCaptureLimitations([
+            "신고용 캡처 대기열을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            typeof startData.error === "string"
+              ? startData.error
+              : "관리자에게 캡처 대기열(queue) 설정을 확인해 주세요.",
+          ]);
+          return;
+        }
         const response = await fetch("/api/evidence/capture", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

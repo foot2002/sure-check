@@ -324,7 +324,28 @@ export async function processScanJob(
     };
   }
 
-  const claimed = await claimScanJobByExternalId(externalScanId, workerId);
+  let claimed: QueuedScanJobRow | null = null;
+  try {
+    claimed = await claimScanJobByExternalId(externalScanId, workerId);
+  } catch (err) {
+    console.error("[jobs] processScanJob claim failed:", err);
+    if (existing?.id) {
+      await updateScanJobProgress(existing.id, {
+        status: "limited",
+        errorMessage:
+          "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.",
+        stepLabel: SCAN_PROGRESS_STEPS[SCAN_PROGRESS_STEPS.length - 1],
+        currentStep: SCAN_PROGRESS_STEPS.length,
+        completedAt: new Date().toISOString(),
+      });
+    }
+    mockStore.updateJob(externalScanId, {
+      status: "limited",
+      errorMessage:
+        "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.",
+    });
+    return { ok: false, scanId: externalScanId, status: "limited" };
+  }
   if (!claimed) {
     return { ok: false, scanId: externalScanId, status: "pending" };
   }

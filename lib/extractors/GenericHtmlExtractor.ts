@@ -214,6 +214,16 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
   const questions = dedupeQuestions(candidates).map(toNormalizedQuestion);
   const noticeFlags = detectNoticeFlags(noticeTexts);
   const hasNoQuestions = questions.length === 0;
+  const pageText = [
+    title,
+    ...headings,
+    ...noticeTexts,
+    ...formTexts,
+  ].join(" ");
+  const closedOrRestricted =
+    /더\s*이상\s*응답|응답이\s*마감|설문이\s*종료|응답\s*기간|closed|private|비공개|로그인\s*필요|권한/i.test(
+      pageText,
+    );
 
   const descriptionParts = [
     headings[0],
@@ -227,6 +237,8 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     questions,
   };
 
+  const isLimited = hasNoQuestions || closedOrRestricted;
+
   return {
     platform: "generic",
     title,
@@ -235,10 +247,14 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     questions,
     pages: [page],
     partialScan: true,
-    isLimited: hasNoQuestions,
-    confidence: hasNoQuestions ? "none" : "low",
-    limitedReason: hasNoQuestions ? EXTRACTION_LIMITED_REASON : undefined,
-    loginRequired: false,
+    isLimited,
+    confidence: isLimited ? "none" : "low",
+    limitedReason: closedOrRestricted
+      ? "이 설문은 응답이 종료되었거나 접근이 제한되어 진단이 제한되었습니다."
+      : hasNoQuestions
+        ? EXTRACTION_LIMITED_REASON
+        : undefined,
+    loginRequired: /로그인\s*필요|login\s*required/i.test(pageText),
     branchDetected: false,
     extractedFromHtml: true,
     hasPrivacyNotice: noticeFlags.hasPrivacyNotice,
@@ -254,7 +270,9 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
       noticeTexts,
       privacyPolicyUrls: [...new Set(privacyPolicyUrls)],
       headings,
-      extractionWarnings: [],
+      extractionWarnings: closedOrRestricted
+        ? ["응답이 종료되었거나 접근이 제한된 설문으로 보입니다."]
+        : [],
     },
     management: {
       officialAccount: null,

@@ -6,6 +6,10 @@ import { extractGenericHtml } from "@/lib/extractors/GenericHtmlExtractor";
 import { extractGoogleForms } from "@/lib/extractors/GoogleFormsExtractor";
 import { extractMoaform } from "@/lib/extractors/MoaformExtractor";
 import { extractNaverForms } from "@/lib/extractors/NaverFormsExtractor";
+import {
+  NON_ACTIONABLE_LIMITED_MESSAGE,
+  shouldSkipBrowserFallback,
+} from "@/lib/scan/nonActionableForm";
 import type { NormalizedForm } from "@/lib/types/scan";
 
 export type PlatformKind = "google" | "naver" | "moaform" | "generic";
@@ -32,9 +36,21 @@ function countPersonal(form: NormalizedForm): number {
   return (form.questions || []).filter((q) => q.hasPersonalData).length;
 }
 
+function asLimitedForm(form: NormalizedForm): NormalizedForm {
+  return {
+    ...form,
+    isLimited: true,
+    confidence: "none",
+    limitedReason:
+      form.limitedReason?.trim() || NON_ACTIONABLE_LIMITED_MESSAGE,
+    questions: form.questions || [],
+  };
+}
+
 /**
  * Platform parser first → confidence gate → optional extract-only browser fallback.
  * Never drops to a weaker question set when fallback returns fewer questions.
+ * Ended/closed/private/login forms skip browser fallback and stay limited.
  */
 export async function extractWithAccuracyGate(params: {
   platform: PlatformKind;
@@ -73,24 +89,74 @@ export async function extractWithAccuracyGate(params: {
     extractDurationMs: Date.now() - extractStarted,
   };
 
-  if (gate.accept) {
+  // Ended / private / login / permission — never open a browser.
+  if (shouldSkipBrowserFallback(first, params.html)) {
+    const limited = asLimitedForm(first);
     return {
-      form: first,
-      meta,
+      form: limited,
+      meta: {
+        ...meta,
+        extractionMode: "limited",
+        browserUsed: false,
+        browserReason: null,
+        fallbackTriggered: false,
+        fallbackReason: "non_actionable_limited",
+        extractDurationMs: Date.now() - extractStarted,
+      },
       html: params.html,
       finalUrl: params.finalUrl,
     };
   }
 
-  const browser = await fetchHtmlWithExtractBrowser(params.finalUrl || params.formUrl);
+  if (gate.accept) {
+    return {
+      form: first,
+      meta: {
+        ...meta,
+        fallbackTriggered: false,
+        fallbackReason: null,
+      },
+      html: params.html,
+      finalUrl: params.finalUrl,
+    };
+  }
+
+  // Only browser-fallback when the form still looks actionable but extraction is weak.
+  const looksActionable =
+    !first.isLimited &&
+    !NON_ACTIONABLE_LIMITED_MESSAGE.includes(first.limitedReason || "");
+
+  if (!looksActionable && first.isLimited) {
+    return {
+      form: asLimitedForm(first),
+      meta: {
+        ...meta,
+        extractionMode: "limited",
+        browserUsed: false,
+        fallbackTriggered: false,
+        fallbackReason: gate.fallbackReason ?? "limited_no_browser",
+        extractDurationMs: Date.now() - extractStarted,
+      },
+      html: params.html,
+      finalUrl: params.finalUrl,
+    };
+  }
+
+  const browser = await fetchHtmlWithExtractBrowser(
+    params.finalUrl || params.formUrl,
+  );
   if (!browser.ok) {
     meta.browserUsed = true;
     meta.browserReason = `fallback_failed:${browser.reason}`;
+    meta.fallbackTriggered = true;
     meta.extractionMode =
       first.questions.length > 0 ? meta.extractionMode : "limited";
     meta.extractDurationMs = Date.now() - extractStarted;
     return {
-      form: first,
+      form:
+        first.questions.length === 0
+          ? asLimitedForm(first)
+          : first,
       meta,
       html: params.html,
       finalUrl: params.finalUrl,
@@ -103,8 +169,28 @@ export async function extractWithAccuracyGate(params: {
     browser.html,
     browser.finalUrl,
   );
+
+  // Browser also saw a closed/private form — stop as limited.
+  if (shouldSkipBrowserFallback(second, browser.html)) {
+    return {
+      form: asLimitedForm(second),
+      meta: {
+        ...meta,
+        browserUsed: true,
+        browserReason: "browser_saw_non_actionable",
+        fallbackTriggered: true,
+        fallbackReason: gate.fallbackReason ?? "non_actionable_limited",
+        extractionMode: "limited",
+        extractDurationMs: Date.now() - extractStarted,
+      },
+      html: browser.html,
+      finalUrl: browser.finalUrl,
+    };
+  }
+
   meta.browserUsed = true;
   meta.browserReason = gate.fallbackReason || "confidence_gate";
+  meta.fallbackTriggered = true;
   meta.extractionMode = "browser_fallback";
   meta.extractDurationMs = Date.now() - extractStarted;
 

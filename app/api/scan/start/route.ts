@@ -3,6 +3,10 @@ import { cloneReportForScan } from "@/lib/cache/inMemoryUrlCache";
 import { isMonitoringConfigured } from "@/lib/jobs/config";
 import { processScanJob } from "@/lib/jobs/processScanJob";
 import {
+  QueueSchemaNotReadyError,
+  assertQueueSchemaReady,
+} from "@/lib/jobs/queueSchema";
+import {
   enqueuePendingScanJob,
   findCachedCompletedScan,
   findRunningScanByCacheKey,
@@ -73,6 +77,16 @@ export async function POST(request: Request) {
     }
 
     if (isMonitoringConfigured()) {
+      try {
+        await assertQueueSchemaReady();
+      } catch (err) {
+        const message =
+          err instanceof QueueSchemaNotReadyError
+            ? err.message
+            : "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.";
+        return NextResponse.json({ ok: false, error: message }, { status: 503 });
+      }
+
       try {
         const running = await findRunningScanByCacheKey(cacheKey);
         if (running?.external_scan_id) {

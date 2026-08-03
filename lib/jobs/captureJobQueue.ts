@@ -260,23 +260,30 @@ export function isInProgressCaptureStale(
   return Date.now() - ts > Math.max(staleSeconds, 60) * 1000;
 }
 
-export async function recoverStaleCaptureJobs(): Promise<number> {
+export async function recoverStaleCaptureJobs(
+  staleSecondsOverride?: number,
+): Promise<number> {
   if (!isMonitoringConfigured()) return 0;
-  const { staleCaptureSeconds } = getJobWorkerConfig();
+  const { staleCaptureSeconds, captureStatusStaleSeconds } =
+    getJobWorkerConfig();
+  const staleSeconds =
+    staleSecondsOverride ??
+    Math.min(staleCaptureSeconds, captureStatusStaleSeconds);
   const cutoff = new Date(
-    Date.now() - Math.max(staleCaptureSeconds, 60) * 1000,
+    Date.now() - Math.max(staleSeconds, 60) * 1000,
   ).toISOString();
   const supabase = createSupabaseServerClient();
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("capture_jobs")
     .update({
-      status: "failed",
+      status: "timeout",
       error_message: CAPTURE_STALE_FAIL_MESSAGE,
       locked_at: null,
       locked_by: null,
       completed_at: now,
       updated_at: now,
+      final_submit_clicked: false,
     })
     .in("status", ["pending", "running"])
     .lt("updated_at", cutoff)

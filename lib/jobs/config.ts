@@ -18,6 +18,12 @@ export function getJobWorkerConfig() {
     scanCacheTtlSeconds: readInt("SCAN_CACHE_TTL_SECONDS", 3600),
     staleScanSeconds: readInt("SCAN_JOB_STALE_SECONDS", 120),
     staleCaptureSeconds: readInt("CAPTURE_JOB_STALE_SECONDS", 240),
+    /** Status-poll stale threshold for running scan jobs (default 90s). */
+    scanStatusStaleSeconds: readInt("SCAN_STATUS_STALE_SECONDS", 90),
+    /** Status-poll stale threshold for running capture jobs (default 240s). */
+    captureStatusStaleSeconds: readInt("CAPTURE_STATUS_STALE_SECONDS", 240),
+    /** Client UI hard stop for scan polling (default 120s). */
+    scanClientHardTimeoutMs: readInt("SCAN_CLIENT_HARD_TIMEOUT_MS", 120_000),
     scanRateLimitPerIpPerMinute: readInt(
       "SCAN_RATE_LIMIT_PER_IP_PER_MINUTE",
       5,

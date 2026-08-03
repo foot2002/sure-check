@@ -3,6 +3,7 @@ import type {
   FallbackReason,
   FastExtractionResult,
 } from "@/lib/extractors/fastExtractionTypes";
+import { isNonActionableLimitedForm } from "@/lib/scan/nonActionableForm";
 
 const MULTI_PAGE_RE =
   /다음|계속|다음\s*페이지|next|continue|섹션|section/i;
@@ -10,7 +11,7 @@ const BRANCH_RE = /분기|조건|해당되는|해당\s*없음|skip logic|branch/
 
 /**
  * Decide whether a fast/platform parser result is safe to use without browser fallback.
- * Accuracy over speed: any uncertainty triggers fallback.
+ * Accuracy over speed: any uncertainty triggers fallback — except closed/private/login forms.
  */
 export function evaluateConfidenceGate(
   fast: FastExtractionResult,
@@ -21,6 +22,15 @@ export function evaluateConfidenceGate(
     highRiskCount?: number;
   },
 ): ConfidenceGateDecision {
+  if (fast.form && isNonActionableLimitedForm(fast.form)) {
+    return {
+      accept: true,
+      fallbackTriggered: false,
+      fallbackReason: undefined,
+      reasons: [],
+    };
+  }
+
   const reasons: FallbackReason[] = [];
   const questions = fast.questions || [];
 

@@ -3,6 +3,10 @@ import type { CaptureMode } from "@/lib/evidence/capture/captureTypes";
 import { isMonitoringConfigured } from "@/lib/jobs/config";
 import { enqueuePendingCaptureJob } from "@/lib/jobs/captureJobQueue";
 import { processCaptureJob } from "@/lib/jobs/processCaptureJob";
+import {
+  QueueSchemaNotReadyError,
+  assertQueueSchemaReady,
+} from "@/lib/jobs/queueSchema";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
 export const runtime = "nodejs";
@@ -40,10 +44,20 @@ export async function POST(request: Request) {
         {
           ok: false,
           error:
-            "캡처 대기열이 구성되지 않았습니다. 동기 /api/evidence/capture를 사용하세요.",
+            "캡처 대기열이 구성되지 않았습니다. 관리자에게 문의해 주세요.",
         },
         { status: 503 },
       );
+    }
+
+    try {
+      await assertQueueSchemaReady();
+    } catch (err) {
+      const message =
+        err instanceof QueueSchemaNotReadyError
+          ? err.message
+          : "진단 대기열 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.";
+      return NextResponse.json({ ok: false, error: message }, { status: 503 });
     }
 
     const body = (await request.json()) as CaptureStartBody;

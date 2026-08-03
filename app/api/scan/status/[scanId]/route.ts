@@ -1,9 +1,11 @@
 import { after, NextResponse } from "next/server";
-import { isMonitoringConfigured } from "@/lib/jobs/config";
+import { getJobWorkerConfig, isMonitoringConfigured } from "@/lib/jobs/config";
 import { processScanJob } from "@/lib/jobs/processScanJob";
 import {
   getReportJsonByExternalScanId,
   getScanJobByExternalId,
+  isInProgressScanStale,
+  recoverStaleScanJobs,
   toApiScanStatus,
   toScanStatus,
 } from "@/lib/jobs/scanJobQueue";
@@ -13,7 +15,6 @@ import type { ScanReport } from "@/lib/types/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Allow after() to finish a queued job kicked from status polling. */
 export const maxDuration = 120;
 
 export async function GET(
@@ -29,7 +30,19 @@ export async function GET(
     let dbJob = null;
     if (isMonitoringConfigured()) {
       try {
+        const { scanStatusStaleSeconds } = getJobWorkerConfig();
+        await recoverStaleScanJobs(scanStatusStaleSeconds);
         dbJob = await getScanJobByExternalId(scanId);
+        if (
+          dbJob &&
+          (dbJob.status === "pending" ||
+            dbJob.status === "running" ||
+            dbJob.status === "idle") &&
+          isInProgressScanStale(dbJob, scanStatusStaleSeconds)
+        ) {
+          await recoverStaleScanJobs(scanStatusStaleSeconds);
+          dbJob = await getScanJobByExternalId(scanId);
+        }
       } catch (err) {
         console.warn("[scan/status] db lookup failed:", err);
       }
@@ -65,8 +78,6 @@ export async function GET(
       status === "failed" ||
       status === "limited";
 
-    // Only re-kick when work never started. Avoid re-entering an active running job
-    // on every poll (that caused extra claim/DB load and slower diagnoses).
     const needsKick =
       !terminal &&
       isMonitoringConfigured() &&
@@ -98,7 +109,6 @@ export async function GET(
       ok: true,
       scanId,
       status,
-      // Compatibility with existing ScanProgress / ScanJob consumers
       formUrl: memoryJob?.formUrl ?? dbJob?.form_url ?? "",
       platform: memoryJob?.platform ?? "unknown",
       mockKey: memoryJob?.mockKey ?? "generic_unknown_warning",
@@ -120,7 +130,6 @@ export async function GET(
         result?.debug?.browserUsed ??
         (dbJob as { browser_used?: boolean } | null)?.browser_used ??
         undefined,
-      // legacy field aliases
       scanStatus: toScanStatus(memoryJob?.status ?? dbJob?.status),
     });
   } catch {

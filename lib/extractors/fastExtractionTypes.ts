@@ -19,7 +19,9 @@ export type FallbackReason =
   | "question_count_drop"
   | "risk_detection_drop"
   | "missing_privacy_notice"
-  | "invalid_structure";
+  | "invalid_structure"
+  | "non_actionable_limited"
+  | "limited_no_browser";
 
 export interface FastExtractionSignals {
   hasTitle: boolean;

@@ -5,6 +5,11 @@ import { Check, Loader2 } from "lucide-react";
 import { SCAN_PROGRESS_STEPS } from "@/lib/types/scan";
 import type { ScanJob, ScanReport } from "@/lib/types/scan";
 
+const SCAN_CLIENT_HARD_TIMEOUT_MS = 120_000;
+
+const HARD_TIMEOUT_MESSAGE =
+  "진단 시간이 길어져 자동으로 중단했습니다. 설문이 종료되었거나 접근이 제한되었을 수 있습니다. 잠시 후 다시 시도해 주세요.";
+
 interface StatusPayload {
   ok?: boolean;
   scanId: string;
@@ -49,8 +54,41 @@ export function ScanProgress({ scanId, onComplete, onError }: ScanProgressProps)
     let timerId: ReturnType<typeof setTimeout> | null = null;
     const startedAt = Date.now();
 
+    function finishLimited(message: string, report?: ScanReport | null) {
+      const completeJob: ScanJob = {
+        scanId,
+        status: "limited",
+        formUrl: "",
+        platform: "unknown",
+        mockKey: "generic_unknown_warning",
+        currentStep: SCAN_PROGRESS_STEPS.length,
+        totalSteps: SCAN_PROGRESS_STEPS.length,
+        stepLabel: SCAN_PROGRESS_STEPS[SCAN_PROGRESS_STEPS.length - 1],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        errorMessage: message,
+      };
+      onCompleteRef.current(completeJob, report ?? null);
+    }
+
+    async function notifyServerTimeout() {
+      try {
+        await fetch(`/api/scan/timeout/${scanId}`, { method: "POST" });
+      } catch {
+        /* best-effort */
+      }
+    }
+
     async function poll() {
       try {
+        if (Date.now() - startedAt >= SCAN_CLIENT_HARD_TIMEOUT_MS) {
+          if (!cancelled) {
+            await notifyServerTimeout();
+            finishLimited(HARD_TIMEOUT_MESSAGE);
+          }
+          return;
+        }
+
         const res = await fetch(`/api/scan/status/${scanId}`);
         if (!res.ok) {
           if (res.status === 404 && notFoundRetries < 12) {
@@ -107,6 +145,13 @@ export function ScanProgress({ scanId, onComplete, onError }: ScanProgressProps)
     function scheduleNext() {
       if (cancelled) return;
       const elapsed = Date.now() - startedAt;
+      if (elapsed >= SCAN_CLIENT_HARD_TIMEOUT_MS) {
+        void (async () => {
+          await notifyServerTimeout();
+          if (!cancelled) finishLimited(HARD_TIMEOUT_MESSAGE);
+        })();
+        return;
+      }
       timerId = setTimeout(() => {
         void poll();
       }, nextPollDelayMs(elapsed));
