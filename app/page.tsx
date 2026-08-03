@@ -103,11 +103,16 @@ export default function HomePage() {
     }
   }
 
-  function handleFileScanComplete(nextReport: ScanReport) {
+  function handleFileScanComplete(nextReport: ScanReport | null | undefined) {
     if (!isUsableReport(nextReport)) {
-      // Status payload arrived before report hydrate — fall back to report API.
-      if (typeof nextReport?.scanId === "string" && nextReport.scanId) {
-        void handleScanComplete(nextReport.scanId);
+      const scanId =
+        nextReport &&
+        typeof nextReport === "object" &&
+        typeof (nextReport as { scanId?: unknown }).scanId === "string"
+          ? (nextReport as { scanId: string }).scanId
+          : null;
+      if (scanId) {
+        void handleScanComplete(scanId);
         return;
       }
       setReportError("진단 결과를 불러오지 못했습니다. 다시 시도해 주세요.");

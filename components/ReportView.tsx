@@ -69,8 +69,9 @@ export function ReportView({ report }: ReportViewProps) {
     const reason =
       report?.limitedReason ||
       report?.summary ||
-      (typeof (report as { error?: string } | null)?.error === "string"
-        ? (report as { error: string }).error
+      (typeof (report as unknown as { error?: string } | null)?.error ===
+      "string"
+        ? (report as unknown as { error: string }).error
         : null);
     if (report?.isLimited || report?.scanStatus === "limited" || reason) {
       const shell: ScanReport = {
