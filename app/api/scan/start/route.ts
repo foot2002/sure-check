@@ -16,6 +16,7 @@ import {
   checkScanRateLimit,
   getClientIp,
   recordScanStart,
+  recordScanTerminal,
 } from "@/lib/jobs/scanRateLimit";
 import { mockStore } from "@/lib/mock/mockStore";
 import {
@@ -170,9 +171,13 @@ export async function POST(request: Request) {
     recordScanStart(clientIp);
 
     after(() => {
-      void processScanJob(scanId).catch((err) => {
-        console.error("[scan/start] processScanJob failed:", err);
-      });
+      void processScanJob(scanId)
+        .catch((err) => {
+          console.error("[scan/start] processScanJob failed:", err);
+        })
+        .finally(() => {
+          recordScanTerminal(clientIp);
+        });
     });
 
     return NextResponse.json({

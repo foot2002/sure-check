@@ -26,9 +26,9 @@ export function getJobWorkerConfig() {
     scanClientHardTimeoutMs: readInt("SCAN_CLIENT_HARD_TIMEOUT_MS", 120_000),
     scanRateLimitPerIpPerMinute: readInt(
       "SCAN_RATE_LIMIT_PER_IP_PER_MINUTE",
-      5,
+      20,
     ),
-    maxPendingJobsPerIp: readInt("MAX_PENDING_JOBS_PER_IP", 3),
+    maxPendingJobsPerIp: readInt("MAX_PENDING_JOBS_PER_IP", 5),
   };
 }
 
