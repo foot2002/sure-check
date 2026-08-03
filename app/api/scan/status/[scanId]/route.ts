@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { isMonitoringConfigured } from "@/lib/jobs/config";
+import { processScanJob } from "@/lib/jobs/processScanJob";
 import {
   getReportJsonByExternalScanId,
   getScanJobByExternalId,
+  recoverStaleScanJobs,
   toApiScanStatus,
   toScanStatus,
 } from "@/lib/jobs/scanJobQueue";
@@ -12,6 +14,8 @@ import type { ScanReport } from "@/lib/types/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Allow after() to finish a queued job kicked from status polling. */
+export const maxDuration = 120;
 
 export async function GET(
   _request: Request,
@@ -26,6 +30,7 @@ export async function GET(
     let dbJob = null;
     if (isMonitoringConfigured()) {
       try {
+        await recoverStaleScanJobs();
         dbJob = await getScanJobByExternalId(scanId);
       } catch (err) {
         console.warn("[scan/status] db lookup failed:", err);
@@ -61,6 +66,15 @@ export async function GET(
       status === "completed" ||
       status === "failed" ||
       status === "limited";
+
+    // Self-heal: Vercel may drop after() from /api/scan/start. Polling re-kicks work.
+    if (!terminal && isMonitoringConfigured()) {
+      after(() => {
+        void processScanJob(scanId).catch((err) => {
+          console.error("[scan/status] processScanJob kick failed:", err);
+        });
+      });
+    }
 
     let result: ScanReport | undefined;
     if (terminal) {

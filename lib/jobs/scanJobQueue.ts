@@ -51,10 +51,75 @@ export interface QueuedScanJobRow {
   updated_at: string;
 }
 
+const STALE_FAIL_MESSAGE =
+  "작업 시간 초과로 중단되었습니다. 다시 시도해 주세요.";
+
+export function isInProgressScanStale(
+  job: Pick<QueuedScanJobRow, "created_at" | "updated_at">,
+  staleSeconds = getJobWorkerConfig().staleScanSeconds,
+): boolean {
+  const anchor = job.updated_at || job.created_at;
+  const ts = Date.parse(anchor);
+  if (!Number.isFinite(ts)) return true;
+  return Date.now() - ts > Math.max(staleSeconds, 30) * 1000;
+}
+
+/**
+ * Mark zombie pending/running rows failed so they stop blocking reuse and concurrency.
+ */
+export async function recoverStaleScanJobs(): Promise<number> {
+  if (!isMonitoringConfigured()) return 0;
+  const { staleScanSeconds } = getJobWorkerConfig();
+  const cutoff = new Date(
+    Date.now() - Math.max(staleScanSeconds, 30) * 1000,
+  ).toISOString();
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("scan_jobs")
+    .update({
+      status: "failed",
+      error_message: STALE_FAIL_MESSAGE,
+      locked_at: null,
+      locked_by: null,
+      completed_at: now,
+      updated_at: now,
+      step_label: "완료",
+    })
+    .in("status", ["pending", "running", "idle"])
+    .lt("updated_at", cutoff)
+    .select("id");
+  if (error) {
+    console.warn("[jobs] recoverStaleScanJobs:", error.message);
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+
+export async function failStaleScanJob(job: QueuedScanJobRow): Promise<void> {
+  if (!isMonitoringConfigured()) return;
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  await supabase
+    .from("scan_jobs")
+    .update({
+      status: "failed",
+      error_message: STALE_FAIL_MESSAGE,
+      locked_at: null,
+      locked_by: null,
+      completed_at: now,
+      updated_at: now,
+      step_label: "완료",
+    })
+    .eq("id", job.id)
+    .in("status", ["pending", "running", "idle"]);
+}
+
 export async function findRunningScanByCacheKey(
   cacheKey: string,
 ): Promise<QueuedScanJobRow | null> {
   if (!isMonitoringConfigured()) return null;
+  await recoverStaleScanJobs();
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from("scan_jobs")
@@ -67,7 +132,13 @@ export async function findRunningScanByCacheKey(
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`findRunningScanByCacheKey: ${error.message}`);
-  return (data as QueuedScanJobRow | null) ?? null;
+  const row = (data as QueuedScanJobRow | null) ?? null;
+  if (!row) return null;
+  if (isInProgressScanStale(row)) {
+    await failStaleScanJob(row);
+    return null;
+  }
+  return row;
 }
 
 export async function findCachedCompletedScan(
@@ -210,11 +281,7 @@ async function claimScanJobByExternalIdFallback(
 ): Promise<QueuedScanJobRow | null> {
   const config = getJobWorkerConfig();
   const supabase = createSupabaseServerClient();
-  const { count } = await supabase
-    .from("scan_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "running");
-  if ((count ?? 0) >= config.scanConcurrency) return null;
+  await recoverStaleScanJobs();
 
   const { data: existing } = await supabase
     .from("scan_jobs")
@@ -233,23 +300,28 @@ async function claimScanJobByExternalIdFallback(
   ) {
     return existing as QueuedScanJobRow;
   }
-  if (existing.status === "running") {
-    return existing as QueuedScanJobRow;
-  }
 
+  const { count } = await supabase
+    .from("scan_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "running")
+    .neq("id", existing.id);
+  if ((count ?? 0) >= config.scanConcurrency) return null;
+
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("scan_jobs")
     .update({
       status: "running",
-      locked_at: new Date().toISOString(),
+      locked_at: now,
       locked_by: workerId,
-      last_heartbeat_at: new Date().toISOString(),
-      started_at: new Date().toISOString(),
+      last_heartbeat_at: now,
+      started_at: now,
       attempt_count: 1,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq("id", existing.id)
-    .eq("status", "pending")
+    .in("status", ["pending", "running", "idle"])
     .select(
       "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at",
     )

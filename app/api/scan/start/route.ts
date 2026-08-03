@@ -77,6 +77,12 @@ export async function POST(request: Request) {
         const running = await findRunningScanByCacheKey(cacheKey);
         if (running?.external_scan_id) {
           const scanId = running.external_scan_id;
+          // Resume processing — after() may have been dropped on a prior request.
+          after(() => {
+            void processScanJob(scanId).catch((err) => {
+              console.error("[scan/start] resume processScanJob failed:", err);
+            });
+          });
           return NextResponse.json({
             ok: true,
             scanId,

@@ -4,6 +4,7 @@ import {
   claimNextScanJob,
   claimScanJobByExternalId,
   getScanJobByExternalId,
+  recoverStaleScanJobs,
   updateScanJobProgress,
   type QueuedScanJobRow,
 } from "@/lib/jobs/scanJobQueue";
@@ -307,6 +308,8 @@ export async function processScanJob(
     return processScanJobInMemory(externalScanId);
   }
 
+  await recoverStaleScanJobs();
+
   const existing = await getScanJobByExternalId(externalScanId);
   if (
     existing &&
@@ -346,6 +349,7 @@ export async function processNextScanJob(
   if (!isMonitoringConfigured()) {
     return { ok: false, scanId: null, status: null };
   }
+  await recoverStaleScanJobs();
   const claimed = await claimNextScanJob(workerId);
   if (!claimed?.external_scan_id) {
     return { ok: true, scanId: null, status: null };
