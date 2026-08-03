@@ -64,11 +64,77 @@ function EndedSurveyReportView({ report }: { report: ScanReport }) {
 }
 
 export function ReportView({ report }: ReportViewProps) {
+  // Incomplete hydrate (e.g. HTTP 202 body mistaken for a report) — recover via limited shell.
   if (!report?.form) {
+    const reason =
+      report?.limitedReason ||
+      report?.summary ||
+      (typeof (report as { error?: string } | null)?.error === "string"
+        ? (report as { error: string }).error
+        : null);
+    if (report?.isLimited || report?.scanStatus === "limited" || reason) {
+      const shell: ScanReport = {
+        scanId: report.scanId || "unknown",
+        formUrl: report.formUrl || "",
+        platform: report.platform || "generic",
+        mockKey: report.mockKey || "generic_unknown_warning",
+        diagnosisStatus: "limited",
+        isLimited: true,
+        limitedReason: reason || "진단이 제한되었습니다.",
+        summary: reason || "진단이 제한되었습니다.",
+        confidence: "none",
+        scanStatus: "limited",
+        limitationReasons: report.limitationReasons || [reason || "진단 제한"],
+        sections: report.sections || {
+          dataCollectionRisk: "",
+          toolProcessingRisk: "",
+          noticeConsentGap: "",
+          managementRisk: "",
+          detectedPersonalData: [],
+          missingObligations: [],
+          respondentGuidance: [],
+          operatorRecommendations: [],
+          evidenceItems: [],
+          legalBasisSummary: "",
+          disclaimer: "",
+        },
+        findings: report.findings || [],
+        form: {
+          platform: report.platform || "generic",
+          title: "진단 제한",
+          url: report.formUrl || "",
+          questions: [],
+          hasPrivacyNotice: false,
+          hasConsent: false,
+          hasRetentionNotice: false,
+          hasOverseasTransferNotice: false,
+          isLimited: true,
+          limitedReason: reason || "진단이 제한되었습니다.",
+        },
+        createdAt: report.createdAt || new Date().toISOString(),
+        completedAt: report.completedAt || new Date().toISOString(),
+        debug: report.debug,
+      };
+      if (isEndedSurveyReport(shell)) {
+        return <EndedSurveyReportView report={shell} />;
+      }
+      try {
+        const audienceReport = composeAudienceReport(shell);
+        return (
+          <div className="report-readable report-stack">
+            <SafetyTypeCard safetyType={audienceReport.safetyType} />
+            <TrustNoticePanel report={shell} />
+          </div>
+        );
+      } catch {
+        /* fall through */
+      }
+    }
     return (
       <div className="rounded-2xl border border-[#f5c2cc] bg-[#fdf0f2] p-8 text-center">
         <p className="text-sm text-[#9e2a3e]">
-          진단 결과를 표시할 수 없습니다. 잠시 후 다시 시도해 주세요.
+          진단 결과를 불러오는 중이거나 아직 준비되지 않았습니다. 잠시 후 다시
+          시도해 주세요.
         </p>
       </div>
     );

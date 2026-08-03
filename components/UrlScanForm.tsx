@@ -103,7 +103,12 @@ export function UrlScanForm({
         setError(job.errorMessage || "진단 중 오류가 발생했습니다.");
         return;
       }
-      if (report && onReportReady) {
+      const usable =
+        report &&
+        typeof report === "object" &&
+        report.form &&
+        typeof report.form === "object";
+      if (usable && onReportReady) {
         onReportReady(report);
         return;
       }

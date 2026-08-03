@@ -51,28 +51,68 @@ export default function HomePage() {
     });
   }
 
+  function isUsableReport(data: unknown): data is ScanReport {
+    if (!data || typeof data !== "object") return false;
+    const r = data as Partial<ScanReport>;
+    return Boolean(r.form && typeof r.form === "object" && r.scanId);
+  }
+
+  async function fetchReportWithRetry(scanId: string): Promise<ScanReport> {
+    const maxAttempts = 8;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const res = await fetch(`/api/scan/report/${scanId}`);
+      if (res.status === 202) {
+        await new Promise((r) => setTimeout(r, 800 + attempt * 200));
+        continue;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : "리포트를 불러올 수 없습니다.",
+        );
+      }
+      if (isUsableReport(data)) return data;
+      // Terminal response without form — wait once more then fail clearly.
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 600));
+        continue;
+      }
+      throw new Error("진단 결과 형식이 올바르지 않습니다. 다시 시도해 주세요.");
+    }
+    throw new Error("리포트가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+  }
+
   async function handleScanComplete(scanId: string) {
     setLoadingReport(true);
     setReportError(null);
     setReport(null);
 
     try {
-      const res = await fetch(`/api/scan/report/${scanId}`);
-      if (!res.ok) {
-        const data = await res.json();
-        setReportError(data.error ?? "리포트를 불러올 수 없습니다.");
-        return;
-      }
-      const data: ScanReport = await res.json();
+      const data = await fetchReportWithRetry(scanId);
       showReport(data);
-    } catch {
-      setReportError("리포트를 불러오는 중 오류가 발생했습니다.");
+    } catch (err) {
+      setReportError(
+        err instanceof Error
+          ? err.message
+          : "리포트를 불러오는 중 오류가 발생했습니다.",
+      );
     } finally {
       setLoadingReport(false);
     }
   }
 
   function handleFileScanComplete(nextReport: ScanReport) {
+    if (!isUsableReport(nextReport)) {
+      // Status payload arrived before report hydrate — fall back to report API.
+      if (typeof nextReport?.scanId === "string" && nextReport.scanId) {
+        void handleScanComplete(nextReport.scanId);
+        return;
+      }
+      setReportError("진단 결과를 불러오지 못했습니다. 다시 시도해 주세요.");
+      return;
+    }
     showReport(nextReport);
   }
 

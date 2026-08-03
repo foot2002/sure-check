@@ -79,12 +79,31 @@ export default function ReportPage() {
             onComplete={() => {
               setWaiting(false);
               setLoading(true);
-              fetch(`/api/scan/report/${scanId}`)
-                .then((r) => r.json())
-                .then((data) => {
-                  setReport(data);
-                  setLoading(false);
-                });
+              void (async () => {
+                for (let i = 0; i < 8; i += 1) {
+                  const r = await fetch(`/api/scan/report/${scanId}`);
+                  if (r.status === 202) {
+                    await new Promise((resolve) => setTimeout(resolve, 700));
+                    continue;
+                  }
+                  const data = await r.json().catch(() => null);
+                  if (r.ok && data?.form) {
+                    setReport(data);
+                    setLoading(false);
+                    return;
+                  }
+                  if (!r.ok) {
+                    setError(
+                      data?.error ?? "리포트를 불러올 수 없습니다.",
+                    );
+                    setLoading(false);
+                    return;
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                }
+                setError("리포트가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+                setLoading(false);
+              })();
             }}
             onError={(msg) => setError(msg)}
           />
