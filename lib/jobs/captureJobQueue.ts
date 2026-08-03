@@ -83,6 +83,58 @@ export async function enqueuePendingCaptureJob(input: {
   return data as QueuedCaptureJobRow;
 }
 
+/**
+ * Drop queued preview captures when a full walk starts for the same diagnosis.
+ * Prevents two Chromium extractions racing on Vercel Fluid `/tmp` (spawn ETXTBSY).
+ */
+export async function skipPendingSafeCapturesForDiagnosis(
+  diagnosisId: string,
+  keepExternalCaptureId?: string,
+): Promise<number> {
+  if (!isMonitoringConfigured() || !diagnosisId) return 0;
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  let query = supabase
+    .from("capture_jobs")
+    .update({
+      status: "skipped",
+      error_message:
+        "신고용 전체 캡처가 시작되어 미리보기 캡처를 건너뛰었습니다.",
+      locked_at: null,
+      locked_by: null,
+      completed_at: now,
+      updated_at: now,
+      result_json: {
+        success: false,
+        status: "skipped",
+        mode: "safe_public_only",
+        screenshots: [],
+        pageMetas: [],
+        temporaryAnswersUsed: false,
+        limitations: [
+          "신고용 전체 캡처가 시작되어 미리보기 캡처를 건너뛰었습니다.",
+        ],
+      },
+    })
+    .eq("diagnosis_external_id", diagnosisId)
+    .eq("capture_mode", "safe_public_only")
+    .eq("status", "pending");
+
+  if (keepExternalCaptureId) {
+    query = query.neq("external_capture_id", keepExternalCaptureId);
+  }
+
+  const { data, error } = await query.select("id");
+  if (error) {
+    console.warn(
+      "[jobs] skipPendingSafeCapturesForDiagnosis:",
+      error.message,
+    );
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+
 export async function claimNextCaptureJob(
   workerId: string,
 ): Promise<QueuedCaptureJobRow | null> {

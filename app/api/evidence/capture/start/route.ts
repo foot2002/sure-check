@@ -1,7 +1,10 @@
 import { after, NextResponse } from "next/server";
 import type { CaptureMode } from "@/lib/evidence/capture/captureTypes";
 import { isMonitoringConfigured } from "@/lib/jobs/config";
-import { enqueuePendingCaptureJob } from "@/lib/jobs/captureJobQueue";
+import {
+  enqueuePendingCaptureJob,
+  skipPendingSafeCapturesForDiagnosis,
+} from "@/lib/jobs/captureJobQueue";
 import { processCaptureJob } from "@/lib/jobs/processCaptureJob";
 import {
   QueueSchemaNotReadyError,
@@ -95,6 +98,9 @@ export async function POST(request: Request) {
     }
 
     const captureJobId = createCaptureId();
+    if (mode === "evidence_full_walkthrough") {
+      await skipPendingSafeCapturesForDiagnosis(diagnosisId, captureJobId);
+    }
     await enqueuePendingCaptureJob({
       externalCaptureId: captureJobId,
       diagnosisId,

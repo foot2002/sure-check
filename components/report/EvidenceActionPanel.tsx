@@ -277,6 +277,12 @@ export function EvidenceActionPanel({
 
     const apiStatus = data.status;
     const completeness = data.captureCompleteness;
+    if (apiStatus === "skipped") {
+      if (!preferFullWalkRef.current) {
+        setStatus("idle");
+      }
+      return;
+    }
     if (completeness === "partial" && apiStatus === "success") {
       setStatus("partial");
     } else if (apiStatus === "timeout") {
