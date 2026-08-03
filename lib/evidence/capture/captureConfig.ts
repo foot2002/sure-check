@@ -1,4 +1,4 @@
-export const CAPTURE_TOTAL_TIMEOUT_MS = 30_000;
+export const CAPTURE_TOTAL_TIMEOUT_MS = 55_000;
 export const CAPTURE_PAGE_LOAD_TIMEOUT_MS = 12_000;
 export const CAPTURE_NAVIGATION_TIMEOUT_MS = 5_000;
 export const CAPTURE_NETWORK_IDLE_MS = 2_500;
@@ -8,7 +8,7 @@ export const CAPTURE_MAX_PAGES = 3;
 export const CAPTURE_VIEWPORT = { width: 1440, height: 1200 } as const;
 
 /** Client abort slightly above server hard timeout (safe mode). */
-export const CAPTURE_CLIENT_TIMEOUT_MS = 35_000;
+export const CAPTURE_CLIENT_TIMEOUT_MS = 65_000;
 
 /** Evidence full-walkthrough mode */
 export const EVIDENCE_FULL_TIMEOUT_MS = 180_000;

@@ -973,6 +973,13 @@ export function EvidenceActionPanel({
                 <p className="text-sm font-semibold text-slate-900">
                   자동 화면 캡처를 완료하지 못했습니다.
                 </p>
+                {captureLimitations.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {captureLimitations.slice(0, 4).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <button
                   type="button"
                   className="mt-2 text-sm font-semibold text-rose-800 underline-offset-2 hover:underline"
@@ -1131,10 +1138,18 @@ export function EvidenceActionPanel({
                   <p className="font-semibold text-slate-900">
                     신고용 전체 화면 캡처 실패
                   </p>
-                  <p>
-                    설문 페이지 접근 제한 또는 동적 렌더링 문제로 캡처하지
-                    못했습니다.
-                  </p>
+                  {captureLimitations.length > 0 ? (
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-600">
+                      {captureLimitations.slice(0, 5).map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>
+                      설문 페이지 접근 제한 또는 동적 렌더링 문제로 캡처하지
+                      못했습니다.
+                    </p>
+                  )}
                 </>
               ) : null}
             </div>

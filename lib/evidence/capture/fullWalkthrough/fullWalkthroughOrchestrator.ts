@@ -474,6 +474,98 @@ export async function runFullWalkthroughOrchestrator(input: {
 
   try {
     browser = await launchCaptureBrowser({ headless: input.headless !== false });
+
+    // Google Forms on Vercel: freebird goto often fails before load-data runs.
+    // Reconstruct from FB_PUBLIC_LOAD_DATA_ first — do not depend on live hydration.
+    if (
+      /docs\.google\.com\/forms|forms\.gle/i.test(safety.normalizedUrl) &&
+      isServerlessCaptureRuntime()
+    ) {
+      provider = "google_forms";
+      if (debug && !(input.debug instanceof CaptureDebugSession)) {
+        debug = new CaptureDebugSession(
+          input.debugFolder || providerFolder(provider),
+        );
+      }
+      syncShared();
+      limitations.push(`설문도구: ${providerLabel(provider)}`);
+      debug?.push({
+        step: debug.nextStep(),
+        provider,
+        pageNumber: 1,
+        url: safety.normalizedUrl,
+        action: "page_loaded",
+        reason: "serverless Google Forms — load-data capture (pre-goto)",
+      });
+      try {
+        const rebuilt = await captureGoogleFormsViaLoadData({
+          browser,
+          formUrl: safety.normalizedUrl,
+        });
+        for (const shot of rebuilt.screenshots) screenshots.push(shot);
+        for (const meta of rebuilt.pageMetas) pageMetas.push(meta);
+        limitations.push(...rebuilt.limitations);
+        expectedPageCount = rebuilt.form.pages.length;
+        sectionProgressTotal = rebuilt.form.pages.length;
+        reachedSubmitGate = true;
+        finalSubmitDetected = true;
+        stopReason = "submit_detected";
+        stopPage = rebuilt.screenshots.length;
+        syncShared();
+        return finalizeEvidence({
+          status: rebuilt.screenshots.length > 0 ? "success" : "failed",
+          provider,
+          expectedPageCount,
+          sectionProgressTotal,
+          screenshots,
+          pageMetas,
+          limitations:
+            rebuilt.screenshots.length > 0
+              ? limitations
+              : [...limitations, ...limitationCaptureFailed()],
+          temporaryAnswersUsed: false,
+          finalSubmitDetected,
+          startedAt,
+          reachedSubmitGate,
+          timedOut: false,
+          stoppedEarly: false,
+          stopReason,
+          stopPage,
+          blockedSubmitRequestCount,
+          surveyUrl: safety.normalizedUrl,
+          debug,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Google Forms 구조 캡처 실패";
+        stopReason = "capture_error";
+        stopPage = 0;
+        return finalizeEvidence({
+          status: "failed",
+          provider,
+          expectedPageCount,
+          sectionProgressTotal,
+          screenshots,
+          pageMetas,
+          limitations: [
+            ...limitations,
+            ...limitationCaptureFailed(message.slice(0, 240)),
+          ],
+          temporaryAnswersUsed,
+          finalSubmitDetected,
+          startedAt,
+          reachedSubmitGate,
+          timedOut: false,
+          stoppedEarly: true,
+          stopReason,
+          stopPage,
+          blockedSubmitRequestCount,
+          surveyUrl: safety.normalizedUrl,
+          debug,
+        });
+      }
+    }
+
     let page: Page = await browser.newPage();
     await page.setViewport(
       isServerlessCaptureRuntime()
@@ -518,7 +610,10 @@ export async function runFullWalkthroughOrchestrator(input: {
         sectionProgressTotal,
         screenshots,
         pageMetas,
-        limitations: [...limitations, ...limitationCaptureFailed()],
+        limitations: [
+          ...limitations,
+          ...limitationCaptureFailed(loaded.limitation),
+        ],
         temporaryAnswersUsed,
         finalSubmitDetected,
         startedAt,
@@ -545,54 +640,6 @@ export async function runFullWalkthroughOrchestrator(input: {
     }
     syncShared();
     limitations.push(`설문도구: ${providerLabel(provider)}`);
-
-    // @sparticuz/chromium on Vercel cannot hydrate Google Forms freebird viewer
-    // (empty shell / no Next). Reconstruct pages from FB_PUBLIC_LOAD_DATA_.
-    if (provider === "google_forms" && isServerlessCaptureRuntime()) {
-      debug?.push({
-        step: debug.nextStep(),
-        provider,
-        pageNumber: 1,
-        url: page.url(),
-        action: "page_loaded",
-        reason: "serverless Google Forms — load-data capture",
-      });
-      const rebuilt = await captureGoogleFormsViaLoadData({
-        browser,
-        formUrl: safety.normalizedUrl,
-        existingPage: page,
-      });
-      for (const shot of rebuilt.screenshots) screenshots.push(shot);
-      for (const meta of rebuilt.pageMetas) pageMetas.push(meta);
-      limitations.push(...rebuilt.limitations);
-      expectedPageCount = rebuilt.form.pages.length;
-      sectionProgressTotal = rebuilt.form.pages.length;
-      reachedSubmitGate = true;
-      finalSubmitDetected = true;
-      stopReason = "submit_detected";
-      stopPage = rebuilt.screenshots.length;
-      syncShared();
-      return finalizeEvidence({
-        status: "success",
-        provider,
-        expectedPageCount,
-        sectionProgressTotal,
-        screenshots,
-        pageMetas,
-        limitations,
-        temporaryAnswersUsed: false,
-        finalSubmitDetected,
-        startedAt,
-        reachedSubmitGate,
-        timedOut: false,
-        stoppedEarly: false,
-        stopReason,
-        stopPage,
-        blockedSubmitRequestCount,
-        surveyUrl: safety.normalizedUrl,
-        debug,
-      });
-    }
 
     await adapter.waitForReady(page);
     expectedPageCount = await adapter.estimateExpectedPageCount(page);

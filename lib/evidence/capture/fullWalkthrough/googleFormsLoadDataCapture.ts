@@ -1,5 +1,6 @@
 import type { Browser, Page } from "puppeteer-core";
 import {
+  CAPTURE_SERVERLESS_JPEG_QUALITY,
   CAPTURE_SERVERLESS_VIEWPORT,
   evidenceFullMaxPages,
   isServerlessCaptureRuntime,
@@ -389,7 +390,7 @@ export async function captureGoogleFormsViaLoadData(input: {
       const raw = serverless
         ? await page.screenshot({
             type: "jpeg",
-            quality: 62,
+            quality: CAPTURE_SERVERLESS_JPEG_QUALITY,
             fullPage: true,
             captureBeyondViewport: true,
           })

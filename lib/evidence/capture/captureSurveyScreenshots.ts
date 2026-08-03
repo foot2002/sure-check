@@ -6,6 +6,7 @@ import {
   CAPTURE_TOTAL_TIMEOUT_MS,
   CAPTURE_VIEWPORT,
   EVIDENCE_FULL_TIMEOUT_MS,
+  isServerlessCaptureRuntime,
 } from "@/lib/evidence/capture/captureConfig";
 import {
   deriveCaptureStatus,
@@ -30,6 +31,7 @@ import {
   runFullWalkthroughOrchestrator,
   type FullWalkthroughSharedState,
 } from "@/lib/evidence/capture/fullWalkthrough/fullWalkthroughOrchestrator";
+import { captureGoogleFormsViaLoadData } from "@/lib/evidence/capture/fullWalkthrough/googleFormsLoadDataCapture";
 import {
   clickSafeNext,
   detectSubmitButtonVisible,
@@ -48,6 +50,10 @@ import {
   assertCaptureUrlSafe,
   isCaptureUrlSafeAfterNavigation,
 } from "@/lib/evidence/capture/urlCaptureSafety";
+
+function isGoogleFormsUrl(url: string): boolean {
+  return /docs\.google\.com\/forms|forms\.gle/i.test(url);
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -169,6 +175,35 @@ async function runSafePublicCapture(input: {
 
   try {
     browser = await launchCaptureBrowser();
+
+    // Vercel Chromium cannot hydrate Google Forms freebird viewer.
+    // Reconstruct preview pages from FB_PUBLIC_LOAD_DATA_ (same as full walk).
+    if (
+      isGoogleFormsUrl(safety.normalizedUrl) &&
+      isServerlessCaptureRuntime()
+    ) {
+      const rebuilt = await captureGoogleFormsViaLoadData({
+        browser,
+        formUrl: safety.normalizedUrl,
+        maxPages: CAPTURE_MAX_PAGES,
+      });
+      partial.screenshots.push(...rebuilt.screenshots);
+      partial.pageMetas.push(...rebuilt.pageMetas);
+      partial.limitations.push(...rebuilt.limitations);
+      if (rebuilt.screenshots.length >= CAPTURE_MAX_PAGES) {
+        partial.limitations.push(limitationMaxPages(CAPTURE_MAX_PAGES));
+        stoppedEarly = true;
+      } else if (rebuilt.form.pages.length > rebuilt.screenshots.length) {
+        stoppedEarly = true;
+      }
+      const status = deriveCaptureStatus(
+        partial.screenshots.length,
+        stoppedEarly,
+        false,
+      );
+      return finalize(mode, status, partial, startedAt);
+    }
+
     const page: Page = await browser.newPage();
     await page.setViewport(CAPTURE_VIEWPORT);
     await prepareCapturePage(page);
@@ -181,7 +216,7 @@ async function runSafePublicCapture(input: {
         "failed",
         partial,
         startedAt,
-        limitationCaptureFailed(),
+        limitationCaptureFailed(loaded.limitation),
       );
     }
 
