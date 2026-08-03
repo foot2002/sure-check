@@ -9,6 +9,7 @@ import { isMonitoringConfigured } from "@/lib/jobs/config";
 import {
   claimCaptureJobByExternalId,
   claimNextCaptureJob,
+  recoverStaleCaptureJobs,
   updateCaptureJob,
   type QueuedCaptureJobRow,
 } from "@/lib/jobs/captureJobQueue";
@@ -165,6 +166,7 @@ export async function processCaptureJob(
   if (!isMonitoringConfigured()) {
     return { ok: false, captureJobId: null, status: null };
   }
+  await recoverStaleCaptureJobs();
   const claimed = await claimCaptureJobByExternalId(externalCaptureId, workerId);
   if (!claimed) {
     return { ok: false, captureJobId: null, status: "pending" };
@@ -187,6 +189,7 @@ export async function processNextCaptureJob(
   if (!isMonitoringConfigured()) {
     return { ok: false, captureJobId: null, status: null };
   }
+  await recoverStaleCaptureJobs();
   const claimed = await claimNextCaptureJob(workerId);
   if (!claimed) {
     return { ok: true, captureJobId: null, status: null };

@@ -156,11 +156,7 @@ export async function claimCaptureJobByExternalId(
   if (!isMonitoringConfigured()) return null;
   const config = getJobWorkerConfig();
   const supabase = createSupabaseServerClient();
-
-  const { count } = await supabase
-    .from("capture_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "running");
+  await recoverStaleCaptureJobs();
 
   const { data: existing } = await supabase
     .from("capture_jobs")
@@ -181,24 +177,37 @@ export async function claimCaptureJobByExternalId(
   ) {
     return existing as QueuedCaptureJobRow;
   }
-  if (existing.status === "running") {
-    return existing as QueuedCaptureJobRow;
+
+  // Another worker is actively capturing — do not start a second browser.
+  if (
+    existing.status === "running" &&
+    !isInProgressCaptureStale(existing as QueuedCaptureJobRow)
+  ) {
+    return null;
   }
+
+  const { count } = await supabase
+    .from("capture_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "running")
+    .neq("id", existing.id);
   if ((count ?? 0) >= config.captureConcurrency) return null;
 
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("capture_jobs")
     .update({
       status: "running",
-      locked_at: new Date().toISOString(),
+      locked_at: now,
       locked_by: workerId,
-      last_heartbeat_at: new Date().toISOString(),
-      started_at: new Date().toISOString(),
+      last_heartbeat_at: now,
+      started_at: now,
       attempt_count: 1,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      error_message: null,
     })
     .eq("id", existing.id)
-    .eq("status", "pending")
+    .in("status", ["pending", "running"])
     .select(
       "id, external_capture_id, scan_job_id, survey_record_id, capture_mode, status, survey_url, final_url, diagnosis_external_id, result_json, error_message, created_at, updated_at",
     )
@@ -236,4 +245,45 @@ export async function updateCaptureJob(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("id", captureJobId);
   if (error) throw new Error(`updateCaptureJob: ${error.message}`);
+}
+
+const CAPTURE_STALE_FAIL_MESSAGE =
+  "캡처 작업 시간 초과로 중단되었습니다. 다시 시도해 주세요.";
+
+export function isInProgressCaptureStale(
+  job: Pick<QueuedCaptureJobRow, "created_at" | "updated_at">,
+  staleSeconds = getJobWorkerConfig().staleCaptureSeconds,
+): boolean {
+  const anchor = job.updated_at || job.created_at;
+  const ts = Date.parse(anchor);
+  if (!Number.isFinite(ts)) return true;
+  return Date.now() - ts > Math.max(staleSeconds, 60) * 1000;
+}
+
+export async function recoverStaleCaptureJobs(): Promise<number> {
+  if (!isMonitoringConfigured()) return 0;
+  const { staleCaptureSeconds } = getJobWorkerConfig();
+  const cutoff = new Date(
+    Date.now() - Math.max(staleCaptureSeconds, 60) * 1000,
+  ).toISOString();
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("capture_jobs")
+    .update({
+      status: "failed",
+      error_message: CAPTURE_STALE_FAIL_MESSAGE,
+      locked_at: null,
+      locked_by: null,
+      completed_at: now,
+      updated_at: now,
+    })
+    .in("status", ["pending", "running"])
+    .lt("updated_at", cutoff)
+    .select("id");
+  if (error) {
+    console.warn("[jobs] recoverStaleCaptureJobs:", error.message);
+    return 0;
+  }
+  return data?.length ?? 0;
 }

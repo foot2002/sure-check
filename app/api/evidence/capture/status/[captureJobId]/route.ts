@@ -1,9 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { isMonitoringConfigured } from "@/lib/jobs/config";
-import { getCaptureJobByExternalId } from "@/lib/jobs/captureJobQueue";
+import {
+  getCaptureJobByExternalId,
+  isInProgressCaptureStale,
+} from "@/lib/jobs/captureJobQueue";
+import { processCaptureJob } from "@/lib/jobs/processCaptureJob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Allow after() to finish a capture kicked from status polling. */
+export const maxDuration = 300;
 
 export async function GET(
   _request: Request,
@@ -40,6 +46,22 @@ export async function GET(
       "timeout",
       "skipped",
     ].includes(job.status);
+
+    // Resume if after() from /start was dropped, or a zombie running job went stale.
+    const needsKick =
+      !terminal &&
+      (status === "queued" ||
+        (status === "running" && isInProgressCaptureStale(job)));
+    if (needsKick) {
+      after(() => {
+        void processCaptureJob(captureJobId).catch((err) => {
+          console.error(
+            "[evidence/capture/status] processCaptureJob kick failed:",
+            err,
+          );
+        });
+      });
+    }
 
     return NextResponse.json({
       ok: true,

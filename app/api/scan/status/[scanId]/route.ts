@@ -4,7 +4,6 @@ import { processScanJob } from "@/lib/jobs/processScanJob";
 import {
   getReportJsonByExternalScanId,
   getScanJobByExternalId,
-  recoverStaleScanJobs,
   toApiScanStatus,
   toScanStatus,
 } from "@/lib/jobs/scanJobQueue";
@@ -30,7 +29,6 @@ export async function GET(
     let dbJob = null;
     if (isMonitoringConfigured()) {
       try {
-        await recoverStaleScanJobs();
         dbJob = await getScanJobByExternalId(scanId);
       } catch (err) {
         console.warn("[scan/status] db lookup failed:", err);
@@ -67,8 +65,13 @@ export async function GET(
       status === "failed" ||
       status === "limited";
 
-    // Self-heal: Vercel may drop after() from /api/scan/start. Polling re-kicks work.
-    if (!terminal && isMonitoringConfigured()) {
+    // Only re-kick when work never started. Avoid re-entering an active running job
+    // on every poll (that caused extra claim/DB load and slower diagnoses).
+    const needsKick =
+      !terminal &&
+      isMonitoringConfigured() &&
+      (status === "queued" || currentStep <= 0);
+    if (needsKick) {
       after(() => {
         void processScanJob(scanId).catch((err) => {
           console.error("[scan/status] processScanJob kick failed:", err);

@@ -396,10 +396,15 @@ export function EvidenceActionPanel({
       const pollStarted = Date.now();
       const hardDeadline = pollStarted + EVIDENCE_FULL_CLIENT_TIMEOUT_MS;
 
+      // Immediate first poll so dropped after() can be re-kicked without a 1s wait.
+      let firstPoll = true;
       while (Date.now() < hardDeadline) {
         if (controller.signal.aborted) return;
-        const delay = Date.now() - pollStarted < 10_000 ? 1000 : 2500;
-        await new Promise((r) => setTimeout(r, delay));
+        if (!firstPoll) {
+          const delay = Date.now() - pollStarted < 10_000 ? 1000 : 2500;
+          await new Promise((r) => setTimeout(r, delay));
+        }
+        firstPoll = false;
         if (controller.signal.aborted) return;
 
         const statusRes = await fetch(
