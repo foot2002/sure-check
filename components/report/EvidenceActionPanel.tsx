@@ -33,6 +33,7 @@ import {
   type ManualEvidenceFile,
 } from "@/lib/evidence/evidenceTypes";
 import {
+  CAPTURE_CLIENT_TIMEOUT_MS,
   EVIDENCE_FULL_CLIENT_TIMEOUT_MS,
 } from "@/lib/evidence/capture/captureConfig";
 import type { CaptureMode } from "@/lib/evidence/capture/captureTypes";
@@ -104,7 +105,9 @@ export function EvidenceActionPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
-  const [captureStatus, setCaptureStatus] = useState<CaptureUiStatus>("idle");
+  const [captureStatus, setCaptureStatus] = useState<CaptureUiStatus>(() =>
+    enableAutoCapture ? "capturing" : "idle",
+  );
   const [autoScreenshots, setAutoScreenshots] = useState<
     AutoCaptureEvidenceFile[]
   >([]);
@@ -299,16 +302,146 @@ export function EvidenceActionPanel({
   }, []);
 
   useEffect(() => {
-    // Phase 1: do not auto-run safe_public_only during normal diagnosis.
-    // Capture starts only when the user clicks the evidence capture button.
-    void enableAutoCapture;
-    void autoRunFullCapture;
-    void retryKey;
-    void applyCaptureResult;
+    // Preview capture (safe_public_only, max ~3 pages) after diagnosis when
+    // the evidence panel is shown. Full walkthrough stays manual-only.
+    if (!enableAutoCapture || autoRunFullCapture) return;
+
+    preferFullWalkRef.current = false;
+    let cancelled = false;
+    const controller = new AbortController();
+    safeAbortRef.current = controller;
+
+    const surveyUrl =
+      report.debug?.inputUrl || report.formUrl || report.form.url || "";
+    const finalUrl =
+      report.debug?.finalUrl || report.form.url || report.formUrl || "";
+
+    const fail = (messages: string[]) => {
+      if (cancelled || preferFullWalkRef.current) return;
+      setAutoScreenshots([]);
+      setSafeScreenshots([]);
+      setCaptureStatus("failed");
+      setCaptureLimitations(messages);
+    };
+
+    const run = async () => {
+      if (!surveyUrl && !finalUrl) {
+        fail([
+          "자동 화면 캡처에 실패했습니다.",
+          "설문 URL이 없어 화면 캡처를 실행할 수 없습니다.",
+        ]);
+        return;
+      }
+
+      try {
+        const startRes = await fetch("/api/evidence/capture/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surveyUrl,
+            finalUrl,
+            diagnosisId: report.scanId,
+            mode: "safe_public_only",
+            captureMode: "safe_public_only",
+          }),
+          signal: controller.signal,
+        });
+        const startData = await startRes.json().catch(() => ({}));
+
+        if (!startRes.ok || !startData.captureJobId) {
+          fail([
+            "자동 화면 캡처를 시작하지 못했습니다.",
+            typeof startData.error === "string"
+              ? startData.error
+              : "잠시 후 다시 시도해 주세요.",
+          ]);
+          return;
+        }
+
+        const captureJobId = startData.captureJobId as string;
+        const pollStarted = Date.now();
+        const hardDeadline = pollStarted + CAPTURE_CLIENT_TIMEOUT_MS;
+        let firstPoll = true;
+
+        while (Date.now() < hardDeadline) {
+          if (cancelled || preferFullWalkRef.current || controller.signal.aborted) {
+            return;
+          }
+          if (!firstPoll) {
+            const delay = Date.now() - pollStarted < 8_000 ? 800 : 1500;
+            await new Promise((r) => setTimeout(r, delay));
+          }
+          firstPoll = false;
+          if (cancelled || preferFullWalkRef.current) return;
+
+          const statusRes = await fetch(
+            `/api/evidence/capture/status/${captureJobId}`,
+            { signal: controller.signal },
+          );
+          if (!statusRes.ok) continue;
+          const statusData = await statusRes.json();
+          const st = statusData.status as string;
+          if (
+            st === "success" ||
+            st === "partial" ||
+            st === "failed" ||
+            st === "timeout" ||
+            st === "skipped"
+          ) {
+            if (cancelled || preferFullWalkRef.current) return;
+            const result = statusData.result || {
+              success: false,
+              status: st,
+              mode: "safe_public_only",
+              screenshots: [],
+              pageMetas: [],
+              temporaryAnswersUsed: false,
+              limitations: statusData.errorMessage
+                ? [statusData.errorMessage]
+                : ["자동 화면 캡처에 실패했습니다."],
+            };
+            applyCaptureResult(result, setCaptureStatus);
+            return;
+          }
+        }
+
+        if (cancelled || preferFullWalkRef.current) return;
+        setCaptureStatus((prev) => (prev === "capturing" ? "timeout" : prev));
+        setCaptureLimitations((prev) =>
+          prev.length > 0
+            ? prev
+            : [
+                "자동 화면 캡처 시간이 초과되었습니다.",
+                "문항 원문과 고지문 원문은 증빙자료에 포함되며, 캡처 없이도 다운로드할 수 있습니다.",
+              ],
+        );
+      } catch (err) {
+        if (cancelled || preferFullWalkRef.current) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        fail([
+          "자동 화면 캡처에 실패했습니다.",
+          "설문 페이지가 접근이 차단되거나 로딩 시간이 초과되었습니다.",
+        ]);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (safeAbortRef.current === controller) {
+        safeAbortRef.current = null;
+      }
+    };
   }, [
     enableAutoCapture,
     autoRunFullCapture,
     retryKey,
+    report.scanId,
+    report.debug?.inputUrl,
+    report.debug?.finalUrl,
+    report.formUrl,
+    report.form.url,
     applyCaptureResult,
   ]);
 
@@ -785,7 +918,9 @@ export function EvidenceActionPanel({
       <div className="border-t-2 border-rose-200" aria-hidden />
 
       <div className="space-y-4 pt-5 md:pt-6">
-      {enableAutoCapture && !autoRunFullCapture ? (
+      {enableAutoCapture &&
+      !autoRunFullCapture &&
+      captureStatus !== "idle" ? (
         <div className="flex items-start gap-3.5 rounded-xl border border-rose-200 bg-white px-4 py-3.5">
           <span
             className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${
