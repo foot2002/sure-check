@@ -66,32 +66,34 @@ export function SafetyTypeCard({ safetyType }: SafetyTypeCardProps) {
           </span>
         </div>
 
-        <div className="grid gap-3 border-t border-slate-100 pt-5 md:grid-cols-3">
-          <div className="report-inner-muted p-4">
-            <p className="text-xs font-semibold tracking-wide text-slate-500">
-              왜 문제인가요?
-            </p>
-            <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
-              {safetyType.whyProblem}
-            </p>
+        {safetyType.hideJudgmentDetails ? null : (
+          <div className="grid gap-3 border-t border-slate-100 pt-5 md:grid-cols-3">
+            <div className="report-inner-muted p-4">
+              <p className="text-xs font-semibold tracking-wide text-slate-500">
+                왜 문제인가요?
+              </p>
+              <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
+                {safetyType.whyProblem}
+              </p>
+            </div>
+            <div className="report-inner-muted p-4">
+              <p className="text-xs font-semibold tracking-wide text-slate-500">
+                {safetyType.legalOrLimitTitle}
+              </p>
+              <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
+                {safetyType.legalOrLimitBody}
+              </p>
+            </div>
+            <div className="report-inner-muted p-4">
+              <p className="text-xs font-semibold tracking-wide text-slate-500">
+                어떻게 해야 하나요?
+              </p>
+              <p className="mt-2 text-[15px] font-semibold leading-relaxed text-slate-900">
+                {safetyType.howToAct}
+              </p>
+            </div>
           </div>
-          <div className="report-inner-muted p-4">
-            <p className="text-xs font-semibold tracking-wide text-slate-500">
-              {safetyType.legalOrLimitTitle}
-            </p>
-            <p className="mt-2 text-[15px] leading-relaxed text-slate-700">
-              {safetyType.legalOrLimitBody}
-            </p>
-          </div>
-          <div className="report-inner-muted p-4">
-            <p className="text-xs font-semibold tracking-wide text-slate-500">
-              어떻게 해야 하나요?
-            </p>
-            <p className="mt-2 text-[15px] font-semibold leading-relaxed text-slate-900">
-              {safetyType.howToAct}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
     </section>
   );

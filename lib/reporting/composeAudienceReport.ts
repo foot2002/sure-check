@@ -33,6 +33,10 @@ import {
   evidenceCardsToPrimaryReasons,
 } from "@/lib/reporting/buildUserEvidenceCards";
 import {
+  ENDED_SURVEY_HEADLINE,
+  isEndedSurveyReport,
+} from "@/lib/scan/nonActionableForm";
+import {
   buildPublicSectorCsapAssessment,
   shouldElevateToolRiskForCsap,
 } from "@/lib/reporting/publicSectorCsap";
@@ -788,11 +792,10 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     "limited",
   );
   const safetyType = buildSafetyTypeProfile(report, emptySummary, verdict, false);
-  const userEvidenceCards = buildUserEvidenceCards(
-    report,
-    emptySummary,
-    safetyType.typeId,
-  );
+  const ended = isEndedSurveyReport(report);
+  const userEvidenceCards = ended
+    ? []
+    : buildUserEvidenceCards(report, emptySummary, safetyType.typeId);
   const operatorImprovement = buildOperatorImprovementReport(
     report,
     emptySummary,
@@ -801,7 +804,7 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
   );
 
   // Moaform-specific copy overrides (do not invent PII / legal judgments)
-  if (isMoaform) {
+  if (isMoaform && !ended) {
     safetyType.whyProblem =
       "설문 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.";
     safetyType.description = safetyType.whyProblem;
@@ -829,6 +832,28 @@ function buildLimitedAudienceReport(report: ScanReport): AudienceReport {
     decisionSummary.headline = safetyType.headline;
     privacyAssessment.conclusion = "문항 분석이 안 되어 판단이 어렵습니다.";
     privacyAssessment.inclusionSummary = safetyType.whyProblem;
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  } else if (ended) {
+    safetyType.headline = ENDED_SURVEY_HEADLINE;
+    safetyType.displayName = "종료된 설문";
+    safetyType.typeName = "종료된 설문";
+    safetyType.howToAct =
+      "응답이 종료되어 더 이상 문항을 확인할 수 없습니다.";
+    safetyType.action = safetyType.howToAct;
+    safetyType.description = safetyType.howToAct;
+    safetyType.whyProblem = safetyType.howToAct;
+    safetyType.toolJudgmentBadge = "종료된 설문";
+    safetyType.isEndedSurvey = true;
+    safetyType.hideJudgmentDetails = true;
+    if (isMoaform) {
+      safetyType.toolBadge = "Moaform";
+      safetyType.dataBadge = "확인 불가";
+    }
+    decisionSummary.primaryReasons = ["종료된 설문 — 분석 대상 아님"];
+    decisionSummary.actionDescription = safetyType.howToAct;
+    decisionSummary.headline = ENDED_SURVEY_HEADLINE;
+    privacyAssessment.conclusion = ENDED_SURVEY_HEADLINE;
+    privacyAssessment.inclusionSummary = safetyType.howToAct;
     privacyAssessment.quickActions = decisionSummary.primaryReasons;
   } else {
     decisionSummary.primaryReasons = evidenceCardsToPrimaryReasons(userEvidenceCards);

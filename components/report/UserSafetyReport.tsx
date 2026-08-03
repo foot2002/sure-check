@@ -73,51 +73,55 @@ export function UserSafetyReport({
         <SafetyTypeCard safetyType={safetyType} />
       </ReportSubsection>
 
-      <ReportSubsection ruled>
-        <UserEvidenceCards
-          cards={userEvidenceCards}
-          tone={safetyType.tone}
-          platform={report.platform}
-          sourceKind={sourceKind}
-        />
-      </ReportSubsection>
+      {safetyType.hideJudgmentDetails ? null : (
+        <>
+          <ReportSubsection ruled>
+            <UserEvidenceCards
+              cards={userEvidenceCards}
+              tone={safetyType.tone}
+              platform={report.platform}
+              sourceKind={sourceKind}
+            />
+          </ReportSubsection>
 
-      <ReportSubsection ruled className="space-y-3">
-        <div>
-          <h3 className="text-lg font-bold tracking-tight text-slate-900 md:text-xl">
-            설문 프로필 요약
-          </h3>
-          <p className="mt-1 text-[15px] text-slate-600">
-            설문주체·수집정보·사용도구를 짧게 요약합니다.
-          </p>
-        </div>
-        <div className="report-inner-card overflow-hidden">
-          <dl className="grid sm:grid-cols-2 lg:grid-cols-4">
-            {profileItems.map(({ label, value, icon }, index) => (
-              <div
-                key={label}
-                className={`flex items-center gap-3 px-4 py-4 ${
-                  index > 0 ? "border-t border-slate-100 sm:border-t-0" : ""
-                } ${index % 2 === 1 ? "sm:border-l sm:border-slate-100" : ""} ${
-                  index >= 2
-                    ? "lg:border-t-0 lg:border-l lg:border-slate-100"
-                    : ""
-                }`}
-              >
-                {icon}
-                <div className="min-w-0">
-                  <dt className="text-xs font-semibold tracking-wide text-slate-500">
-                    {label}
-                  </dt>
-                  <dd className="mt-0.5 text-sm font-semibold leading-snug text-slate-900">
-                    {value}
-                  </dd>
-                </div>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </ReportSubsection>
+          <ReportSubsection ruled className="space-y-3">
+            <div>
+              <h3 className="text-lg font-bold tracking-tight text-slate-900 md:text-xl">
+                설문 프로필 요약
+              </h3>
+              <p className="mt-1 text-[15px] text-slate-600">
+                설문주체·수집정보·사용도구를 짧게 요약합니다.
+              </p>
+            </div>
+            <div className="report-inner-card overflow-hidden">
+              <dl className="grid sm:grid-cols-2 lg:grid-cols-4">
+                {profileItems.map(({ label, value, icon }, index) => (
+                  <div
+                    key={label}
+                    className={`flex items-center gap-3 px-4 py-4 ${
+                      index > 0 ? "border-t border-slate-100 sm:border-t-0" : ""
+                    } ${index % 2 === 1 ? "sm:border-l sm:border-slate-100" : ""} ${
+                      index >= 2
+                        ? "lg:border-t-0 lg:border-l lg:border-slate-100"
+                        : ""
+                    }`}
+                  >
+                    {icon}
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold tracking-wide text-slate-500">
+                        {label}
+                      </dt>
+                      <dd className="mt-0.5 text-sm font-semibold leading-snug text-slate-900">
+                        {value}
+                      </dd>
+                    </div>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </ReportSubsection>
+        </>
+      )}
     </div>
   );
 }

@@ -5,6 +5,10 @@ import type {
   VerdictType,
 } from "@/lib/reporting/reportMessages";
 import { classifyPrivacyDataType } from "@/lib/reporting/respondentDecision";
+import {
+  ENDED_SURVEY_HEADLINE,
+  isEndedSurveyReport,
+} from "@/lib/scan/nonActionableForm";
 
 /**
  * 사용자 응답 판단 6종 (행동 중심 라벨 — “~형” 미사용)
@@ -60,6 +64,9 @@ export interface SafetyTypeProfile {
   fileNameLabel?: string;
   needsReportOrInquire: boolean;
   reportOrInquireLabel: string;
+  /** Ended/closed survey — hide judgment evidence blocks. */
+  isEndedSurvey?: boolean;
+  hideJudgmentDetails?: boolean;
 }
 
 const TYPE_META: Record<
@@ -530,17 +537,25 @@ export function buildSafetyTypeProfile(
       ? "텍스트가 포함된 DOCX, HWPX, PDF 또는 문항표 XLSX 파일로 다시 업로드해 주세요."
       : meta.action;
 
+  const ended = isEndedSurveyReport(report);
+  const endedHowToAct =
+    "응답이 종료되어 더 이상 문항을 확인할 수 없습니다.";
+
   return {
     typeId,
-    typeName: meta.name,
-    displayName: meta.name,
-    headline: buildHeadline(typeId, subjectType, privacyType),
-    description: buildDescription(typeId, subjectType, report, summary),
-    action: howToAct,
-    whyProblem,
-    legalOrLimitTitle: legalOrLimit.title,
-    legalOrLimitBody: legalOrLimit.body,
-    howToAct,
+    typeName: ended ? "종료된 설문" : meta.name,
+    displayName: ended ? "종료된 설문" : meta.name,
+    headline: ended ? ENDED_SURVEY_HEADLINE : buildHeadline(typeId, subjectType, privacyType),
+    description: ended
+      ? endedHowToAct
+      : buildDescription(typeId, subjectType, report, summary),
+    action: ended ? endedHowToAct : howToAct,
+    whyProblem: ended ? endedHowToAct : whyProblem,
+    legalOrLimitTitle: ended ? "분석 대상 아님" : legalOrLimit.title,
+    legalOrLimitBody: ended
+      ? "종료된 설문은 자동 진단·판단 대상이 아닙니다."
+      : legalOrLimit.body,
+    howToAct: ended ? endedHowToAct : howToAct,
     tone: meta.tone,
     subjectType,
     subjectLabel,
@@ -548,13 +563,17 @@ export function buildSafetyTypeProfile(
     subjectMatchMethodLabel,
     dataBadge: limitedUnknown?.dataBadge ?? dataBadge(privacyType, summary),
     toolBadge: limitedUnknown?.toolBadge ?? platformLabel(report),
-    toolJudgmentBadge: buildToolJudgmentBadge(subjectType, privacyType, report),
+    toolJudgmentBadge: ended
+      ? "종료된 설문"
+      : buildToolJudgmentBadge(subjectType, privacyType, report),
     diagnosisMethodLabel: isFileSource(report) ? "파일 업로드" : "설문 링크",
     fileNameLabel: isFileSource(report)
       ? report.form.metadata?.source?.fileName
       : undefined,
     needsReportOrInquire,
-    reportOrInquireLabel: needsReportOrInquire
+    reportOrInquireLabel: ended
+      ? "분석 대상 아님"
+      : needsReportOrInquire
       ? "운영기관 문의 또는 신고 검토"
       : typeId === "JUDGMENT_UNKNOWN"
         ? "설문 화면에서 직접 확인"
@@ -563,6 +582,8 @@ export function buildSafetyTypeProfile(
           : typeId === "STOP_RESPONSE"
             ? "응답하지 말고 신고를 검토하세요"
             : "응답 가능",
+    isEndedSurvey: ended,
+    hideJudgmentDetails: ended,
   };
 }
 

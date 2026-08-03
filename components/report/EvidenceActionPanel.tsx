@@ -52,7 +52,7 @@ type CaptureUiStatus =
   | "timeout"
   | "skipped";
 
-type CaptureApiStatus = "success" | "partial" | "failed" | "timeout";
+type CaptureApiStatus = "success" | "partial" | "failed" | "timeout" | "skipped";
 
 const KISA_REPORT_URL =
   process.env.NEXT_PUBLIC_KISA_REPORT_URL?.trim() ||

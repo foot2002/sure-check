@@ -9,6 +9,7 @@ import {
   type SafetyTypeId,
 } from "@/lib/reporting/safetyType";
 import { getToolCsapProfile } from "@/lib/reporting/toolRegistry";
+import { isEndedSurveyReport } from "@/lib/scan/nonActionableForm";
 import type { ScanReport } from "@/lib/types/scan";
 
 export type UserEvidenceCardKind =
@@ -145,6 +146,9 @@ export function buildUserEvidenceCards(
   summary: CollectedDataSummary,
   safetyTypeId: SafetyTypeId,
 ): UserEvidenceCard[] {
+  if (isEndedSurveyReport(report)) {
+    return [];
+  }
   if (safetyTypeId === "JUDGMENT_UNKNOWN" || report.isLimited) {
     return buildLimitedCards();
   }
