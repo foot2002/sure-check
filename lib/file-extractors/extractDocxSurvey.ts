@@ -14,19 +14,26 @@ function decodeEntities(text: string): string {
 }
 
 /**
- * Preserve paragraph / table / line-break structure so field labels in tables
- * (e.g. 연락처) stay on their own lines for the survey parser.
+ * Preserve paragraph / table structure. Table rows become one pipe-joined line
+ * so matrix Likert items stay grouped for the survey parser.
  */
 export function htmlToSurveyText(html: string): string {
   const $ = cheerio.load(html);
   $("br").replaceWith("\n");
-  $("p, tr, li, h1, h2, h3, h4, h5, h6, table").each((_, el) => {
+
+  $("tr").each((_, tr) => {
+    const cells = $(tr)
+      .children("td, th")
+      .toArray()
+      .map((cell) => collapseCellText($(cell).text()));
+    const line = cells.filter((cell) => cell.length > 0).join(" | ");
+    $(tr).replaceWith(line ? `${line}\n` : "\n");
+  });
+
+  $("p, li, h1, h2, h3, h4, h5, h6, table").each((_, el) => {
     $(el).append("\n");
   });
-  $("td, th").each((_, el) => {
-    const text = collapseCellText($(el).text());
-    $(el).replaceWith(text ? `${text}\n` : "");
-  });
+
   return decodeEntities($.root().text());
 }
 

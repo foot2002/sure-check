@@ -33,7 +33,7 @@ const IMPORTANCE_OPTIONS = [
 ] as const;
 
 const SCALE_LABEL_RE =
-  /매우\s*불만족|불만족|보통(?:이다)?|만족|매우\s*만족|전혀\s*아니다|아니다|그렇다|매우\s*그렇다|매우\s*낮음|낮음|높음|매우\s*높음/;
+  /매우\s*불만족|불만족|보통(?:이다)?|만족|매우\s*만족|전혀\s*그렇지\s*않다|그렇지\s*않다|전혀\s*아니다|아니다|매우\s*그렇다|그렇다|매우\s*낮음|낮음|높음|매우\s*높음/;
 
 const NOISE_LINE_RE =
   /원본\s*그림의\s*이름|원본\s*그림의\s*크기|\.bmp|\.png|\.jpe?g|^\d+(?:\.\d+)?\s*mm$|^#?[0-9A-Fa-f]{6}$|^(?:UTF-?8|SOLID|TABLE|PICTURE|REAL_PIC|PARA|COLUMN|ABSOLUTE|SHOW_ALL|BOTH_SIDES|TOP_AND_BOTTOM|HWPUNIT)$/i;
@@ -128,10 +128,20 @@ function isQuestionLine(line: string): boolean {
 }
 
 function isMatrixStemPrompt(line: string): boolean {
-  return (
+  if (
     /아래\s*제시/.test(line) &&
     /(중요|필요|선택해\s*주십시오|응답을\s*선택)/.test(line)
-  );
+  ) {
+    return true;
+  }
+  // Instructor/course evaluation grids: "Q1-1. …강사에 대해서 평가해주시기 바랍니다."
+  if (
+    /^Q\s*\d+/i.test(line) &&
+    /(평가해\s*주시기\s*바랍니다|대해서\s*평가|대해\s*평가)/.test(line)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function extractQuestionLabel(line: string): string | null {
@@ -250,8 +260,12 @@ function isLikertHeaderRow(cells: string[]): boolean {
 function scaleOptionsFromHeader(cells: string[]): string[] {
   const labels = cells.filter((cell) => SCALE_LABEL_RE.test(cell));
   if (labels.length >= 3) return labels;
-  if (/전혀\s*아니다|그렇다/.test(cells.join(" "))) return [...AGREEMENT_OPTIONS];
-  if (/낮음|높음/.test(cells.join(" "))) return [...IMPORTANCE_OPTIONS];
+  const joined = cells.join(" ");
+  if (/그렇지\s*않다|매우\s*그렇다|전혀\s*그렇지/.test(joined)) {
+    return [...AGREEMENT_OPTIONS];
+  }
+  if (/전혀\s*아니다|그렇다/.test(joined)) return [...AGREEMENT_OPTIONS];
+  if (/낮음|높음/.test(joined)) return [...IMPORTANCE_OPTIONS];
   return [...LIKERT_OPTIONS];
 }
 
@@ -486,11 +500,16 @@ export function parseSurveyText(
       }
       if (tableRow.kind === "matrix_item" && tableRow.title) {
         pushCurrent();
+        const itemText = tableRow.title.replace(/^\d+\s*[.)．、]\s*/, "").trim();
         const title = activeMatrixPrefix
-          ? `${activeMatrixPrefix}) ${tableRow.title}`
-          : tableRow.title;
+          ? `${activeMatrixPrefix}) ${itemText}`
+          : itemText;
         current = makeQuestion(title, { confidence: "medium" });
-        current.options.push(...activeScaleOptions);
+        current.options.push(
+          ...(activeScaleOptions.length > 0
+            ? activeScaleOptions
+            : [...AGREEMENT_OPTIONS]),
+        );
         current.rawText = line;
         pushCurrent();
         continue;
@@ -513,6 +532,9 @@ export function parseSurveyText(
       pushCurrent();
       if (isMatrixStemPrompt(line)) {
         activeMatrixPrefix = extractQuestionLabel(line);
+        if (/평가/.test(line)) {
+          activeScaleOptions = [...AGREEMENT_OPTIONS];
+        }
         // Stem is a matrix intro — wait for item rows instead of emitting alone.
         continue;
       }
