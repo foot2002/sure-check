@@ -1,3 +1,4 @@
+import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { parseSurveyText } from "@/lib/file-extractors/surveyTextParser";
 import type { ExtractedSurveyDocument } from "@/lib/file-extractors/fileExtractorTypes";
@@ -11,7 +12,10 @@ export class ScannedPdfError extends Error {
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
+  const parser = new PDFParse({
+    data: buffer,
+    CanvasFactory,
+  });
   try {
     const result = await parser.getText();
     return (result.text ?? "").trim();

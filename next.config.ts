@@ -1,8 +1,18 @@
 import type { NextConfig } from "next";
 
+const pdfTracingIncludes = [
+  "./node_modules/pdf-parse/**/*",
+  "./node_modules/pdfjs-dist/**/*",
+  "./node_modules/@napi-rs/canvas/**/*",
+  "./node_modules/@napi-rs/canvas-linux-x64-gnu/**/*",
+  "./node_modules/@napi-rs/canvas-linux-x64-musl/**/*",
+];
+
 const nextConfig: NextConfig = {
   serverExternalPackages: [
     "pdf-parse",
+    "pdfjs-dist",
+    "@napi-rs/canvas",
     "mammoth",
     "jszip",
     "puppeteer-core",
@@ -10,6 +20,8 @@ const nextConfig: NextConfig = {
     "@fontsource/noto-sans-kr",
   ],
   outputFileTracingIncludes: {
+    "/api/scan/file": pdfTracingIncludes,
+    "/api/scan/file/route": pdfTracingIncludes,
     "/api/evidence/capture": [
       "./node_modules/@sparticuz/chromium/bin/**/*",
       "./node_modules/@fontsource/noto-sans-kr/files/noto-sans-kr-korean-400-normal.woff2",
