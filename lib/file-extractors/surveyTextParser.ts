@@ -330,6 +330,21 @@ function makeQuestion(
   };
 }
 
+function isOpenEndedPromptLine(line: string): boolean {
+  const text = line.replace(/^※\s*/, "").trim();
+  if (text.length < 12 || text.length > 300) return false;
+  // Instructional section headers, not answer prompts
+  if (/^다음은\b/.test(text) && !/자유롭게|기재|기술해|적어/.test(text)) {
+    return false;
+  }
+  return (
+    /(자유롭게|자유\s*의견|기타\s*의견).{0,24}(기재|기술|작성|적어)/.test(text) ||
+    (/(기재|기술|작성)해주시/.test(text) &&
+      /(개선|의견|느낌|건의|바람|제안|애로|기타)/.test(text)) ||
+    /^기타\b.{0,40}(의견|사항)/.test(text)
+  );
+}
+
 function isGarbageQuestion(question: ExtractedSurveyQuestion): boolean {
   const title = question.title.trim();
   if (!title || title.length < 2) return true;
@@ -446,6 +461,14 @@ export function parseSurveyText(
       current = makeQuestion(line, {
         confidence: PII_FIELD_LABEL_PATTERN.test(line) ? "high" : "medium",
       });
+      continue;
+    }
+
+    if (isOpenEndedPromptLine(line)) {
+      pushCurrent();
+      questions.push(
+        makeQuestion(line.replace(/^※\s*/, "").trim(), { confidence: "medium" }),
+      );
       continue;
     }
 
