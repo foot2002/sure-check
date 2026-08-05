@@ -172,7 +172,19 @@ export function FileScanForm({
       });
 
       setPhase("building");
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { error?: string; report?: ScanReport } = {};
+      try {
+        data = raw ? (JSON.parse(raw) as { error?: string; report?: ScanReport }) : {};
+      } catch {
+        setError(
+          res.ok
+            ? "서버 응답을 해석하지 못했습니다. 잠시 후 다시 시도해 주세요."
+            : "파일 진단 서버에서 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        );
+        setPhase("ready");
+        return;
+      }
 
       if (!res.ok) {
         setError(data.error ?? "파일 진단을 완료하지 못했습니다.");
@@ -180,7 +192,13 @@ export function FileScanForm({
         return;
       }
 
-      onScanComplete(data.report as ScanReport);
+      if (!data.report) {
+        setError("진단 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setPhase("ready");
+        return;
+      }
+
+      onScanComplete(data.report);
       setPhase("ready");
     } catch {
       setError("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");

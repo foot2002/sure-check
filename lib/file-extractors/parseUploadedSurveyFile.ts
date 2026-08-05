@@ -1,10 +1,3 @@
-import { extractDocxSurvey } from "@/lib/file-extractors/extractDocxSurvey";
-import { extractHwpxSurvey } from "@/lib/file-extractors/extractHwpxSurvey";
-import { extractPdfSurvey, ScannedPdfError } from "@/lib/file-extractors/extractPdfSurvey";
-import {
-  extractXlsxSurvey,
-  ResponseDataSuspectedError,
-} from "@/lib/file-extractors/extractXlsxSurvey";
 import {
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
@@ -133,18 +126,46 @@ export async function parseUploadedSurveyFile(input: {
   try {
     let document: ExtractedSurveyDocument;
     switch (extension) {
-      case "docx":
-        document = await extractDocxSurvey(input.buffer, fileName, input.mimeType);
+      case "docx": {
+        const { extractDocxSurvey } = await import(
+          "@/lib/file-extractors/extractDocxSurvey"
+        );
+        document = await extractDocxSurvey(
+          input.buffer,
+          fileName,
+          input.mimeType,
+        );
         break;
-      case "xlsx":
+      }
+      case "xlsx": {
+        const { extractXlsxSurvey } = await import(
+          "@/lib/file-extractors/extractXlsxSurvey"
+        );
         document = extractXlsxSurvey(input.buffer, fileName, input.mimeType);
         break;
-      case "pdf":
-        document = await extractPdfSurvey(input.buffer, fileName, input.mimeType);
+      }
+      case "pdf": {
+        const { extractPdfSurvey } = await import(
+          "@/lib/file-extractors/extractPdfSurvey"
+        );
+        document = await extractPdfSurvey(
+          input.buffer,
+          fileName,
+          input.mimeType,
+        );
         break;
-      case "hwpx":
-        document = await extractHwpxSurvey(input.buffer, fileName, input.mimeType);
+      }
+      case "hwpx": {
+        const { extractHwpxSurvey } = await import(
+          "@/lib/file-extractors/extractHwpxSurvey"
+        );
+        document = await extractHwpxSurvey(
+          input.buffer,
+          fileName,
+          input.mimeType,
+        );
         break;
+      }
       default:
         return {
           ok: false,
@@ -158,13 +179,21 @@ export async function parseUploadedSurveyFile(input: {
 
     return { ok: true, document };
   } catch (error) {
-    if (error instanceof ResponseDataSuspectedError) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code?: string }).code === "RESPONSE_DATA_SUSPECTED"
+    ) {
       return {
         ok: false,
         error: { code: "RESPONSE_DATA_SUSPECTED", message: error.message },
       };
     }
-    if (error instanceof ScannedPdfError) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code?: string }).code === "SCANNED_PDF"
+    ) {
       return {
         ok: false,
         error: { code: "SCANNED_PDF", message: error.message },

@@ -6,6 +6,7 @@ import { parseUploadedSurveyFile } from "@/lib/file-extractors/parseUploadedSurv
 import { generateExtractionLimitedReport } from "@/lib/scan/limitedReport";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
@@ -73,7 +74,8 @@ export async function POST(request: Request) {
       scanId: report.scanId,
       report,
     });
-  } catch {
+  } catch (error) {
+    console.error("[api/scan/file]", error);
     return NextResponse.json(
       {
         error:
