@@ -2,13 +2,17 @@ import type { AnalysisResult } from "@/lib/types/analyzer";
 import type { ScanDebugInfo } from "@/lib/types/debug";
 import type { ScanReport } from "@/lib/types/scan";
 import { getExtractorName } from "@/lib/debug/extractorNames";
+import { textLooksEndedSurvey } from "@/lib/scan/nonActionableForm";
 
 function detectClosedForm(report: ScanReport): boolean {
   const { form } = report;
-  if (form.limitedReason?.includes("종료")) return true;
-  return Boolean(
-    form.metadata?.extractionWarnings?.some((warning) => warning.includes("종료")),
-  );
+  if ((form.questions?.length || 0) > 0) return false;
+  const text = [
+    form.limitedReason || "",
+    ...(form.metadata?.extractionWarnings ?? []),
+    form.metadata?.failureReason || "",
+  ].join(" ");
+  return textLooksEndedSurvey(text);
 }
 
 export function buildScanDebug(

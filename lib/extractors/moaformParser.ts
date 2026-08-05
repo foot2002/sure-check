@@ -825,7 +825,7 @@ function parseDomFallback(
     failureReason: isLimited ? failureReason : undefined,
     warnings: [
       `Moaform HTML fetched`,
-      `Embedded JSON found/not found: not found (DOM path)`,
+      `Embedded JSON: absent (DOM path)`,
       `DOM fallback question count: ${questions.length}`,
       ...(isLimited
         ? [`Final limitation reason: ${failureReason}`]
@@ -1032,9 +1032,7 @@ export async function parseMoaformDocument(
 
   const embedded = extractEmbeddedJsonFromHtml(html);
   trace.push(
-    embedded
-      ? "Embedded JSON found/not found: found"
-      : "Embedded JSON found/not found: not found",
+    embedded ? "Embedded JSON: present" : "Embedded JSON: absent",
   );
 
   if (embedded) {

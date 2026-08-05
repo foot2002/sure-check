@@ -183,7 +183,7 @@ async function resolveNaverFormsReport(
   const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
   const analysisStarted = Date.now();
 
-  if (form.isLimited || form.questions.length === 0) {
+  if (form.questions.length === 0) {
     const report = buildNaverLimitedReport(scanId, formUrl, form, buildContext);
     stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
@@ -250,7 +250,7 @@ async function resolveMoaformReport(
   const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
   const analysisStarted = Date.now();
 
-  if (form.isLimited || form.questions.length === 0) {
+  if (form.questions.length === 0) {
     const report = buildMoaformLimitedReport(scanId, formUrl, form, buildContext);
     stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);
@@ -354,7 +354,7 @@ async function resolveGoogleFormsReport(
   const buildContext = scanBuildContext(formUrl, extracted.finalUrl);
   const analysisStarted = Date.now();
 
-  if (form.isLimited || form.questions.length === 0) {
+  if (form.questions.length === 0) {
     const report = buildGoogleLimitedReport(scanId, formUrl, form, buildContext);
     stampExtractionMeta(report, extracted.meta, Date.now() - analysisStarted);
     cacheReport(urlHash, report);

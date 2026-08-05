@@ -18,6 +18,7 @@ import {
   mapInputType,
   NOTICE_KEYWORDS,
 } from "@/lib/extractors/htmlTextUtils";
+import { NON_ACTIONABLE_LIMITED_MESSAGE } from "@/lib/scan/nonActionableForm";
 import { EXTRACTION_LIMITED_REASON } from "@/lib/scan/limitedReport";
 
 function getLabelForInput(
@@ -221,7 +222,7 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     ...formTexts,
   ].join(" ");
   const closedOrRestricted =
-    /더\s*이상\s*응답|응답이\s*마감|설문이\s*종료|응답\s*기간|closed|private|비공개|로그인\s*필요|권한/i.test(
+    /더\s*이상\s*응답|응답이\s*마감|설문이\s*종료|응답\s*기간이?\s*종료|closed|private|비공개|로그인\s*필요|접근\s*권한|접근이\s*제한/i.test(
       pageText,
     );
 
@@ -250,7 +251,7 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     isLimited,
     confidence: isLimited ? "none" : "low",
     limitedReason: closedOrRestricted
-      ? "이 설문은 응답이 종료되었거나 접근이 제한되어 진단이 제한되었습니다."
+      ? NON_ACTIONABLE_LIMITED_MESSAGE
       : hasNoQuestions
         ? EXTRACTION_LIMITED_REASON
         : undefined,
@@ -271,7 +272,7 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
       privacyPolicyUrls: [...new Set(privacyPolicyUrls)],
       headings,
       extractionWarnings: closedOrRestricted
-        ? ["응답이 종료되었거나 접근이 제한된 설문으로 보입니다."]
+        ? ["접근이 제한된 설문으로 보입니다."]
         : [],
     },
     management: {

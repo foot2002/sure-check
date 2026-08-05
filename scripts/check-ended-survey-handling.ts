@@ -54,7 +54,7 @@ async function main(): Promise<void> {
       label: "Moaform - closed/private",
       form: makeLimitedForm(
         "moaform",
-        "모아폼 응답이 종료되었거나 비공개입니다.",
+        "모아폼 응답이 종료되었거나 비공개로 설정되어 있습니다.",
       ),
     },
     {

@@ -110,8 +110,9 @@ export const MOAFORM_FAILURE_MESSAGES: Record<
       "접근 가능한 공개 설문 URL로 다시 진단하거나, 운영기관에 문의하세요.",
   },
   MOAFORM_CLOSED_OR_PRIVATE: {
-    limitedReason: "모아폼 응답이 종료되었거나 비공개입니다.",
-    summary: "모아폼 응답이 종료되었거나 비공개여서 진단이 제한되었습니다.",
+    limitedReason: "모아폼 응답이 종료되었거나 비공개로 설정되어 있습니다.",
+    summary:
+      "모아폼 응답이 종료되었거나 비공개로 설정되어 진단이 제한되었습니다.",
     guidance: "운영기관에 설문 상태와 개인정보 처리 기준을 확인하세요.",
   },
   MOAFORM_UNSUPPORTED_STRUCTURE: {
