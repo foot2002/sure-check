@@ -144,7 +144,7 @@ const ACTUAL_HEALTH_SENSITIVE_PATTERNS = [
 ];
 
 const DIRECT_PII_SOLICITATION =
-  /(이름|연락처|주소|전화번호|이메일|휴대폰).*(적어|입력|기재|작성)/;
+  /(이름|성명|성함|연락처|주소|전화번호|이메일|휴대폰|핸드폰).*(적어|입력|기재|작성|남겨)/;
 
 export function isExcludedSurveyQuestion(text: string): boolean {
   const normalized = collapseWhitespace(text);
@@ -187,7 +187,7 @@ export function isDirectPiiSolicitation(text: string): boolean {
 }
 
 const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
-  { category: "name", patterns: [/이름/, /성명/, /신청자명/, /담당자명/] },
+  { category: "name", patterns: [/이름/, /성명/, /성함/, /신청자명/, /담당자명/] },
   { category: "phone", patterns: [/휴대\s*전화/, /휴대폰/, /핸드폰/, /전화번호/, /연락처/, /\btel\b/i] },
   { category: "email", patterns: [/이메일/, /e-?mail/i, /(?<!메일\s)메일(?!링)/] },
   {
@@ -310,12 +310,63 @@ const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
   },
 ];
 
+const DIRECT_IDENTIFIER_CATEGORIES = new Set([
+  "name",
+  "phone",
+  "email",
+  "address",
+  "birthdate",
+  "unique_identifier",
+  "financial",
+  "resident_registration_number",
+  "passport_number",
+  "driver_license_number",
+  "foreign_registration_number",
+  "id_document",
+  "financial_account",
+  "authentication_secret",
+]);
+
 export function detectCategories(text: string): string[] {
+  const normalized = collapseWhitespace(text);
+
+  const categories = new Set<string>();
+  for (const rule of CATEGORY_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      categories.add(rule.category);
+    }
+  }
+  if (categories.has("child_age_range")) {
+    categories.delete("respondent_age");
+    categories.delete("age_range");
+  }
+  if (categories.has("respondent_age")) categories.delete("age_range");
+  if (
+    categories.has("gender") ||
+    categories.has("respondent_age") ||
+    categories.has("age_range") ||
+    categories.has("child_age_range") ||
+    categories.has("residence_area") ||
+    categories.has("department") ||
+    categories.has("position") ||
+    categories.has("tenure")
+  ) {
+    categories.delete("quasi_identifier");
+  }
+
+  const hasDirectIdentifier =
+    [...categories].some((category) =>
+      DIRECT_IDENTIFIER_CATEGORIES.has(category),
+    ) || isDirectPiiSolicitation(normalized);
+
+  // Name/phone/email collection must not be overwritten by "만족도" wording nearby.
+  if (hasDirectIdentifier) {
+    return [...categories];
+  }
+
   if (isProgramPreferenceQuestion(text)) {
     return ["program_preference"];
   }
-
-  const normalized = collapseWhitespace(text);
 
   if (POLICY_OPINION_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return ["policy_opinion"];
@@ -349,29 +400,6 @@ export function detectCategories(text: string): string[] {
     return ["general_opinion"];
   }
 
-  const categories = new Set<string>();
-  for (const rule of CATEGORY_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(text))) {
-      categories.add(rule.category);
-    }
-  }
-  if (categories.has("child_age_range")) {
-    categories.delete("respondent_age");
-    categories.delete("age_range");
-  }
-  if (categories.has("respondent_age")) categories.delete("age_range");
-  if (
-    categories.has("gender") ||
-    categories.has("respondent_age") ||
-    categories.has("age_range") ||
-    categories.has("child_age_range") ||
-    categories.has("residence_area") ||
-    categories.has("department") ||
-    categories.has("position") ||
-    categories.has("tenure")
-  ) {
-    categories.delete("quasi_identifier");
-  }
   return [...categories];
 }
 
@@ -453,8 +481,14 @@ export function getDetectedCategoryDisplayLabel(
     return "준식별정보";
   }
 
-  if (category === "phone" && /경품|응모|당첨|추첨|쿠폰/.test(text)) {
+  if (
+    category === "phone" &&
+    /경품|응모|당첨|추첨|쿠폰|답례품|상품권|이벤트/.test(text)
+  ) {
     return "경품 응모용 연락처";
+  }
+  if (category === "name" && /경품|응모|당첨|추첨|답례품|상품권|이벤트/.test(text)) {
+    return "경품 응모용 이름";
   }
 
   if (category === "general_opinion") {

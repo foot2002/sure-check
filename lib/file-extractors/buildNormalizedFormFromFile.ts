@@ -45,7 +45,7 @@ function toQuestion(
   item: ExtractedSurveyDocument["questions"][number],
   index: number,
 ): NormalizedQuestion {
-  const combined = `${item.title}\n${item.options.join("\n")}`;
+  const combined = `${item.title}\n${item.rawText}\n${item.options.join("\n")}`;
   const detectedCategories = detectCategories(combined) as DetectedCategory[];
   const personalCategories = detectedCategories.filter(isPersonalDataCategory);
   const semanticCategories = detectedCategories.filter(
@@ -53,14 +53,22 @@ function toQuestion(
   );
   const hasPersonalData = personalCategories.length > 0;
   const personalDataTypes = personalCategories.map((category) =>
-    getDetectedCategoryDisplayLabel(category, item.title),
+    getDetectedCategoryDisplayLabel(category, combined),
   );
+  const isConsent =
+    /동의/.test(item.title) &&
+    (/비동의|동의하지|거부/.test(item.title) ||
+      item.options.some((option) => /동의|비동의/.test(option)));
 
   return {
     id: `file_q_${index + 1}`,
     label: item.title,
     questionText: item.title,
-    type: item.options.length > 0 ? "choice" : "text",
+    type: isConsent
+      ? "privacy_consent"
+      : item.options.length > 0
+        ? "choice"
+        : "text",
     required: item.required,
     hasPersonalData,
     personalDataTypes:
@@ -71,6 +79,7 @@ function toQuestion(
       ? categoriesToDataLevel(personalCategories)
       : "D1",
     detectedCategories,
+    riskTags: isConsent ? ["privacy_consent"] : undefined,
     options: item.options.length > 0 ? item.options : undefined,
     questionIndex: item.questionNumber ?? index + 1,
     pageIndex: 1,
