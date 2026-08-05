@@ -212,34 +212,58 @@ function isPrivacyConsentLine(line: string): boolean {
   ) {
     return true;
   }
+  if (
+    /consent to (?:the )?collection and use of personal information/i.test(line) &&
+    /(yes|no)\b/i.test(line)
+  ) {
+    return true;
+  }
   const hasAgree = /(^|[^비])동의/.test(line) || /동의함|동의합니다/.test(line);
   const hasDisagree = /비동의|동의하지\s*않|거부|아니요|아니오/.test(line);
   return hasAgree && hasDisagree;
 }
 
 function isBracketQuestionLine(line: string): boolean {
-  return /^\[\s*질문\s*\]/.test(line);
+  return /^\[\s*(?:질문|Q|Question)\s*\]/i.test(line);
 }
 
 function isCompetencyItemLabel(line: string): boolean {
-  // e.g. "1-1. 자아인식" — section labels, not the actual question prompt
-  return /^\d+\s*[-–]\s*\d+\s*[.)．]\s*\S+/.test(line) && !isBracketQuestionLine(line);
+  // e.g. "1-1. 자아인식" / "1-1. self-awareness"
+  return (
+    /^\d+\s*[-–]\s*\d+\s*[.)．]\s*\S+/.test(line) && !isBracketQuestionLine(line)
+  );
 }
 
 function isLevelDescriptorLine(line: string): boolean {
-  return /^\(\s*[1-5]\s*수준\s*\)/.test(line);
+  return (
+    /^\(\s*[1-5]\s*수준\s*\)/.test(line) || /^\(\s*level\s*[1-5]\s*\)/i.test(line)
+  );
 }
 
 function isCompetencyStructureNoise(line: string): boolean {
   return (
     /^(질문|및|행동기준척도|상황|스토리|하위역량|본인의\s*수준)$/.test(line) ||
+    /^(Questions?|and|behaviorally|anchored|rating\s*scale|Situational|story|Your\s*level)$/i.test(
+      line,
+    ) ||
+    /^Subcategory\b/i.test(line) ||
     /^--\s*\d+\s*of\s*\d+\s*--$/i.test(line) ||
-    /^-\s*\d+\s*-$/.test(line)
+    /^-\s*\d+\s*-$/.test(line) ||
+    /^[1-5](?:\s+[1-5]){4}$/.test(line) ||
+    /^[WwIiEeSs]\s*\([^)]+\)$/.test(line)
   );
 }
 
+function skipCompetencyNoise(lines: string[], start: number): number {
+  let cursor = start;
+  while (cursor < lines.length && isCompetencyStructureNoise(lines[cursor]!)) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
 function stripBracketQuestionPrefix(line: string): string {
-  return line.replace(/^\[\s*질문\s*\]\s*/, "").trim();
+  return line.replace(/^\[\s*(?:질문|Q|Question)\s*\]\s*/i, "").trim();
 }
 
 function joinPdfWrappedText(left: string, right: string): string {
@@ -251,67 +275,141 @@ function joinPdfWrappedText(left: string, right: string): string {
 }
 
 function levelOptionLabel(line: string): string {
-  const match = line.match(/^\(\s*([1-5])\s*수준\s*\)/);
-  return match ? `${match[1]}수준` : line;
+  const ko = line.match(/^\(\s*([1-5])\s*수준\s*\)/);
+  if (ko) return `${ko[1]}수준`;
+  const en = line.match(/^\(\s*level\s*([1-5])\s*\)/i);
+  if (en) return `level ${en[1]}`;
+  return line;
+}
+
+function defaultLevelOptions(sampleRaw: string[]): string[] {
+  if (sampleRaw.some((raw) => /^\(\s*level\s*[1-5]\s*\)/i.test(raw))) {
+    return ["level 5", "level 4", "level 3", "level 2", "level 1"];
+  }
+  return ["5수준", "4수준", "3수준", "2수준", "1수준"];
+}
+
+function looksLikeCompetencyPrompt(line: string): boolean {
+  if (
+    isLevelDescriptorLine(line) ||
+    isCompetencyItemLabel(line) ||
+    isCompetencyStructureNoise(line) ||
+    isBracketQuestionLine(line)
+  ) {
+    return false;
+  }
+  if (line.length < 12 || line.length > 320) return false;
+  if (/^○|^Consent to|^Information collected|^Purpose of|^The duration/i.test(line)) {
+    return false;
+  }
+  return (
+    /[?？]/.test(line) ||
+    /^(What|How|To what extent|Do you|When|Are you|You need|Please)\b/i.test(
+      line,
+    ) ||
+    /습니까|입니까|인가요|어느\s*정도|어떻게|얼마나|어느\s*정도입/.test(line)
+  );
 }
 
 /**
- * Competency diagnostic PDFs mark real prompts with "[질문]" and put
- * category titles like "1-1. 자아인식" on the previous line.
+ * Competency diagnostic PDFs: label like "1-1. self-awareness" then
+ * "[질문]"/"[Q]" (sometimes omitted) then "(5수준)"/"(level 5)" rows.
+ * Page breaks often interrupt prompts/levels — those markers are skipped.
  */
 function extractBracketLabeledQuestions(
   lines: string[],
 ): ExtractedSurveyQuestion[] | null {
-  const starts: number[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    if (isBracketQuestionLine(lines[i]!)) starts.push(i);
-  }
-  if (starts.length < 3) return null;
-
   const questions: ExtractedSurveyQuestion[] = [];
+  let index = 0;
 
-  for (let s = 0; s < starts.length; s += 1) {
-    const start = starts[s]!;
-    const nextStart = starts[s + 1] ?? lines.length;
-
-    let label = "";
-    for (let j = start - 1; j >= Math.max(0, start - 8); j -= 1) {
-      const prev = lines[j]!;
-      if (isCompetencyItemLabel(prev)) {
-        label = prev.replace(/\s+/g, " ").trim();
-        break;
-      }
-      if (isBracketQuestionLine(prev) || isLevelDescriptorLine(prev)) break;
+  while (index < lines.length) {
+    const line = lines[index]!;
+    if (!isCompetencyItemLabel(line)) {
+      index += 1;
+      continue;
     }
 
-    let prompt = stripBracketQuestionPrefix(lines[start]!);
-    let cursor = start + 1;
-    while (
-      cursor < nextStart &&
-      !isLevelDescriptorLine(lines[cursor]!) &&
-      !isBracketQuestionLine(lines[cursor]!) &&
-      !isCompetencyItemLabel(lines[cursor]!) &&
-      !isCompetencyStructureNoise(lines[cursor]!) &&
-      !/^※/.test(lines[cursor]!) &&
-      !/개인정보/.test(lines[cursor]!)
-    ) {
-      prompt = joinPdfWrappedText(prompt, lines[cursor]!);
+    const label = line.replace(/\s+/g, " ").trim();
+    let cursor = skipCompetencyNoise(lines, index + 1);
+
+    let prompt = "";
+    let hadBracket = false;
+    if (cursor < lines.length && isBracketQuestionLine(lines[cursor]!)) {
+      prompt = stripBracketQuestionPrefix(lines[cursor]!);
+      hadBracket = true;
       cursor += 1;
+    } else if (
+      cursor < lines.length &&
+      looksLikeCompetencyPrompt(lines[cursor]!)
+    ) {
+      prompt = lines[cursor]!;
+      cursor += 1;
+    } else {
+      index += 1;
+      continue;
+    }
+
+    while (cursor < lines.length) {
+      cursor = skipCompetencyNoise(lines, cursor);
+      if (cursor >= lines.length) break;
+      if (isLevelDescriptorLine(lines[cursor]!)) break;
+      if (isCompetencyItemLabel(lines[cursor]!)) break;
+      if (isBracketQuestionLine(lines[cursor]!)) break;
+      if (/^※/.test(lines[cursor]!)) break;
+      if (
+        /개인정보|Consent to collection|personal information/i.test(
+          lines[cursor]!,
+        )
+      ) {
+        break;
+      }
+      if (
+        looksLikeCompetencyPrompt(lines[cursor]!) ||
+        lines[cursor]!.length <= 140
+      ) {
+        prompt = joinPdfWrappedText(prompt, lines[cursor]!);
+        cursor += 1;
+        continue;
+      }
+      break;
+    }
+
+    cursor = skipCompetencyNoise(lines, cursor);
+    if (cursor >= lines.length || !isLevelDescriptorLine(lines[cursor]!)) {
+      const promptCleanEarly = prompt.replace(/\s+/g, " ").trim();
+      if (hadBracket && promptCleanEarly.length >= 12) {
+        questions.push(
+          makeQuestion(`${label} — ${promptCleanEarly}`, {
+            options: defaultLevelOptions([]),
+            rawText: `${label}\n${promptCleanEarly}`,
+            confidence: "medium",
+          }),
+        );
+        index = cursor > index ? cursor : index + 1;
+        continue;
+      }
+      index += 1;
+      continue;
     }
 
     const options: string[] = [];
     const optionRaw: string[] = [];
-    while (cursor < nextStart && isLevelDescriptorLine(lines[cursor]!)) {
+    while (cursor < lines.length) {
+      cursor = skipCompetencyNoise(lines, cursor);
+      if (cursor >= lines.length) break;
+      if (!isLevelDescriptorLine(lines[cursor]!)) break;
+
       let raw = lines[cursor]!;
       cursor += 1;
-      while (
-        cursor < nextStart &&
-        !isLevelDescriptorLine(lines[cursor]!) &&
-        !isBracketQuestionLine(lines[cursor]!) &&
-        !isCompetencyItemLabel(lines[cursor]!) &&
-        !isCompetencyStructureNoise(lines[cursor]!) &&
-        !/^※/.test(lines[cursor]!)
-      ) {
+      while (cursor < lines.length) {
+        if (isLevelDescriptorLine(lines[cursor]!)) break;
+        if (isBracketQuestionLine(lines[cursor]!)) break;
+        if (isCompetencyItemLabel(lines[cursor]!)) break;
+        if (isCompetencyStructureNoise(lines[cursor]!)) {
+          cursor += 1;
+          continue;
+        }
+        if (/^※/.test(lines[cursor]!)) break;
         raw = joinPdfWrappedText(raw, lines[cursor]!);
         cursor += 1;
       }
@@ -320,9 +418,12 @@ function extractBracketLabeledQuestions(
     }
 
     const promptClean = prompt.replace(/\s+/g, " ").trim();
-    if (promptClean.length < 8) continue;
+    if (promptClean.length < 8) {
+      index += 1;
+      continue;
+    }
 
-    const title = label ? `${label} — ${promptClean}` : promptClean;
+    const title = `${label} — ${promptClean}`;
     const numberMatch = label.match(/^(\d+)\s*[-–]\s*(\d+)/);
     const questionNumber = numberMatch
       ? Number(`${numberMatch[1]}${numberMatch[2]}`)
@@ -333,13 +434,13 @@ function extractBracketLabeledQuestions(
         questionNumber: Number.isFinite(questionNumber)
           ? questionNumber
           : undefined,
-        options: options.length > 0 ? options : ["5수준", "4수준", "3수준", "2수준", "1수준"],
-        rawText: [label, `[질문] ${promptClean}`, ...optionRaw]
-          .filter(Boolean)
-          .join("\n"),
-        confidence: "high",
+        options:
+          options.length >= 3 ? options : defaultLevelOptions(optionRaw),
+        rawText: [label, promptClean, ...optionRaw].filter(Boolean).join("\n"),
+        confidence: options.length >= 3 ? "high" : "medium",
       }),
     );
+    index = cursor > index ? cursor : index + 1;
   }
 
   return questions.length >= 3 ? questions : null;
@@ -556,7 +657,9 @@ function isOpenEndedPromptLine(line: string): boolean {
     /^기타\b.{0,40}(의견|사항)/.test(text) ||
     (/핵심역량\s*진단/.test(text) &&
       /(소감|개선|건의)/.test(text) &&
-      /(작성|기재|기술)/.test(text))
+      /(작성|기재|기술)/.test(text)) ||
+    (/provide your thoughts freely|raise suggestions/i.test(text) &&
+      /(improve|survey|competenc)/i.test(text))
   );
 }
 
@@ -574,13 +677,16 @@ function mergeOpenEndedPrompt(
       isLevelDescriptorLine(next) ||
       isPrivacyConsentLine(next) ||
       /^조사\s*참여에\s*감사/.test(next) ||
+      /^Your cooperation is highly appreciated/i.test(next) ||
       /^--\s*\d+\s*of\s*\d+\s*--/i.test(next)
     ) {
       break;
     }
     if (
       isOpenEndedPromptLine(next) ||
-      /자유롭게|작성해\s*주시|건의사항|개선|수준척도|결과\s*활용/.test(next)
+      /자유롭게|작성해\s*주시|건의사항|개선|수준척도|결과\s*활용|suggestions|improve the survey|rating scale/i.test(
+        next,
+      )
     ) {
       title = joinPdfWrappedText(title, next.replace(/^※\s*/, ""));
       end = i;
@@ -601,6 +707,9 @@ function isGarbageQuestion(question: ExtractedSurveyQuestion): boolean {
   if (/안녕하십니까|안녕하세요\s*\?|설문에\s*응답해\s*주셔서|대단히\s*감사/.test(title)) {
     return true;
   }
+  if (/^Dear\b|kind cooperation would be highly appreciated/i.test(title)) {
+    return true;
+  }
   if (/IR\s*센터입니다|성실한\s*참여를\s*부탁드립니다/.test(title)) return true;
   if (/참여자\s*,\s*관람객|대회참여자|조사\s*대상/.test(title) && title.length <= 40) {
     return true;
@@ -615,7 +724,10 @@ function isGarbageQuestion(question: ExtractedSurveyQuestion): boolean {
   if (
     /^[○●◎]\s*수집\s*및\s*이용\s*항목/.test(title) ||
     /^[○●◎]\s*수집\s*및\s*이용\s*목적/.test(title) ||
-    /^[○●◎]\s*보유\s*및\s*이용기간/.test(title)
+    /^[○●◎]\s*보유\s*및\s*이용기간/.test(title) ||
+    /^[○●◎]\s*Information collected and used/i.test(title) ||
+    /^[○●◎]\s*Purpose of collecting/i.test(title) ||
+    /^[○●◎]\s*The duration that the data/i.test(title)
   ) {
     return true;
   }
@@ -626,11 +738,21 @@ function isGarbageQuestion(question: ExtractedSurveyQuestion): boolean {
   ) {
     return true;
   }
-  // Competency category labels without the actual [질문] prompt.
+  if (
+    /right to refuse consent/i.test(title) &&
+    !/Do you consent/i.test(title)
+  ) {
+    return true;
+  }
+  // Competency category labels without the actual [질문]/[Q] prompt.
   if (
     isCompetencyItemLabel(title) &&
-    !/\[\s*질문\s*\]|[?？]|습니까|입니까|하시겠|인가요|어느\s*정도/.test(title) &&
-    question.options.every((opt) => /^[1-5]수준$/.test(opt) || opt.length === 0)
+    !/\[\s*(?:질문|Q|Question)\s*\]|[?？]|습니까|입니까|하시겠|인가요|어느\s*정도|\bWhat\b|\bHow\b|\bTo what extent\b|\bDo you\b/i.test(
+      title,
+    ) &&
+    question.options.every(
+      (opt) => /^[1-5]수준$/.test(opt) || /^level\s*[1-5]$/i.test(opt) || opt.length === 0,
+    )
   ) {
     // Keep only if title already embeds a long prompt (label + question text).
     if (title.length < 40) return true;
@@ -786,13 +908,22 @@ export function parseSurveyText(
 
     if (
       isOpenEndedPromptLine(line) ||
-      (/^※/.test(line) && /핵심역량\s*진단|소감|건의/.test(line))
+      (/^※/.test(line) && /핵심역량\s*진단|소감|건의/.test(line)) ||
+      /^Please provide your thoughts freely/i.test(line) ||
+      /^\(Open-ended Question\)/i.test(line)
     ) {
       pushCurrent();
-      const merged = mergeOpenEndedPrompt(lines, index);
-      if (isOpenEndedPromptLine(merged.title) || /자유롭게\s*작성/.test(merged.title)) {
+      const start =
+        /^\(Open-ended Question\)/i.test(line) && index + 1 < lines.length
+          ? index + 1
+          : index;
+      const merged = mergeOpenEndedPrompt(lines, start);
+      if (
+        isOpenEndedPromptLine(merged.title) ||
+        /자유롭게\s*작성|provide your thoughts freely/i.test(merged.title)
+      ) {
         questions.push(makeQuestion(merged.title, { confidence: "medium" }));
-        index = merged.endIndex;
+        index = Math.max(merged.endIndex, start);
         continue;
       }
     }
@@ -852,8 +983,9 @@ export function parseSurveyText(
   if (bracketQuestions) {
     const privacyExtras = extras.filter(
       (q) =>
-        /개인정보|동의|소속|학번|성별|이름|연락처|이메일/.test(q.title) ||
-        q.detectedPersonalDataTypes.length > 0,
+        /개인정보|동의|소속|학번|성별|이름|연락처|이메일|consent|personal information|department|gender|student\s*no/i.test(
+          q.title,
+        ) || q.detectedPersonalDataTypes.length > 0,
     );
     const otherExtras = extras.filter((q) => !privacyExtras.includes(q));
     questions.push(...privacyExtras, ...bracketQuestions, ...otherExtras);
