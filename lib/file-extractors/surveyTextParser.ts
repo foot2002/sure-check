@@ -24,6 +24,17 @@ const AGREEMENT_OPTIONS = [
   "매우 그렇다",
 ] as const;
 
+const IMPORTANCE_OPTIONS = [
+  "매우 낮음",
+  "낮음",
+  "보통",
+  "높음",
+  "매우 높음",
+] as const;
+
+const SCALE_LABEL_RE =
+  /매우\s*불만족|불만족|보통(?:이다)?|만족|매우\s*만족|전혀\s*아니다|아니다|그렇다|매우\s*그렇다|매우\s*낮음|낮음|높음|매우\s*높음/;
+
 const NOISE_LINE_RE =
   /원본\s*그림의\s*이름|원본\s*그림의\s*크기|\.bmp|\.png|\.jpe?g|^\d+(?:\.\d+)?\s*mm$|^#?[0-9A-Fa-f]{6}$|^(?:UTF-?8|SOLID|TABLE|PICTURE|REAL_PIC|PARA|COLUMN|ABSOLUTE|SHOW_ALL|BOTH_SIDES|TOP_AND_BOTTOM|HWPUNIT)$/i;
 
@@ -116,19 +127,43 @@ function isQuestionLine(line: string): boolean {
   );
 }
 
+function isMatrixStemPrompt(line: string): boolean {
+  return (
+    /아래\s*제시/.test(line) &&
+    /(중요|필요|선택해\s*주십시오|응답을\s*선택)/.test(line)
+  );
+}
+
+function extractQuestionLabel(line: string): string | null {
+  const match = line.match(/^(Q\s*\d+(?:\s*[-–]\s*\d+)?)/i);
+  return match?.[1]?.replace(/\s+/g, "") ?? null;
+}
+
 function stripQuestionPrefix(line: string): { number?: number; title: string } {
+  const labeled = line.match(
+    /^(Q\s*\d+(?:\s*[-–]\s*\d+)?)\s*[.)．、:]\s*(.+)$/i,
+  );
+  if (labeled) {
+    const label = labeled[1]!.replace(/\s+/g, "");
+    const rest = labeled[2]!.trim();
+    const number = Number(label.match(/\d+/)?.[0]);
+    return {
+      number: Number.isFinite(number) ? number : undefined,
+      title: `${label}) ${rest}`,
+    };
+  }
   const numbered = line.match(
-    /^(?:Q\s*)?(\d+)(?:\s*[-–]\s*(\d+))?\s*[.)．、:]\s*(.+)$|^(?:DQ|SQ|S|D)\s*(\d+)\s*[.)．、:]\s*(.+)$|^(?:문항|질문|문)\s*(\d+)\s*[.)．:]?\s*(.+)$|^\[\s*문항\s*(\d+)\s*\]\s*(.+)$/i,
+    /^(?:DQ|SQ|S|D)\s*(\d+)\s*[.)．、:]\s*(.+)$|^(?:문항|질문|문)\s*(\d+)\s*[.)．:]?\s*(.+)$|^\[\s*문항\s*(\d+)\s*\]\s*(.+)$|^(?:Q\s*)?(\d+)\s*[.)．、:]\s*(.+)$/i,
   );
   if (numbered) {
     const number = Number(
-      numbered[1] || numbered[4] || numbered[6] || numbered[8],
+      numbered[1] || numbered[3] || numbered[5] || numbered[7],
     );
     const title = (
-      numbered[3] ||
-      numbered[5] ||
-      numbered[7] ||
-      numbered[9] ||
+      numbered[2] ||
+      numbered[4] ||
+      numbered[6] ||
+      numbered[8] ||
       ""
     ).trim();
     return { number: Number.isFinite(number) ? number : undefined, title };
@@ -208,31 +243,47 @@ function splitCells(line: string): string[] {
 
 function isLikertHeaderRow(cells: string[]): boolean {
   const joined = cells.join(" ");
-  const scaleHits = cells.filter((cell) =>
-    /매우\s*불만족|불만족|보통|만족|매우\s*만족|전혀\s*아니다|아니다|그렇다|매우\s*그렇다/.test(
-      cell,
-    ),
-  ).length;
+  const scaleHits = cells.filter((cell) => SCALE_LABEL_RE.test(cell)).length;
   return scaleHits >= 3 || (/항목|항\s*목/.test(joined) && scaleHits >= 2);
 }
 
 function scaleOptionsFromHeader(cells: string[]): string[] {
-  const labels = cells.filter((cell) =>
-    /불만족|만족|보통|아니다|그렇다/.test(cell),
-  );
+  const labels = cells.filter((cell) => SCALE_LABEL_RE.test(cell));
   if (labels.length >= 3) return labels;
   if (/전혀\s*아니다|그렇다/.test(cells.join(" "))) return [...AGREEMENT_OPTIONS];
+  if (/낮음|높음/.test(cells.join(" "))) return [...IMPORTANCE_OPTIONS];
   return [...LIKERT_OPTIONS];
+}
+
+function isBlankScaleMark(cell: string): boolean {
+  return /^[○●◎□■☐☑]$/.test(cell) || cell === "";
 }
 
 function isScaleOnlyCell(cell: string): boolean {
   return (
     /^[①②③④⑤⑥⑦⑧⑨⑩]$/.test(cell) ||
-    /^(매우\s*)?(불)?만족$/.test(cell) ||
-    /^보통(?:이다)?$/.test(cell) ||
-    /^(전혀\s*)?아니다$/.test(cell) ||
-    /^(매우\s*)?그렇다$/.test(cell)
+    isBlankScaleMark(cell) ||
+    SCALE_LABEL_RE.test(cell)
   );
+}
+
+function isMatrixItemRow(cells: string[]): { item: string } | null {
+  if (cells.length < 3) return null;
+  const item = cells[0]?.trim() ?? "";
+  if (!item || item.length < 2) return null;
+  if (/^Q\s*\d+|아래\s*제시|선택해\s*주십시오|항\s*목|구분/.test(item)) {
+    return null;
+  }
+  if (isOptionLine(item) || isLikertHeaderRow(cells)) return null;
+  const rest = cells.slice(1);
+  const scaleMarks = rest.filter(
+    (cell) => isBlankScaleMark(cell) || /^[①②③④⑤⑥⑦⑧⑨⑩]$/.test(cell),
+  ).length;
+  // Excel/HWP matrix rows: label + empty circles/checkboxes across the scale.
+  if (scaleMarks >= 3 && scaleMarks === rest.length) {
+    return { item };
+  }
+  return null;
 }
 
 function looksLikeStatement(cell: string): boolean {
@@ -252,7 +303,7 @@ function looksLikeStatement(cell: string): boolean {
 }
 
 function parseTableRowLine(line: string): {
-  kind: "options" | "likert_question" | "header" | "ignore";
+  kind: "options" | "likert_question" | "header" | "ignore" | "matrix_item";
   title?: string;
   options?: string[];
   useScale?: boolean;
@@ -261,6 +312,15 @@ function parseTableRowLine(line: string): {
   const cells = splitCells(line);
   if (cells.length < 2) return null;
   if (isLikertHeaderRow(cells)) return { kind: "header" };
+
+  const matrixItem = isMatrixItemRow(cells);
+  if (matrixItem) {
+    return {
+      kind: "matrix_item",
+      title: matrixItem.item,
+      useScale: true,
+    };
+  }
 
   if (cells.every((cell) => isOptionLine(cell) || isScaleOnlyCell(cell))) {
     return {
@@ -271,7 +331,9 @@ function parseTableRowLine(line: string): {
     };
   }
 
-  const contentCells = cells.filter((cell) => !isScaleOnlyCell(cell));
+  const contentCells = cells.filter(
+    (cell) => !isScaleOnlyCell(cell) && !isBlankScaleMark(cell),
+  );
   const statement =
     contentCells.find((cell) => /(다|것이다|까|요|습니다)\s*[.…]?$/.test(cell) && cell.length >= 8) ||
     contentCells.find((cell) => looksLikeStatement(cell)) ||
@@ -285,7 +347,9 @@ function parseTableRowLine(line: string): {
       stem && statement !== stem && !statement.includes(stem.replace(/\s*\(로\)\s*$/, "").slice(-6))
         ? `${stem.replace(/\s*\(로\)\s*$/, "")} ${statement}`.replace(/\s+/g, " ").trim()
         : statement;
-    const hasScale = cells.some((cell) => isScaleOnlyCell(cell));
+    const hasScale = cells.some(
+      (cell) => isScaleOnlyCell(cell) || isBlankScaleMark(cell),
+    );
     return {
       kind: "likert_question",
       title,
@@ -393,6 +457,7 @@ export function parseSurveyText(
   const questions: ExtractedSurveyQuestion[] = [];
   let current: ExtractedSurveyQuestion | null = null;
   let activeScaleOptions: string[] = [...LIKERT_OPTIONS];
+  let activeMatrixPrefix: string | null = null;
 
   const pushCurrent = () => {
     if (current) {
@@ -419,6 +484,17 @@ export function parseSurveyText(
         }
         continue;
       }
+      if (tableRow.kind === "matrix_item" && tableRow.title) {
+        pushCurrent();
+        const title = activeMatrixPrefix
+          ? `${activeMatrixPrefix}) ${tableRow.title}`
+          : tableRow.title;
+        current = makeQuestion(title, { confidence: "medium" });
+        current.options.push(...activeScaleOptions);
+        current.rawText = line;
+        pushCurrent();
+        continue;
+      }
       if (tableRow.kind === "likert_question" && tableRow.title) {
         pushCurrent();
         current = makeQuestion(tableRow.title, { confidence: "medium" });
@@ -435,8 +511,19 @@ export function parseSurveyText(
 
     if (isQuestionLine(line)) {
       pushCurrent();
+      if (isMatrixStemPrompt(line)) {
+        activeMatrixPrefix = extractQuestionLabel(line);
+        // Stem is a matrix intro — wait for item rows instead of emitting alone.
+        continue;
+      }
+      activeMatrixPrefix = null;
       current = makeQuestion(line);
       continue;
+    }
+
+    // Section headers clear the active matrix context.
+    if (/^[ⅣⅤⅥⅦⅧⅨⅩIVX\d]+[\.．、)]/.test(line) || /^[ⅣⅤⅥⅦⅧⅨⅩ]/.test(line)) {
+      activeMatrixPrefix = null;
     }
 
     if (isPrivacyConsentLine(line)) {
