@@ -212,7 +212,14 @@ const CATEGORY_RULES: { category: string; patterns: RegExp[] }[] = [
   { category: "organization_identifier", patterns: [/사번/] },
   {
     category: "gender",
-    patterns: [/성별/, /남자/, /여자/, /남성/, /여성/],
+    patterns: [
+      /성별/,
+      /(?:^|[^가-힣])남자(?:[^가-힣]|$)/,
+      /(?:^|[^가-힣])여자(?:[^가-힣]|$)/,
+      /남성/,
+      /여성/,
+      /남\s*[·∙･/]\s*여/,
+    ],
   },
   {
     category: "child_age_range",

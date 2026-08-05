@@ -8,13 +8,41 @@ import {
   isPersonalDataCategory,
 } from "@/lib/extractors/htmlTextUtils";
 
+const LIKERT_OPTIONS = [
+  "매우 불만족",
+  "불만족",
+  "보통",
+  "만족",
+  "매우 만족",
+] as const;
+
+const AGREEMENT_OPTIONS = [
+  "전혀 아니다",
+  "아니다",
+  "보통이다",
+  "그렇다",
+  "매우 그렇다",
+] as const;
+
+const NOISE_LINE_RE =
+  /원본\s*그림의\s*이름|원본\s*그림의\s*크기|\.bmp|\.png|\.jpe?g|^\d+(?:\.\d+)?\s*mm$|^#?[0-9A-Fa-f]{6}$|^(?:UTF-?8|SOLID|TABLE|PICTURE|REAL_PIC|PARA|COLUMN|ABSOLUTE|SHOW_ALL|BOTH_SIDES|TOP_AND_BOTTOM|HWPUNIT)$/i;
+
+function isNoiseLine(line: string): boolean {
+  if (!line) return true;
+  if (NOISE_LINE_RE.test(line)) return true;
+  if (/^\d+(?:\.\d+)?$/.test(line) && line.length <= 12) return true;
+  if (/^[A-Z_]{3,}$/.test(line)) return true;
+  if (/^그림입니다\.?$/.test(line)) return true;
+  return false;
+}
+
 function cleanLines(text: string): string[] {
   return text
     .replace(/\r\n/g, "\n")
     .replace(/\u00a0/g, " ")
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+    .filter((line) => line && !isNoiseLine(line));
 }
 
 function detectToolFromText(
@@ -75,10 +103,12 @@ function isOptionLine(line: string): boolean {
 
 function isQuestionLine(line: string): boolean {
   if (isOptionLine(line)) return false;
+  if (isNoiseLine(line)) return false;
   return (
-    /^(?:Q\s*)?\d+(?:\s*[-–]\s*\d+)?\s*[.)．、]/.test(line) ||
-    /^Q\d+(?:\s*[-–]\s*\d+)?\s*[.)．、:]/i.test(line) ||
-    /^S(?:Q)?\s*\d+\s*[.)．、:]/i.test(line) ||
+    /^(?:Q\s*)?\d+(?:\s*[-–]\s*\d+)?\s*[.)．、]\s*\S+/.test(line) ||
+    /^Q\d+(?:\s*[-–]\s*\d+)?\s*[.)．、:]\s*\S+/i.test(line) ||
+    /^S(?:Q)?\s*\d+\s*[.)．、:]\s*\S+/i.test(line) ||
+    /^D(?:Q)?\s*\d+\s*[.)．、:]\s*\S+/i.test(line) ||
     /^문항\s*\d+/.test(line) ||
     /^질문\s*\d+/.test(line) ||
     /^\[\s*문항\s*\d+\s*\]/.test(line) ||
@@ -88,7 +118,7 @@ function isQuestionLine(line: string): boolean {
 
 function stripQuestionPrefix(line: string): { number?: number; title: string } {
   const numbered = line.match(
-    /^(?:Q\s*)?(\d+)(?:\s*[-–]\s*(\d+))?\s*[.)．、:]\s*(.+)$|^(?:SQ|S)\s*(\d+)\s*[.)．、:]\s*(.+)$|^(?:문항|질문|문)\s*(\d+)\s*[.)．:]?\s*(.+)$|^\[\s*문항\s*(\d+)\s*\]\s*(.+)$/i,
+    /^(?:Q\s*)?(\d+)(?:\s*[-–]\s*(\d+))?\s*[.)．、:]\s*(.+)$|^(?:DQ|SQ|S|D)\s*(\d+)\s*[.)．、:]\s*(.+)$|^(?:문항|질문|문)\s*(\d+)\s*[.)．:]?\s*(.+)$|^\[\s*문항\s*(\d+)\s*\]\s*(.+)$/i,
   );
   if (numbered) {
     const number = Number(
@@ -131,15 +161,18 @@ const PII_FIELD_LABEL_PATTERN =
 
 function isPrivacyConsentLine(line: string): boolean {
   if (/개인정보\s*수집\s*·?\s*이용\s*동의/.test(line)) return true;
-  // Require both agree and disagree cues on the same line.
-  // Avoid matching "비동의" alone via the substring "동의".
   const hasAgree = /(^|[^비])동의/.test(line) || /동의함|동의합니다/.test(line);
   const hasDisagree = /비동의|동의하지\s*않|거부/.test(line);
   return hasAgree && hasDisagree;
 }
 
 function isPiiFieldOrSolicitation(line: string): boolean {
-  if (/개인정보를 제공받는 자|수집\s*·?\s*이용\s*목적|보유\s*(및|&)?\s*이용\s*기간|귀하는 개인정보/.test(line) && line.length > 80) {
+  if (
+    /개인정보를 제공받는 자|수집\s*·?\s*이용\s*목적|보유\s*(및|&)?\s*이용\s*기간|귀하는 개인정보/.test(
+      line,
+    ) &&
+    line.length > 80
+  ) {
     return false;
   }
   if (PII_FIELD_LABEL_PATTERN.test(line)) return true;
@@ -166,6 +199,118 @@ function isPiiFieldOrSolicitation(line: string): boolean {
   );
 }
 
+function splitCells(line: string): string[] {
+  return line
+    .split(/\s*\|\s*/)
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+}
+
+function isLikertHeaderRow(cells: string[]): boolean {
+  const joined = cells.join(" ");
+  const scaleHits = cells.filter((cell) =>
+    /매우\s*불만족|불만족|보통|만족|매우\s*만족|전혀\s*아니다|아니다|그렇다|매우\s*그렇다/.test(
+      cell,
+    ),
+  ).length;
+  return scaleHits >= 3 || (/항목|항\s*목/.test(joined) && scaleHits >= 2);
+}
+
+function scaleOptionsFromHeader(cells: string[]): string[] {
+  const labels = cells.filter((cell) =>
+    /불만족|만족|보통|아니다|그렇다/.test(cell),
+  );
+  if (labels.length >= 3) return labels;
+  if (/전혀\s*아니다|그렇다/.test(cells.join(" "))) return [...AGREEMENT_OPTIONS];
+  return [...LIKERT_OPTIONS];
+}
+
+function isScaleOnlyCell(cell: string): boolean {
+  return (
+    /^[①②③④⑤⑥⑦⑧⑨⑩]$/.test(cell) ||
+    /^(매우\s*)?(불)?만족$/.test(cell) ||
+    /^보통(?:이다)?$/.test(cell) ||
+    /^(전혀\s*)?아니다$/.test(cell) ||
+    /^(매우\s*)?그렇다$/.test(cell)
+  );
+}
+
+function looksLikeStatement(cell: string): boolean {
+  if (cell.length < 8) return false;
+  if (isOptionLine(cell)) return false;
+  if (isScaleOnlyCell(cell)) return false;
+  if (/^(프로그램|물리적|상호작용|홍보|수준|환경|항목|구분|사회|경제|심미|항\s*목)/.test(cell) && cell.length <= 14) {
+    return false;
+  }
+  // Incomplete matrix stems: "보령컵…개최는(로)", "보령컵…대회는"
+  if (/\(로\)\s*$/.test(cell) || /(?:는|은|이|가)\s*$/.test(cell)) return false;
+  return (
+    /(다|까|요|습니다|습니까|이다|인가|것이다)\s*[.…]?$/.test(cell) ||
+    (/보령|행사|프로그램|만족|접근성|홍보|요원|환경|다양|매끄럽/.test(cell) &&
+      /(다|요|까|것이다)\s*$/.test(cell))
+  );
+}
+
+function parseTableRowLine(line: string): {
+  kind: "options" | "likert_question" | "header" | "ignore";
+  title?: string;
+  options?: string[];
+  useScale?: boolean;
+} | null {
+  if (!line.includes("|")) return null;
+  const cells = splitCells(line);
+  if (cells.length < 2) return null;
+  if (isLikertHeaderRow(cells)) return { kind: "header" };
+
+  if (cells.every((cell) => isOptionLine(cell) || isScaleOnlyCell(cell))) {
+    return {
+      kind: "options",
+      options: cells.map((cell) =>
+        cell.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim(),
+      ),
+    };
+  }
+
+  const contentCells = cells.filter((cell) => !isScaleOnlyCell(cell));
+  const statement =
+    contentCells.find((cell) => /(다|것이다|까|요|습니다)\s*[.…]?$/.test(cell) && cell.length >= 8) ||
+    contentCells.find((cell) => looksLikeStatement(cell)) ||
+    contentCells
+      .filter((cell) => cell.length >= 12 && !/(?:는|은|이|가|\(로\))\s*$/.test(cell))
+      .sort((a, b) => b.length - a.length)[0];
+
+  if (statement && (looksLikeStatement(statement) || /(다|것이다|까|요)\s*$/.test(statement))) {
+    const stem = contentCells.find((cell) => /(?:는|은|\(로\))\s*$/.test(cell));
+    const title =
+      stem && statement !== stem && !statement.includes(stem.replace(/\s*\(로\)\s*$/, "").slice(-6))
+        ? `${stem.replace(/\s*\(로\)\s*$/, "")} ${statement}`.replace(/\s+/g, " ").trim()
+        : statement;
+    const hasScale = cells.some((cell) => isScaleOnlyCell(cell));
+    return {
+      kind: "likert_question",
+      title,
+      useScale: hasScale,
+    };
+  }
+
+  return { kind: "ignore" };
+}
+
+function normalizeOptionText(line: string): string[] {
+  const option = line
+    .replace(/^[①②③④⑤⑥⑦⑧⑨⑩가-하ⓐ-ⓔ○●◎□■☐☑]\s*[.)．]?\s*/, "")
+    .replace(/^[-•▪◦]\s+/, "")
+    .trim();
+  if (!option || /^[-–—_·.]{1,8}$/.test(option.replace(/\s+/g, ""))) return [];
+  const parts = option
+    .split(/\s*[○●◎□■☐☑]\s*/)
+    .map((part) => part.trim())
+    .filter(
+      (part) => part && !/^[-–—_·.]{1,8}$/.test(part.replace(/\s+/g, "")),
+    );
+  return parts.length > 1 ? parts : [option];
+}
+
 function makeQuestion(
   line: string,
   extras?: Partial<ExtractedSurveyQuestion>,
@@ -183,6 +328,34 @@ function makeQuestion(
     confidence: extras?.confidence ?? "medium",
     ...extras,
   };
+}
+
+function isGarbageQuestion(question: ExtractedSurveyQuestion): boolean {
+  const title = question.title.trim();
+  if (!title || title.length < 2) return true;
+  if (isNoiseLine(title)) return true;
+  if (/^\d+$/.test(title)) return true;
+  if (/원본\s*그림|\.bmp|\.png/i.test(title)) return true;
+  if (/^\d+(?:\.\d+)?\s*mm$/i.test(title)) return true;
+  if (/안녕하십니까|설문에\s*응답해\s*주셔서|대단히\s*감사/.test(title)) return true;
+  if (/참여자\s*,\s*관람객|대회참여자|조사\s*대상/.test(title) && title.length <= 40) {
+    return true;
+  }
+  if (
+    title.length <= 8 &&
+    /^(관광객|참여자|관람객|프로그램|홍보|환경|상호작용)$/.test(title)
+  ) {
+    return true;
+  }
+  // Title-only lines without a prompt
+  if (
+    /만족도\s*및\s*파급효과\s*조사|만족도\s*조사\s*설문/.test(title) &&
+    !/[?？]$/.test(title) &&
+    question.options.length === 0
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -204,6 +377,7 @@ export function parseSurveyText(
 
   const questions: ExtractedSurveyQuestion[] = [];
   let current: ExtractedSurveyQuestion | null = null;
+  let activeScaleOptions: string[] = [...LIKERT_OPTIONS];
 
   const pushCurrent = () => {
     if (current) {
@@ -214,6 +388,35 @@ export function parseSurveyText(
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
+
+    const tableRow = parseTableRowLine(line);
+    if (tableRow) {
+      if (tableRow.kind === "header") {
+        const cells = splitCells(line);
+        activeScaleOptions = scaleOptionsFromHeader(cells);
+        continue;
+      }
+      if (tableRow.kind === "ignore") continue;
+      if (tableRow.kind === "options") {
+        if (current && tableRow.options?.length) {
+          current.options.push(...tableRow.options.filter(Boolean));
+          current.rawText += `\n${line}`;
+        }
+        continue;
+      }
+      if (tableRow.kind === "likert_question" && tableRow.title) {
+        pushCurrent();
+        current = makeQuestion(tableRow.title, { confidence: "medium" });
+        if (tableRow.useScale) {
+          current.options.push(...activeScaleOptions);
+        } else if (tableRow.options?.length) {
+          current.options.push(...tableRow.options);
+        }
+        current.rawText = line;
+        pushCurrent();
+        continue;
+      }
+    }
 
     if (isQuestionLine(line)) {
       pushCurrent();
@@ -247,22 +450,19 @@ export function parseSurveyText(
     }
 
     if (current && isOptionLine(line)) {
-      const option = line
-        .replace(/^[①②③④⑤⑥⑦⑧⑨⑩가-하ⓐ-ⓔ○●◎□■☐☑]\s*[.)．]?\s*/, "")
-        .replace(/^[-•▪◦]\s+/, "")
-        .trim();
-      if (option && !/^[-–—_·.]{1,8}$/.test(option.replace(/\s+/g, ""))) {
-        // Split inline multi-options: "○ 남성 ○ 여성"
-        const parts = option
-          .split(/\s*[○●◎□■☐☑]\s*/)
-          .map((part) => part.trim())
-          .filter(
-            (part) =>
-              part && !/^[-–—_·.]{1,8}$/.test(part.replace(/\s+/g, "")),
-          );
-        current.options.push(...(parts.length > 1 ? parts : [option]));
-      }
+      current.options.push(...normalizeOptionText(line));
       current.rawText += `\n${line}`;
+      continue;
+    }
+
+    // Open numeric age field under DQ age questions.
+    if (current && /만\s*\(.*\)\s*세/.test(line)) {
+      current.rawText += `\n${line}`;
+      if (current.options.length === 0) current.options.push(line);
+      const cats = detectCategories(`${current.title}\n${line}`);
+      current.detectedPersonalDataTypes = [
+        ...new Set([...current.detectedPersonalDataTypes, ...cats]),
+      ];
       continue;
     }
 
@@ -273,18 +473,26 @@ export function parseSurveyText(
       continue;
     }
 
-    // 문항 번호 없이 개인정보/준식별 키워드만 있는 짧은 줄도 문항 후보로 채택
+    // Unnumbered statement rows (common in HWPX Likert tables without pipes).
+    if (
+      !current &&
+      looksLikeStatement(line) &&
+      !/다음은|바랍니다|작성하여|평가해|해당되는|일환으로|목적으로\s*작성|알아보기\s*위한/.test(
+        line,
+      ) &&
+      line.length <= 120
+    ) {
+      questions.push(makeQuestion(line, { confidence: "low" }));
+      continue;
+    }
+
     if (
       !current &&
       line.length <= 80 &&
       detectCategories(line).some(isPersonalDataCategory) &&
       !/개인정보|수집\s*목적|보유기간|파기|동의/.test(line)
     ) {
-      questions.push(
-        makeQuestion(line, {
-          confidence: "low",
-        }),
-      );
+      questions.push(makeQuestion(line, { confidence: "low" }));
     }
   }
 
@@ -302,8 +510,8 @@ export function parseSurveyText(
   ]);
   const title = guessTitle(lines);
 
-  // 제목·주체 안내 줄은 문항 후보에서 제외
   const filteredQuestions = questions.filter((question) => {
+    if (isGarbageQuestion(question)) return false;
     if (question.title === title) return false;
     if (subject && question.title.includes(subject) && question.title.length < 40) {
       return false;
@@ -311,14 +519,30 @@ export function parseSurveyText(
     return !/(?:주관|주최|시행|조사기관|운영기관)\s*[:：]/.test(question.rawText);
   });
 
+  // Deduplicate identical titles keeping the richer options set.
+  const deduped: ExtractedSurveyQuestion[] = [];
+  const seen = new Map<string, number>();
+  for (const question of filteredQuestions) {
+    const key = question.title.replace(/\s+/g, "");
+    const existing = seen.get(key);
+    if (existing == null) {
+      seen.set(key, deduped.length);
+      deduped.push(question);
+      continue;
+    }
+    if (question.options.length > deduped[existing]!.options.length) {
+      deduped[existing] = question;
+    }
+  }
+
   const status: ExtractedSurveyDocument["extractionStatus"] =
-    filteredQuestions.length >= 2
+    deduped.length >= 2
       ? "success"
-      : filteredQuestions.length === 1 || text.length > 400
+      : deduped.length === 1 || text.length > 400
         ? "partial"
         : "failed";
 
-  if (filteredQuestions.length === 0 && questions.length > 0) {
+  if (deduped.length === 0 && questions.length > 0) {
     limitations.push("문항으로 보이는 줄이 제목·안내와 겹쳐 제외되었습니다.");
   }
 
@@ -334,7 +558,7 @@ export function parseSurveyText(
     detectedContact: contact,
     detectedNoticeText: notice,
     detectedPrivacyNoticeText: notice,
-    questions: filteredQuestions,
+    questions: deduped,
     extractionStatus: status,
     extractionLimitations: limitations,
     detectedToolFromText: detectToolFromText(text),
