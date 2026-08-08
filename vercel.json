@@ -19,11 +19,11 @@
       "memory": 1024
     },
     "app/api/internal/collector/run/a/route.ts": {
-      "maxDuration": 120,
+      "maxDuration": 300,
       "memory": 1024
     },
     "app/api/internal/collector/run/b/route.ts": {
-      "maxDuration": 120,
+      "maxDuration": 300,
       "memory": 1024
     },
     "app/api/internal/collector/revalidate/route.ts": {

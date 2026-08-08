@@ -81,7 +81,10 @@ export function getPartitionApiBudget(
   };
 }
 
-/** Soft wall-clock target per partition (leave headroom under 120s). */
+/**
+ * Soft wall-clock targets per partition (prefer ≤~75–180s).
+ * Vercel /run/a|/run/b maxDuration=300 is timeout ceiling only — do not fill it.
+ */
 export const COLLECTOR_PARTITION_RUNTIME_TARGET_MS = 60_000;
 export const COLLECTOR_PARTITION_RUNTIME_MAX_MS = 75_000;
 
