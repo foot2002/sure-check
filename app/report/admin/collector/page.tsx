@@ -57,6 +57,7 @@ export default async function AdminCollectorPage({
     novelty: pick("novelty") || "all",
     sourceType: pick("sourceType") || "all",
     triageQueue: pick("triageQueue") || "all",
+    diagnosisStatus: pick("diagnosisStatus") || "all",
     q: pick("q") || "",
   };
 
@@ -96,13 +97,20 @@ export default async function AdminCollectorPage({
             | "B_PRIORITY"
             | "C_ARCHIVE"
             | "all",
+          diagnosisStatus: filters.diagnosisStatus as
+            | "all"
+            | "undiagnosed"
+            | "queued"
+            | "running"
+            | "completed"
+            | "failed",
           q: filters.q || undefined,
         }),
       ]);
     } catch (err) {
       console.error("[admin-collector-page]", err);
       error =
-        "수집 목록을 불러오지 못했습니다. migration 004–006이 적용됐는지 확인하세요.";
+        "수집 목록을 불러오지 못했습니다. migration 004–007이 적용됐는지 확인하세요.";
     }
   }
 

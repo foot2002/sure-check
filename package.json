@@ -26,6 +26,7 @@
     "review:a-priority-100": "tsx scripts/review-a-priority-100.ts",
     "test:collector-triage-canary": "tsx scripts/test-collector-triage-canary.ts",
     "test:collector-partition-quota": "tsx scripts/test-collector-partition-quota.ts",
+    "test:collector-diagnosis-bridge": "tsx scripts/test-collector-diagnosis-bridge.ts",
     "prep:fast-track-canary": "tsx scripts/fast-track-canary-prep.ts",
     "test:collector-partitions": "tsx scripts/test-collector-partitions-dryrun.ts",
     "verify:prod-partitions": "tsx scripts/prod-verify-partitions.ts",

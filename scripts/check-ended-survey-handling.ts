@@ -128,6 +128,27 @@ async function main(): Promise<void> {
   console.log(`  result: ${metaOk && formOk ? "PASS" : "FAIL"}`);
   if (!(metaOk && formOk)) failures += 1;
 
+  // Recoverable JS-dynamic limited reasons must NOT skip browser fallback.
+  const recoverable = [
+    makeLimitedForm(
+      "naver_forms",
+      "JavaScript 실행 후 문항이 로딩되는 구조로 fetch 기반 추출이 제한됩니다.",
+    ),
+    makeLimitedForm(
+      "moaform",
+      "모아폼 페이지는 확인했지만, 설문 문항을 자동으로 읽지 못했습니다.",
+    ),
+  ];
+  for (const form of recoverable) {
+    const skip = shouldSkipBrowserFallback(form);
+    const nonActionable = isNonActionableLimitedForm(form);
+    const ok = !skip && !nonActionable;
+    console.log(
+      `recoverable ${form.platform}: skip=${skip} nonActionable=${nonActionable} → ${ok ? "PASS" : "FAIL"}`,
+    );
+    if (!ok) failures += 1;
+  }
+
   if (failures > 0) {
     console.log(`\nOverall: FAIL (${failures})`);
     process.exit(1);

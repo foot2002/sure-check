@@ -121,26 +121,8 @@ export async function extractWithAccuracyGate(params: {
     };
   }
 
-  // Only browser-fallback when the form still looks actionable but extraction is weak.
-  const looksActionable =
-    !first.isLimited &&
-    !NON_ACTIONABLE_LIMITED_MESSAGE.includes(first.limitedReason || "");
-
-  if (!looksActionable && first.isLimited) {
-    return {
-      form: asLimitedForm(first),
-      meta: {
-        ...meta,
-        extractionMode: "limited",
-        browserUsed: false,
-        fallbackTriggered: false,
-        fallbackReason: gate.fallbackReason ?? "limited_no_browser",
-        extractDurationMs: Date.now() - extractStarted,
-      },
-      html: params.html,
-      finalUrl: params.finalUrl,
-    };
-  }
+  // Non-actionable forms already returned above. Remaining weak / zero-question
+  // limited results (e.g. Naver/Moaform JS shells) use extract-only browser fallback.
 
   const browser = await fetchHtmlWithExtractBrowser(
     params.finalUrl || params.formUrl,

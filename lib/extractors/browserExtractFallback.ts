@@ -16,12 +16,18 @@ const BLOCKED_URL_RE =
  * Extract-only browser fallback.
  * Blocks images/fonts/media/analytics to speed extraction.
  * NEVER use this for evidence/screenshot capture paths.
+ *
+ * Naver/Moaform SPA shells keep stylesheets (needed for some hydration paths)
+ * and reuse the same readiness selectors as evidence capture gotoSurveyPage.
  */
 export async function fetchHtmlWithExtractBrowser(
   url: string,
 ): Promise<{ ok: true; html: string; finalUrl: string } | { ok: false; reason: string }> {
   const timeoutMs =
     (getJobWorkerConfig().browserExtractTimeoutSeconds || 30) * 1000;
+  const isNaverForm = /form\.naver\.com/i.test(url);
+  const isMoaform = /moaform\.com|surveyl\.ink/i.test(url);
+  const isSpaForm = isNaverForm || isMoaform;
 
   try {
     return await withTimeout(
@@ -33,7 +39,10 @@ export async function fetchHtmlWithExtractBrowser(
           page.on("request", (req) => {
             const type = req.resourceType();
             const reqUrl = req.url();
-            if (BLOCKED_RESOURCE_TYPES.has(type) || BLOCKED_URL_RE.test(reqUrl)) {
+            const blockType =
+              BLOCKED_RESOURCE_TYPES.has(type) &&
+              !(isSpaForm && type === "stylesheet");
+            if (blockType || BLOCKED_URL_RE.test(reqUrl)) {
               void req.abort();
               return;
             }
@@ -44,8 +53,29 @@ export async function fetchHtmlWithExtractBrowser(
             waitUntil: "domcontentloaded",
             timeout: Math.min(timeoutMs, 25_000),
           });
-          // Allow SPA shells a short settle window without full networkidle.
-          await new Promise((r) => setTimeout(r, 1500));
+          await page
+            .waitForNetworkIdle({ idleTime: 500, timeout: 5_000 })
+            .catch(() => undefined);
+
+          if (isNaverForm) {
+            await page
+              .waitForSelector(
+                ".question_area, .questionnaire_item, #content.questionnaire, button, [role='button']",
+                { timeout: 8_000 },
+              )
+              .catch(() => undefined);
+            await new Promise((r) => setTimeout(r, 500));
+          } else if (isMoaform) {
+            await page
+              .waitForSelector("button.AnswerButton, [class*='Question']", {
+                timeout: 5_000,
+              })
+              .catch(() => undefined);
+            await new Promise((r) => setTimeout(r, 400));
+          } else {
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+
           const html = await page.content();
           const finalUrl = page.url();
           await page.close().catch(() => undefined);

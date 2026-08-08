@@ -19,6 +19,7 @@ type Filters = {
   novelty: string;
   sourceType: string;
   triageQueue: string;
+  diagnosisStatus: string;
   q: string;
 };
 
@@ -231,6 +232,48 @@ export function CollectorConsoleView({
                 {typeof value === "number"
                   ? value.toLocaleString("ko-KR")
                   : value}
+              </p>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {summary?.diagnosis ? (
+        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["대기", summary.diagnosis.queued, "border-sky-800/50 text-sky-100"],
+            [
+              "진행",
+              summary.diagnosis.running,
+              "border-sky-800/50 text-sky-100",
+            ],
+            [
+              "완료",
+              summary.diagnosis.completed,
+              "border-emerald-800/50 text-emerald-100",
+            ],
+            [
+              "제한 진단",
+              summary.diagnosis.limited,
+              "border-amber-800/50 text-amber-100",
+            ],
+            [
+              "실패",
+              summary.diagnosis.failed,
+              "border-rose-800/50 text-rose-100",
+            ],
+          ].map(([label, value, tone]) => (
+            <div
+              key={String(label)}
+              className={`rounded-xl border bg-slate-900/50 p-3 ${String(tone).split(" ")[0]}`}
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                {label}
+              </p>
+              <p
+                className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
+              >
+                {Number(value).toLocaleString("ko-KR")}
               </p>
             </div>
           ))}
@@ -549,6 +592,24 @@ export function CollectorConsoleView({
             <option value="C_ARCHIVE">C_ARCHIVE</option>
           </select>
         </label>
+        <label className="text-xs text-slate-400">
+          자동진단
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-white"
+            value={form.diagnosisStatus || "all"}
+            onChange={(e) =>
+              setForm({ ...form, diagnosisStatus: e.target.value })
+            }
+          >
+            <option value="all">전체</option>
+            <option value="undiagnosed">미진단</option>
+            <option value="queued">대기</option>
+            <option value="running">진단중</option>
+            <option value="completed">완료</option>
+            <option value="limited">제한 진단</option>
+            <option value="failed">실패</option>
+          </select>
+        </label>
         <label className="text-xs text-slate-400 md:col-span-2">
           제목/URL 검색
           <input
@@ -598,6 +659,58 @@ export function CollectorConsoleView({
                         >
                           {item.triage_queue}
                         </span>
+                      ) : null}
+                      <span
+                        className={`rounded border px-1.5 py-0.5 text-[11px] ${
+                          item.diagnosis_status === "completed"
+                            ? "border-emerald-700/50 text-emerald-200"
+                            : item.diagnosis_status === "limited"
+                              ? "border-amber-700/50 text-amber-200"
+                              : item.diagnosis_status === "failed" ||
+                                  item.diagnosis_status === "failed_retryable" ||
+                                  item.diagnosis_status === "failed_final"
+                                ? "border-rose-700/50 text-rose-200"
+                                : "border-sky-700/50 text-sky-200"
+                        }`}
+                      >
+                        진단{" "}
+                        {item.diagnosis_status === "completed"
+                          ? "완료"
+                          : item.diagnosis_status === "queued"
+                            ? "대기"
+                            : item.diagnosis_status === "running"
+                              ? "중"
+                              : item.diagnosis_status === "limited"
+                                ? "제한"
+                                : item.diagnosis_status === "failed" ||
+                                    item.diagnosis_status ===
+                                      "failed_retryable" ||
+                                    item.diagnosis_status === "failed_final"
+                                  ? "실패"
+                                  : "미진단"}
+                      </span>
+                      {item.diagnosis_status === "completed" &&
+                      (item.diagnosis_score != null || item.diagnosis_grade) ? (
+                        <span className="text-[11px] text-slate-300">
+                          점수 {item.diagnosis_score ?? "—"} /{" "}
+                          {item.diagnosis_grade ?? "—"}
+                        </span>
+                      ) : null}
+                      {item.diagnosis_status === "limited" ? (
+                        <span className="text-[11px] text-amber-200/90">
+                          제한 진단
+                          {item.diagnosis_extractor
+                            ? ` · ${item.diagnosis_extractor}`
+                            : ""}
+                        </span>
+                      ) : null}
+                      {item.diagnosis_job_id ? (
+                        <Link
+                          href={`/report/${item.diagnosis_job_id}`}
+                          className="text-[11px] font-semibold text-teal-300 underline-offset-2 hover:underline"
+                        >
+                          리포트
+                        </Link>
                       ) : null}
                       <span
                         className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${

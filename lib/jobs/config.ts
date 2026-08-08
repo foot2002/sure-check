@@ -9,17 +9,19 @@ export function getJobWorkerConfig() {
   return {
     scanConcurrency: readInt("SCAN_WORKER_CONCURRENCY", 3),
     captureConcurrency: readInt("CAPTURE_WORKER_CONCURRENCY", 1),
-    scanTimeoutSeconds: readInt("SCAN_JOB_TIMEOUT_SECONDS", 60),
+    // Headroom for platform parse + optional extract-only browser fallback
+    // (browser ≤~30s) while staying under Vercel scan route maxDuration=120s.
+    scanTimeoutSeconds: readInt("SCAN_JOB_TIMEOUT_SECONDS", 90),
     captureTimeoutSeconds: readInt("CAPTURE_JOB_TIMEOUT_SECONDS", 180),
     browserExtractTimeoutSeconds: readInt(
       "BROWSER_EXTRACT_TIMEOUT_SECONDS",
       30,
     ),
     scanCacheTtlSeconds: readInt("SCAN_CACHE_TTL_SECONDS", 3600),
-    staleScanSeconds: readInt("SCAN_JOB_STALE_SECONDS", 120),
+    staleScanSeconds: readInt("SCAN_JOB_STALE_SECONDS", 180),
     staleCaptureSeconds: readInt("CAPTURE_JOB_STALE_SECONDS", 240),
-    /** Status-poll stale threshold for running scan jobs (default 90s). */
-    scanStatusStaleSeconds: readInt("SCAN_STATUS_STALE_SECONDS", 90),
+    /** Status-poll stale threshold for running scan jobs (default 150s). */
+    scanStatusStaleSeconds: readInt("SCAN_STATUS_STALE_SECONDS", 150),
     /** Status-poll stale threshold for running capture jobs (default 240s). */
     captureStatusStaleSeconds: readInt("CAPTURE_STATUS_STALE_SECONDS", 240),
     /** Client UI hard stop for scan polling (default 120s). */

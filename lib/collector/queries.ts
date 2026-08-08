@@ -1,10 +1,9 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  getLatestCollectionRun,
-  countSurveyLinks,
-  listQueryStatsForRun,
-} from "@/lib/collector/repository";
 import { bestTriageAcrossSources } from "@/lib/collector/candidateTriage";
+import {
+  countDiagnosisLinksByStatus,
+  findDiagnosisLinksBySurveyIds,
+  type SurveyDiagnosisLinkRow,
+} from "@/lib/collector/diagnosisLinkRepository";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -16,6 +15,12 @@ import type {
   SurveyLinkListItem,
   SurveySourceRow,
 } from "@/lib/collector/types";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getLatestCollectionRun,
+  countSurveyLinks,
+  listQueryStatsForRun,
+} from "@/lib/collector/repository";
 
 function startOfTodayKstIso(): string {
   const now = new Date();
@@ -224,6 +229,28 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
   const lastRunCandidates = lastRun?.candidate_links_count ?? 0;
   const lastRunNew = lastRun?.new_surveys_count ?? 0;
 
+  let diagnosis = {
+    queued: 0,
+    running: 0,
+    completed: 0,
+    limited: 0,
+    failed: 0,
+    skipped: 0,
+  };
+  try {
+    const counts = await countDiagnosisLinksByStatus();
+    diagnosis = {
+      queued: counts.queued,
+      running: counts.running,
+      completed: counts.completed,
+      limited: counts.limited,
+      failed: counts.failed_retryable + counts.failed_final,
+      skipped: counts.skipped,
+    };
+  } catch {
+    /* migration 007/008 may not be applied yet */
+  }
+
   return {
     totalSurveys,
     totalLinksAll,
@@ -257,6 +284,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
       lastRunResults > 0 ? lastRunCandidates / lastRunResults : 0,
     lastRunNewSurveyConversionRate:
       lastRunCandidates > 0 ? lastRunNew / lastRunCandidates : 0,
+    diagnosis,
   };
 }
 
@@ -421,10 +449,107 @@ export async function listSurveyLinks(
       };
     });
 
-  const filtered = triageFilter
+  const triageFiltered = triageFilter
     ? mapped.filter((row) => row.triage_queue === triageFilter)
     : mapped;
-  return filtered.slice(0, limit);
+
+  let diagnosisMap = new Map<string, SurveyDiagnosisLinkRow>();
+  try {
+    diagnosisMap = await findDiagnosisLinksBySurveyIds(
+      triageFiltered.map((r) => r.id),
+    );
+  } catch {
+    /* migration 007 optional */
+  }
+
+  const supabaseReport = createSupabaseServerClient();
+  const completedJobIds = [...diagnosisMap.values()]
+    .filter(
+      (d) =>
+        (d.status === "completed" || d.status === "limited") &&
+        d.diagnosis_job_id,
+    )
+    .map((d) => d.diagnosis_job_id!)
+    .slice(0, 80);
+
+  const scoreByJob = new Map<
+    string,
+    { score: number | null; grade: string | null }
+  >();
+  if (completedJobIds.length > 0) {
+    const { data: jobs } = await supabaseReport
+      .from("scan_jobs")
+      .select("id, external_scan_id")
+      .in("external_scan_id", completedJobIds);
+    const jobUuidByExternal = new Map(
+      (jobs || []).map((j) => [String(j.external_scan_id), String(j.id)]),
+    );
+    const uuids = [...jobUuidByExternal.values()];
+    if (uuids.length > 0) {
+      const { data: reports } = await supabaseReport
+        .from("scan_reports")
+        .select("scan_job_id, report_json")
+        .in("scan_job_id", uuids);
+      for (const r of reports || []) {
+        const external = [...jobUuidByExternal.entries()].find(
+          ([, id]) => id === String(r.scan_job_id),
+        )?.[0];
+        if (!external) continue;
+        const json = r.report_json as {
+          score?: number | null;
+          grade?: string | null;
+        } | null;
+        scoreByJob.set(external, {
+          score: typeof json?.score === "number" ? json.score : null,
+          grade: json?.grade ? String(json.grade) : null,
+        });
+      }
+    }
+  }
+
+  const withDiagnosis: SurveyLinkListItem[] = triageFiltered.map((row) => {
+    const link = diagnosisMap.get(row.id);
+    const scores = link?.diagnosis_job_id
+      ? scoreByJob.get(link.diagnosis_job_id)
+      : undefined;
+    return {
+      ...row,
+      diagnosis_status: link?.status ?? "undiagnosed",
+      diagnosis_job_id: link?.diagnosis_job_id ?? null,
+      diagnosis_score:
+        link?.status === "completed" ? (scores?.score ?? null) : null,
+      diagnosis_grade:
+        link?.status === "completed" ? (scores?.grade ?? null) : null,
+      diagnosis_completed_at: link?.completed_at ?? null,
+      diagnosis_extractor: link?.extractor_key ?? null,
+      diagnosis_limited_reason:
+        link?.status === "limited"
+          ? link.last_error || link.skip_reason || null
+          : null,
+    };
+  });
+
+  const diagnosisFilter = filters.diagnosisStatus;
+  const diagnosisFiltered =
+    diagnosisFilter && diagnosisFilter !== "all"
+      ? withDiagnosis.filter((row) => {
+          if (diagnosisFilter === "undiagnosed") {
+            return (
+              !row.diagnosis_status || row.diagnosis_status === "undiagnosed"
+            );
+          }
+          if (diagnosisFilter === "failed") {
+            return (
+              row.diagnosis_status === "failed" ||
+              row.diagnosis_status === "failed_retryable" ||
+              row.diagnosis_status === "failed_final"
+            );
+          }
+          return row.diagnosis_status === diagnosisFilter;
+        })
+      : withDiagnosis;
+
+  return diagnosisFiltered.slice(0, limit);
 }
 
 export async function listSourcesForSurveyLink(

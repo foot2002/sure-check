@@ -192,14 +192,41 @@ export interface CollectorSummary {
   bottomQueries: QueryPerformanceRow[];
   lastRunCandidateConversionRate: number;
   lastRunNewSurveyConversionRate: number;
+  diagnosis?: {
+    queued: number;
+    running: number;
+    completed: number;
+    limited: number;
+    /** failed_retryable + failed_final */
+    failed: number;
+    skipped: number;
+  };
 }
 
 export interface SurveyLinkListItem extends SurveyLinkRow {
   source_count: number;
   sample_source_url: string | null;
   sample_source_title: string | null;
-  /** Computed on read from survey_sources (best across sources). */
+  /** Live triage queue from sources (A/B/C). C is not permanent. */
   triage_queue?: "A_PRIORITY" | "B_PRIORITY" | "C_ARCHIVE" | null;
+  /** Auto-diagnosis linkage (survey_diagnosis_links), if any. */
+  diagnosis_status?:
+    | "queued"
+    | "running"
+    | "completed"
+    | "limited"
+    | "failed_retryable"
+    | "failed_final"
+    | "failed"
+    | "skipped"
+    | "undiagnosed"
+    | null;
+  diagnosis_job_id?: string | null;
+  diagnosis_score?: number | null;
+  diagnosis_grade?: string | null;
+  diagnosis_completed_at?: string | null;
+  diagnosis_extractor?: string | null;
+  diagnosis_limited_reason?: string | null;
 }
 
 export interface SurveyLinkListFilters {
@@ -213,6 +240,16 @@ export interface SurveyLinkListFilters {
   sourceType?: CollectorSourceType | "all";
   /** Live triage queue from sources (A/B/C). C is not permanent. */
   triageQueue?: "A_PRIORITY" | "B_PRIORITY" | "C_ARCHIVE" | "all";
+  diagnosisStatus?:
+    | "all"
+    | "undiagnosed"
+    | "queued"
+    | "running"
+    | "completed"
+    | "limited"
+    | "failed"
+    | "failed_retryable"
+    | "failed_final";
   q?: string;
   limit?: number;
 }

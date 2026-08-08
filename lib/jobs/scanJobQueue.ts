@@ -215,6 +215,58 @@ export async function findCachedCompletedScan(
   return { job: job as QueuedScanJobRow, report };
 }
 
+/**
+ * Any completed scan for this cache_key (no TTL) — collector first-diagnosis dedupe,
+ * including prior manual user diagnoses.
+ */
+export async function findAnyCompletedScanByCacheKey(
+  cacheKey: string,
+): Promise<{ job: QueuedScanJobRow; reportId: string | null } | null> {
+  if (!isMonitoringConfigured()) return null;
+  const supabase = createSupabaseServerClient();
+  const { data: job, error } = await supabase
+    .from("scan_jobs")
+    .select(
+      "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at",
+    )
+    .eq("cache_key", cacheKey)
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`findAnyCompletedScanByCacheKey: ${error.message}`);
+  if (!job?.id) return null;
+
+  const { data: reportRow } = await supabase
+    .from("scan_reports")
+    .select("id")
+    .eq("scan_job_id", job.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    job: job as QueuedScanJobRow,
+    reportId: reportRow?.id ? String(reportRow.id) : null,
+  };
+}
+
+/** Count pending+running scan jobs for dispatcher backpressure. */
+export async function countInProgressScanJobs(): Promise<number> {
+  if (!isMonitoringConfigured()) return 0;
+  await recoverStaleScanJobs();
+  const supabase = createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from("scan_jobs")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["pending", "running"]);
+  if (error) {
+    console.error("[jobs] countInProgressScanJobs", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
 export async function enqueuePendingScanJob(input: {
   externalScanId: string;
   formUrl: string;
