@@ -17,6 +17,7 @@ type Filters = {
   searchQuery: string;
   novelty: string;
   sourceType: string;
+  triageQueue: string;
   q: string;
 };
 
@@ -532,6 +533,19 @@ export function CollectorConsoleView({
             <option value="cafe">카페</option>
           </select>
         </label>
+        <label className="text-xs text-slate-400">
+          검증 큐 (A/B/C)
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-white"
+            value={form.triageQueue || "all"}
+            onChange={(e) => setForm({ ...form, triageQueue: e.target.value })}
+          >
+            <option value="all">전체</option>
+            <option value="A_PRIORITY">A_PRIORITY</option>
+            <option value="B_PRIORITY">B_PRIORITY</option>
+            <option value="C_ARCHIVE">C_ARCHIVE</option>
+          </select>
+        </label>
         <label className="text-xs text-slate-400 md:col-span-2">
           제목/URL 검색
           <input
@@ -569,6 +583,19 @@ export function CollectorConsoleView({
                       <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[11px] font-semibold text-slate-200">
                         {platformLabel(item.platform)}
                       </span>
+                      {item.triage_queue ? (
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${
+                            item.triage_queue === "A_PRIORITY"
+                              ? "border-emerald-500/50 text-emerald-200"
+                              : item.triage_queue === "B_PRIORITY"
+                                ? "border-amber-500/50 text-amber-200"
+                                : "border-slate-500/50 text-slate-400"
+                          }`}
+                        >
+                          {item.triage_queue}
+                        </span>
+                      ) : null}
                       <span
                         className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${
                           item.status === "active"

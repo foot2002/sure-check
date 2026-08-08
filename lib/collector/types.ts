@@ -198,6 +198,8 @@ export interface SurveyLinkListItem extends SurveyLinkRow {
   source_count: number;
   sample_source_url: string | null;
   sample_source_title: string | null;
+  /** Computed on read from survey_sources (best across sources). */
+  triage_queue?: "A_PRIORITY" | "B_PRIORITY" | "C_ARCHIVE" | null;
 }
 
 export interface SurveyLinkListFilters {
@@ -209,6 +211,8 @@ export interface SurveyLinkListFilters {
   searchQuery?: string;
   novelty?: "all" | "new" | "existing";
   sourceType?: CollectorSourceType | "all";
+  /** Live triage queue from sources (A/B/C). C is not permanent. */
+  triageQueue?: "A_PRIORITY" | "B_PRIORITY" | "C_ARCHIVE" | "all";
   q?: string;
   limit?: number;
 }

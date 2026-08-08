@@ -56,6 +56,7 @@ export default async function AdminCollectorPage({
     searchQuery: pick("searchQuery") || "",
     novelty: pick("novelty") || "all",
     sourceType: pick("sourceType") || "all",
+    triageQueue: pick("triageQueue") || "all",
     q: pick("q") || "",
   };
 
@@ -90,6 +91,11 @@ export default async function AdminCollectorPage({
           searchQuery: filters.searchQuery || undefined,
           novelty: filters.novelty as "all" | "new" | "existing",
           sourceType: filters.sourceType as CollectorSourceType | "all",
+          triageQueue: filters.triageQueue as
+            | "A_PRIORITY"
+            | "B_PRIORITY"
+            | "C_ARCHIVE"
+            | "all",
           q: filters.q || undefined,
         }),
       ]);

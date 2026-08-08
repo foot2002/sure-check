@@ -1,4 +1,4 @@
-import {
+﻿import {
   COLLECTOR_MAX_API_CALLS,
   COLLECTOR_MAX_PAGE_VALIDATES,
   COLLECTOR_MAX_RUNTIME_MS,
@@ -9,7 +9,9 @@ import {
 } from "@/lib/collector/config";
 import {
   buildCollectorSearchQueries,
+  resolveCollectorSearchStrategy,
   type CollectorSearchQuery,
+  type CollectorSearchStrategyVariant,
 } from "@/lib/collector/searchQueries";
 import { extractSurveyUrlsFromText } from "@/lib/collector/extractLinks";
 import {
@@ -60,18 +62,39 @@ const CYCLE: Endpoint[] = ["blog", "cafearticle", "webkr"];
 
 /**
  * Domain queries: 2 sources (coverage). Intent: 1 cycling source.
- * With 8 domain + 16 intent → ~32 API calls (under midscale 36).
+ * With 8 domain + 16 intent ??~32 API calls (under midscale 36).
+ * org_v1: 1 source per query so more strategies fit the budget.
  */
 function endpointsForQuery(
   item: CollectorSearchQuery,
   index: number,
+  strategy: CollectorSearchStrategyVariant,
 ): Endpoint[] {
+  if (strategy === "org_v1") {
+    return [CYCLE[index % CYCLE.length]!];
+  }
   if (item.group === "domain") {
     return index % 2 === 0
       ? ["blog", "webkr"]
       : ["cafearticle", "webkr"];
   }
   return [CYCLE[index % CYCLE.length]!];
+}
+
+function resolveSort(
+  item: CollectorSearchQuery,
+  endpointIndex: number,
+  strategy: CollectorSearchStrategyVariant,
+): "sim" | "date" {
+  if (strategy === "org_v1") {
+    return item.sort || item.preferredSort;
+  }
+  // Legacy: prefer query preference, alternate by endpoint index.
+  return endpointIndex % 2 === 0
+    ? item.preferredSort
+    : item.preferredSort === "date"
+      ? "sim"
+      : "date";
 }
 
 function emptyStats(): CollectionRunStats {
@@ -103,17 +126,76 @@ function sleep(ms: number) {
 /**
  * Execute a collection pass with dual search strategy, sort mix,
  * known-source skip, API/runtime caps, and per-query stats.
+ *
+ * strategy defaults to COLLECTOR_SEARCH_STRATEGY env (legacy if unset)
+ * so Production Cron stays on legacy until org_v1 is explicitly approved.
  */
 export async function runCollection(input: {
   trigger: CollectionRunTrigger;
   maxQueries?: number;
   maxApiCalls?: number;
+  strategy?: CollectorSearchStrategyVariant | null;
+  /** When true: no collection_runs / survey_links writes (org_v1.1 path). */
+  dryRun?: boolean;
 }): Promise<RunCollectionResult> {
+  const strategy = resolveCollectorSearchStrategy(input.strategy);
+
+  // org_v1 / org_v1.1: search-throughput path with deferred page validation
+  if (strategy === "org_v1") {
+    const { runOrgV11Collection } = await import(
+      "@/lib/collector/runOrgV11Collection"
+    );
+    const result = await runOrgV11Collection({
+      trigger: input.trigger,
+      maxQueries: input.maxQueries,
+      maxApiCalls: input.maxApiCalls,
+      dryRun: input.dryRun,
+    });
+    if (!result.ok) {
+      return { ok: false, status: result.status, error: result.error };
+    }
+    return {
+      ok: true,
+      run:
+        result.run ||
+        ({
+          id: "dry-run",
+          trigger: input.trigger,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          status: "completed",
+          queries_count: result.stats.queriesCount,
+          results_count: result.stats.resultsCount,
+          candidate_links_count: result.stats.candidateLinksCount,
+          new_surveys_count: result.stats.newSurveysCount,
+          duplicate_surveys_count: result.stats.duplicateSurveysCount,
+          error_count: result.stats.errorCount,
+          error_summary: result.dryRun
+            ? `[dry-run org_v1.1] elapsedMs=${result.meta.elapsedMs}`
+            : null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } satisfies CollectionRunRow),
+      stats: {
+        ...result.stats,
+        // surface v1.1 meta via errors note only when dry-run summary needed
+      },
+    };
+  }
+
+  if (input.dryRun) {
+    return {
+      ok: false,
+      status: 400,
+      error: "dryRun? org_v1 / org_v1.1 ?꾨왂?먯꽌留?吏?먮맗?덈떎.",
+    };
+  }
+
   if (!isCollectorConfigured()) {
     return {
       ok: false,
       status: 503,
-      error: getCollectorConfigError() || "수집 기능이 비활성화되어 있습니다.",
+      error: getCollectorConfigError() || "?섏쭛 湲곕뒫??鍮꾪솢?깊솕?섏뼱 ?덉뒿?덈떎.",
     };
   }
 
@@ -122,17 +204,21 @@ export async function runCollection(input: {
     return { ok: false, status: lock.status, error: lock.reason };
   }
 
+  // Legacy path only (org_v1 returns above).
+  const display = COLLECTOR_SEARCH_DISPLAY;
   const stats = emptyStats();
   const startedAt = Date.now();
   const maxApiCalls = Math.min(
     input.maxApiCalls ?? COLLECTOR_MAX_API_CALLS,
     COLLECTOR_MAX_API_CALLS,
   );
-  const queries = buildCollectorSearchQueries();
-  const limited =
-    typeof input.maxQueries === "number" && input.maxQueries > 0
-      ? queries.slice(0, input.maxQueries)
-      : queries;
+
+  let limited: CollectorSearchQuery[] = buildCollectorSearchQueries({
+    strategy: "legacy",
+  });
+  if (typeof input.maxQueries === "number" && input.maxQueries > 0) {
+    limited = limited.slice(0, input.maxQueries);
+  }
 
   const knownSources = await loadKnownSourceUrls();
   const knownCanonicals = await loadKnownCanonicalUrls();
@@ -142,12 +228,12 @@ export async function runCollection(input: {
   try {
     for (let qi = 0; qi < limited.length; qi += 1) {
       if (Date.now() - startedAt > COLLECTOR_MAX_RUNTIME_MS) {
-        stats.errors.push("실행시간 한도 도달 — 조기 종료");
+        stats.errors.push("?ㅽ뻾?쒓컙 ?쒕룄 ?꾨떖 ??議곌린 醫낅즺");
         break;
       }
       const item = limited[qi]!;
       stats.queriesCount += 1;
-      const endpoints = endpointsForQuery(item, qi);
+      const endpoints = endpointsForQuery(item, qi, "legacy");
 
       for (let ei = 0; ei < endpoints.length; ei += 1) {
         if (apiCalls >= maxApiCalls) break;
@@ -155,13 +241,7 @@ export async function runCollection(input: {
 
         const endpoint = endpoints[ei]!;
         const sourceType = ENDPOINT_SOURCE[endpoint];
-        // Mix date/sim: prefer query preference, alternate by endpoint index.
-        const sort =
-          ei % 2 === 0
-            ? item.preferredSort
-            : item.preferredSort === "date"
-              ? "sim"
-              : "date";
+        const sort = resolveSort(item, ei, "legacy");
 
         const qStat = {
           collectionRunId: lock.run.id,
@@ -187,8 +267,9 @@ export async function runCollection(input: {
 
         try {
           const result = await searchNaverEndpoint(endpoint, item.query, {
-            display: COLLECTOR_SEARCH_DISPLAY,
+            display,
             sort,
+            start: 1,
           });
           qStat.resultsCount = result.resultCount;
           stats.resultsCount += result.resultCount;

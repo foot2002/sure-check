@@ -4,6 +4,10 @@
  */
 
 import { COLLECTOR_SEARCH_DELAY_MS } from "@/lib/collector/config";
+import {
+  bestTriageAcrossSources,
+  isDailyBacklogQueue,
+} from "@/lib/collector/candidateTriage";
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { updateSurveyLinkStatus } from "@/lib/collector/repository";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -114,14 +118,32 @@ export async function revalidatePendingSurveyLinks(input?: {
   delayMs?: number;
   maxRetries?: number;
   limit?: number;
-  /** For unreachable: prefer first_discovered_at ASC (oldest). Default true. */
+  /**
+   * discovered priority:
+   * - newest: recent inflow first (org_v1.1 default for draining new backlog)
+   * - oldest: classic FIFO
+   */
+  order?: "newest" | "oldest";
+  /** @deprecated use order */
   oldestFirst?: boolean;
+  /**
+   * When true (default for discovered-only), skip C_ARCHIVE via low-cost triage
+   * so daily backlog stays A/B only.
+   */
+  skipArchiveQueue?: boolean;
 }): Promise<RevalidateResult> {
   const statuses = input?.statuses || ["discovered", "unreachable"];
   const concurrency = Math.max(1, Math.min(input?.concurrency ?? 3, 5));
   const delayMs = input?.delayMs ?? COLLECTOR_SEARCH_DELAY_MS;
   const maxRetries = Math.max(0, Math.min(input?.maxRetries ?? 2, 3));
   const limit = input?.limit ?? 500;
+  const order: "newest" | "oldest" =
+    input?.order ||
+    (input?.oldestFirst === false ? "newest" : "oldest");
+  const skipArchive =
+    input?.skipArchiveQueue !== false &&
+    statuses.length === 1 &&
+    statuses[0] === "discovered";
 
   const trackStatuses: CollectorSurveyStatus[] = [
     "discovered",
@@ -135,20 +157,78 @@ export async function revalidatePendingSurveyLinks(input?: {
   const before = await countByStatus(trackStatuses);
 
   const supabase = createSupabaseServerClient();
-  const orderCol =
-    input?.oldestFirst === false ? "last_discovered_at" : "first_discovered_at";
+  const orderCol = "first_discovered_at";
+  // Over-fetch when filtering archive so batch still fills
+  const fetchLimit = skipArchive ? Math.min(limit * 4, 800) : limit;
   const { data, error } = await supabase
     .from("survey_links")
     .select("*")
     .in("status", statuses)
-    .order(orderCol, { ascending: true })
-    .limit(limit);
+    .order(orderCol, { ascending: order === "oldest" })
+    .limit(fetchLimit);
 
   if (error) {
     throw new Error(`재검증 대상 조회 실패: ${error.message}`);
   }
 
-  const rows = (data || []) as SurveyLinkRow[];
+  let rows = (data || []) as SurveyLinkRow[];
+
+  if (skipArchive && rows.length > 0) {
+    const ids = rows.map((r) => r.id);
+    const { data: sources } = await supabase
+      .from("survey_sources")
+      .select(
+        "survey_link_id, source_url, source_title, search_query, source_published_at, source_type",
+      )
+      .in("survey_link_id", ids)
+      .limit(4000);
+    const byLink = new Map<
+      string,
+      Array<{
+        source_url?: string;
+        source_title?: string;
+        search_query?: string;
+        source_published_at?: string;
+        source_type?: string;
+      }>
+    >();
+    for (const s of sources || []) {
+      const key = String(s.survey_link_id);
+      const list = byLink.get(key) || [];
+      list.push({
+        source_url: s.source_url || undefined,
+        source_title: s.source_title || undefined,
+        search_query: s.search_query || undefined,
+        source_published_at: s.source_published_at || undefined,
+        source_type: s.source_type || undefined,
+      });
+      byLink.set(key, list);
+    }
+    const filtered: SurveyLinkRow[] = [];
+    for (const row of rows) {
+      const srcList = byLink.get(row.id) || [{}];
+      // Best across sources: C can promote to A/B when rediscovered from official source.
+      const triage = bestTriageAcrossSources(
+        srcList.map((src) => ({
+          sourceUrl: src.source_url,
+          sourceTitle: src.source_title || row.title,
+          surveyTitle: row.title,
+          searchQuery: src.search_query,
+          sourcePublishedAt: src.source_published_at,
+          sourceType:
+            (src.source_type as "web" | "blog" | "cafe" | "unknown") ||
+            "unknown",
+          firstSeenThisRun: false,
+        })),
+      );
+      if (!isDailyBacklogQueue(triage.queue)) continue;
+      filtered.push(row);
+      if (filtered.length >= limit) break;
+    }
+    rows = filtered;
+  } else {
+    rows = rows.slice(0, limit);
+  }
   const seen = new Set<string>();
   const transitions: RevalidateTransition[] = [];
   const byToStatus: Partial<Record<CollectorSurveyStatus, number>> = {};

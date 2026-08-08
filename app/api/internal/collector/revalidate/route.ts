@@ -78,6 +78,7 @@ async function handleRevalidate(request: Request) {
         ...common,
         statuses: ["discovered"],
         limit: COLLECTOR_DISCOVERED_BATCH_SIZE,
+        order: "newest",
       });
       const run = await finishRevalidateCollectionRun(lock.run.id, {
         mode,
@@ -96,6 +97,7 @@ async function handleRevalidate(request: Request) {
         ...common,
         statuses: ["unreachable"],
         limit: COLLECTOR_UNREACHABLE_BATCH_SIZE,
+        order: "oldest",
       });
       const run = await finishRevalidateCollectionRun(lock.run.id, {
         mode,
@@ -109,15 +111,18 @@ async function handleRevalidate(request: Request) {
       });
     }
 
+    // Priority: newest discovered first, then oldest unreachable (limited).
     const discovered = await revalidatePendingSurveyLinks({
       ...common,
       statuses: ["discovered"],
       limit: COLLECTOR_DISCOVERED_BATCH_SIZE,
+      order: "newest",
     });
     const unreachable = await revalidatePendingSurveyLinks({
       ...common,
       statuses: ["unreachable"],
       limit: COLLECTOR_UNREACHABLE_BATCH_SIZE,
+      order: "oldest",
     });
     const run = await finishRevalidateCollectionRun(lock.run.id, {
       mode: "both",

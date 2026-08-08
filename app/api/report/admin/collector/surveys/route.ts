@@ -36,6 +36,12 @@ export async function GET(request: Request) {
       novelty: (pick(params, "novelty") as "all" | "new" | "existing") || "all",
       sourceType:
         (pick(params, "sourceType") as CollectorSourceType | "all") || "all",
+      triageQueue:
+        (pick(params, "triageQueue") as
+          | "A_PRIORITY"
+          | "B_PRIORITY"
+          | "C_ARCHIVE"
+          | "all") || "all",
       q: pick(params, "q"),
       limit: Number(pick(params, "limit") || 100) || 100,
     };

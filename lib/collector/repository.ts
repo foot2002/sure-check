@@ -502,6 +502,101 @@ export async function listQueryStatsForRun(
   }));
 }
 
+/**
+ * Aggregate recent query performance for deep-search targeting.
+ * Never deletes strategies — ranking only.
+ */
+export async function loadTopPerformingSearchQueries(options?: {
+  lookbackDays?: number;
+  limit?: number;
+}): Promise<
+  Array<{
+    searchQuery: string;
+    runs: number;
+    newSurveyCount: number;
+    candidateCount: number;
+    resultsCount: number;
+  }>
+> {
+  const lookbackDays = options?.lookbackDays ?? 7;
+  const limit = options?.limit ?? 12;
+  const supabase = getClient();
+  const since = new Date(
+    Date.now() - lookbackDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data: runs, error: runErr } = await supabase
+    .from("collection_runs")
+    .select("id")
+    .gte("started_at", since)
+    .in("status", ["completed", "partial"])
+    .limit(80);
+  if (runErr || !runs?.length) {
+    if (runErr) console.error("[collector] loadTopPerformingSearchQueries runs", runErr);
+    return [];
+  }
+
+  const { data: stats, error: statErr } = await supabase
+    .from("collection_query_stats")
+    .select(
+      "search_query, new_survey_count, candidate_count, results_count, collection_run_id",
+    )
+    .in(
+      "collection_run_id",
+      runs.map((r) => r.id),
+    );
+  if (statErr || !stats?.length) {
+    if (statErr)
+      console.error("[collector] loadTopPerformingSearchQueries stats", statErr);
+    return [];
+  }
+
+  const byQuery = new Map<
+    string,
+    {
+      searchQuery: string;
+      runs: Set<string>;
+      newSurveyCount: number;
+      candidateCount: number;
+      resultsCount: number;
+    }
+  >();
+  for (const row of stats) {
+    const q = String(row.search_query || "");
+    if (!q) continue;
+    const cur = byQuery.get(q) || {
+      searchQuery: q,
+      runs: new Set<string>(),
+      newSurveyCount: 0,
+      candidateCount: 0,
+      resultsCount: 0,
+    };
+    cur.runs.add(String(row.collection_run_id));
+    cur.newSurveyCount += Number(row.new_survey_count || 0);
+    cur.candidateCount += Number(row.candidate_count || 0);
+    cur.resultsCount += Number(row.results_count || 0);
+    byQuery.set(q, cur);
+  }
+
+  return [...byQuery.values()]
+    .map((v) => ({
+      searchQuery: v.searchQuery,
+      runs: v.runs.size,
+      newSurveyCount: v.newSurveyCount,
+      candidateCount: v.candidateCount,
+      resultsCount: v.resultsCount,
+    }))
+    .sort((a, b) => {
+      if (b.newSurveyCount !== a.newSurveyCount) {
+        return b.newSurveyCount - a.newSurveyCount;
+      }
+      const aRate = a.resultsCount > 0 ? a.newSurveyCount / a.resultsCount : 0;
+      const bRate = b.resultsCount > 0 ? b.newSurveyCount / b.resultsCount : 0;
+      return bRate - aRate;
+    })
+    .slice(0, limit);
+}
+
 export async function markIgnoredTestSurveyLinks(): Promise<number> {
   const supabase = getClient();
   const { data, error } = await supabase

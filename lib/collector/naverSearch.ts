@@ -67,6 +67,7 @@ async function callNaverSearchOnce(
   query: string,
   display: number = COLLECTOR_SEARCH_DISPLAY,
   sort: "sim" | "date" = "sim",
+  start: number = 1,
 ): Promise<NaverSearchCallResult> {
   const clientId = getNaverClientId();
   const clientSecret = getNaverClientSecret();
@@ -80,7 +81,11 @@ async function callNaverSearchOnce(
   const url = new URL(`${NAVER_API_HUB_BASE}/search/v1/${endpoint}`);
   url.searchParams.set("query", query);
   url.searchParams.set("display", String(Math.min(100, Math.max(1, display))));
-  url.searchParams.set("start", "1");
+  // Naver API: start 1–1000
+  url.searchParams.set(
+    "start",
+    String(Math.min(1000, Math.max(1, Math.floor(start)))),
+  );
   url.searchParams.set("sort", sort === "date" ? "date" : "sim");
   url.searchParams.set("format", "json");
 
@@ -139,11 +144,12 @@ async function callNaverSearchWithRetry(
   query: string,
   display: number = COLLECTOR_SEARCH_DISPLAY,
   sort: "sim" | "date" = "sim",
+  start: number = 1,
 ): Promise<NaverSearchCallResult> {
   let lastError: NaverSearchError | null = null;
   for (let attempt = 0; attempt <= COLLECTOR_SEARCH_MAX_RETRIES; attempt += 1) {
     try {
-      return await callNaverSearchOnce(endpoint, query, display, sort);
+      return await callNaverSearchOnce(endpoint, query, display, sort, start);
     } catch (error) {
       const typed =
         error instanceof NaverSearchError
@@ -168,7 +174,7 @@ async function callNaverSearchWithRetry(
 export async function searchNaverEndpoint(
   endpoint: NaverSearchEndpoint,
   query: string,
-  options?: { display?: number; sort?: "sim" | "date" },
+  options?: { display?: number; sort?: "sim" | "date"; start?: number },
 ): Promise<{
   hits: CollectorSearchHit[];
   httpStatus: number;
@@ -180,6 +186,7 @@ export async function searchNaverEndpoint(
     query,
     options?.display ?? COLLECTOR_SEARCH_DISPLAY,
     options?.sort ?? "sim",
+    options?.start ?? 1,
   );
   return {
     hits: mapItems(result.items, endpoint, query),

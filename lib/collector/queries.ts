@@ -4,6 +4,7 @@ import {
   countSurveyLinks,
   listQueryStatsForRun,
 } from "@/lib/collector/repository";
+import { bestTriageAcrossSources } from "@/lib/collector/candidateTriage";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -264,12 +265,18 @@ export async function listSurveyLinks(
 ): Promise<SurveyLinkListItem[]> {
   const supabase = createSupabaseServerClient();
   const limit = Math.min(Math.max(filters.limit ?? 100, 1), 300);
+  const triageFilter =
+    filters.triageQueue && filters.triageQueue !== "all"
+      ? filters.triageQueue
+      : null;
+  // Over-fetch when live-triaging so A/B/C filter still fills the page.
+  const fetchLimit = triageFilter ? Math.min(limit * 5, 500) : limit;
 
   let query = supabase
     .from("survey_links")
     .select("*")
     .order("last_discovered_at", { ascending: false })
-    .limit(limit);
+    .limit(fetchLimit);
 
   if (filters.platform && filters.platform !== "all") {
     query = query.eq("platform", filters.platform);
@@ -345,7 +352,9 @@ export async function listSurveyLinks(
 
   const { data: allSources, error: allSourcesError } = await supabase
     .from("survey_sources")
-    .select("survey_link_id, source_url, source_title, discovered_at")
+    .select(
+      "survey_link_id, source_url, source_title, search_query, source_published_at, source_type, discovered_at",
+    )
     .in("survey_link_id", linkIds)
     .order("discovered_at", { ascending: false });
 
@@ -353,39 +362,69 @@ export async function listSurveyLinks(
     console.error("[collector] listSurveyLinks source counts", allSourcesError);
   }
 
-  const byLink = new Map<
-    string,
-    { count: number; sampleUrl: string | null; sampleTitle: string | null }
-  >();
-  for (const source of (allSources || []) as Array<{
+  type SrcRow = {
     survey_link_id: string;
     source_url: string;
     source_title: string | null;
-  }>) {
+    search_query?: string | null;
+    source_published_at?: string | null;
+    source_type?: string | null;
+  };
+
+  const byLink = new Map<
+    string,
+    {
+      count: number;
+      sampleUrl: string | null;
+      sampleTitle: string | null;
+      sources: SrcRow[];
+    }
+  >();
+  for (const source of (allSources || []) as SrcRow[]) {
     const current = byLink.get(source.survey_link_id);
     if (!current) {
       byLink.set(source.survey_link_id, {
         count: 1,
         sampleUrl: source.source_url,
         sampleTitle: source.source_title,
+        sources: [source],
       });
     } else {
       current.count += 1;
+      current.sources.push(source);
     }
   }
 
   const allowedSet = new Set(linkIds);
-  return rows
+  const mapped = rows
     .filter((row) => allowedSet.has(row.id))
     .map((row) => {
       const meta = byLink.get(row.id);
+      const triage = bestTriageAcrossSources(
+        (meta?.sources || []).map((s) => ({
+          sourceUrl: s.source_url,
+          sourceTitle: s.source_title || row.title,
+          surveyTitle: row.title,
+          searchQuery: s.search_query || undefined,
+          sourcePublishedAt: s.source_published_at || undefined,
+          sourceType:
+            (s.source_type as "web" | "blog" | "cafe" | "unknown") || "unknown",
+          firstSeenThisRun: false,
+        })),
+      );
       return {
         ...row,
         source_count: meta?.count ?? 0,
         sample_source_url: meta?.sampleUrl ?? null,
         sample_source_title: meta?.sampleTitle ?? null,
+        triage_queue: triage.queue,
       };
     });
+
+  const filtered = triageFilter
+    ? mapped.filter((row) => row.triage_queue === triageFilter)
+    : mapped;
+  return filtered.slice(0, limit);
 }
 
 export async function listSourcesForSurveyLink(

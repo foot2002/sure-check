@@ -46,9 +46,16 @@ export const COLLECTOR_REDIRECT_MAX = 5;
 export const COLLECTOR_REDIRECT_TIMEOUT_MS = 8_000;
 export const COLLECTOR_SEARCH_DELAY_MS = 250;
 export const COLLECTOR_SEARCH_MAX_RETRIES = 2;
+/** Legacy Production display (20). org_v1 uses COLLECTOR_SEARCH_DISPLAY_ORG. */
 export const COLLECTOR_SEARCH_DISPLAY = 20;
+/** org_v1: max Naver display per call (API max 100). */
+export const COLLECTOR_SEARCH_DISPLAY_ORG = 100;
 /** Soft cap for API search calls per collection run (blog+cafe+web counted separately). */
 export const COLLECTOR_MAX_API_CALLS = 36;
+/** Share of API budget reserved for deep pages (start=101/201) on org_v1. */
+export const COLLECTOR_DEEP_SEARCH_API_SHARE = 0.2;
+/** Max extra result pages after page 1 for a deep query (start 101, 201). */
+export const COLLECTOR_DEEP_SEARCH_MAX_PAGES = 2;
 /** Soft wall-clock budget for a collection run (ms). Leave headroom under Vercel maxDuration=120s. */
 export const COLLECTOR_MAX_RUNTIME_MS = 115_000;
 /** Cap expensive page validations so search coverage finishes within the runtime budget. */
@@ -62,4 +69,8 @@ export {
   COLLECTOR_REVALIDATE_DELAY_MS,
   COLLECTOR_REVALIDATE_MAX_RETRIES,
   COLLECTOR_STALE_RUNNING_MS,
+  COLLECTOR_INLINE_PAGE_VALIDATE_ORG,
+  COLLECTOR_INLINE_PAGE_VALIDATE_BUDGET,
+  COLLECTOR_ORG_RUNTIME_TARGET_MS,
+  COLLECTOR_DAILY_BACKLOG_CAP,
 } from "@/lib/collector/opsPolicy";
