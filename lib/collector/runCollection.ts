@@ -43,6 +43,7 @@ export type RunCollectionResult =
       ok: true;
       run: CollectionRunRow;
       stats: CollectionRunStats;
+      meta?: unknown;
     }
   | {
       ok: false;
@@ -137,6 +138,8 @@ export async function runCollection(input: {
   strategy?: CollectorSearchStrategyVariant | null;
   /** When true: no collection_runs / survey_links writes (org_v1.1 path). */
   dryRun?: boolean;
+  /** org_v1.2 sequential partitions: a | b | all */
+  partition?: "a" | "b" | "all";
 }): Promise<RunCollectionResult> {
   const strategy = resolveCollectorSearchStrategy(input.strategy);
 
@@ -150,6 +153,7 @@ export async function runCollection(input: {
       maxQueries: input.maxQueries,
       maxApiCalls: input.maxApiCalls,
       dryRun: input.dryRun,
+      partition: input.partition || "all",
     });
     if (!result.ok) {
       return { ok: false, status: result.status, error: result.error };
@@ -170,16 +174,12 @@ export async function runCollection(input: {
           new_surveys_count: result.stats.newSurveysCount,
           duplicate_surveys_count: result.stats.duplicateSurveysCount,
           error_count: result.stats.errorCount,
-          error_summary: result.dryRun
-            ? `[dry-run org_v1.1] elapsedMs=${result.meta.elapsedMs}`
-            : null,
+          error_summary: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        } satisfies CollectionRunRow),
-      stats: {
-        ...result.stats,
-        // surface v1.1 meta via errors note only when dry-run summary needed
-      },
+        } as CollectionRunRow),
+      stats: result.stats,
+      meta: result.meta,
     };
   }
 
@@ -187,7 +187,7 @@ export async function runCollection(input: {
     return {
       ok: false,
       status: 400,
-      error: "dryRun? org_v1 / org_v1.1 ?꾨왂?먯꽌留?吏?먮맗?덈떎.",
+      error: "dryRun은 org_v1 / org_v1.1 경로에서만 지원됩니다.",
     };
   }
 
@@ -195,7 +195,7 @@ export async function runCollection(input: {
     return {
       ok: false,
       status: 503,
-      error: getCollectorConfigError() || "?섏쭛 湲곕뒫??鍮꾪솢?깊솕?섏뼱 ?덉뒿?덈떎.",
+      error: getCollectorConfigError() || "수집 기능이 비활성화되어 있습니다.",
     };
   }
 

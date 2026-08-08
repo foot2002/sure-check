@@ -28,8 +28,9 @@ export const COLLECTOR_CANARY = {
   ],
   dailyBacklogCapacity: 120,
   notes: [
-    "Search: COLLECTOR_SEARCH_STRATEGY=org_v1 (aliases: org_v1.2, org_v1_2, org_v1.1, v2)",
-    "Canary caps: COLLECTOR_CANARY=1 → A≤100, B≤20, A+B≤120",
+    "Search: COLLECTOR_SEARCH_STRATEGY=org_v1.2 (aliases: org_v1, org_v1_2, …)",
+    "Canary caps: COLLECTOR_CANARY=1 → A≤100, B≤20, A+B≤120 shared across partitions",
+    "Partitions: GET /api/internal/collector/run?partition=a|b (sequential, not concurrent)",
     "Rollback: COLLECTOR_SEARCH_STRATEGY=legacy (or unset) + COLLECTOR_CANARY unset/0",
     "C_ARCHIVE stored; promote to A/B when rediscovered from official source",
     "Do not connect SURE-Check diagnosis until explicitly approved",

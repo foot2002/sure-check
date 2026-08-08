@@ -52,12 +52,17 @@ export const COLLECTOR_ORG_RUNTIME_TARGET_MS = 84_000;
 
 /**
  * Soft daily cap for A+B validation backlog (org_v1.2, non-canary).
- * Fast-track canary overrides via COLLECTOR_CANARY=1 → A≤100, B≤20, AB≤120.
+ * Fast-track canary overrides via COLLECTOR_CANARY=1 → A≤100, B≤20, AB≤120
+ * shared across partitions via getRemainingDailyAbCaps().
  */
 export const COLLECTOR_DAILY_BACKLOG_CAP = 180;
 
 /**
  * Fast-track canary backlog (manual same-day; Cron schedule unchanged until ops decision).
+ * Proposed after partition split (NOT in vercel.json yet):
+ * - Collect A: 06:00 KST
+ * - Collect B: 06:20 KST (after A releases running lock)
+ * - Revalidate: 12/16/20 × 50 if discovered backlog ≥100
  */
 export const COLLECTOR_CANARY_BACKLOG_NOTES = {
   maxAPerDay: 100,
@@ -66,5 +71,9 @@ export const COLLECTOR_CANARY_BACKLOG_NOTES = {
   validateCArchive: false,
   manualRevalidateBatches: 3,
   batchSize: 50,
-  dailyCapacity: 120,
+  dailyCapacity: 150,
+  proposedCollectPartitions: {
+    a: { kst: "06:00", utcCron: "0 21 * * *", path: "/api/internal/collector/run/a" },
+    b: { kst: "06:20", utcCron: "20 21 * * *", path: "/api/internal/collector/run/b" },
+  },
 } as const;

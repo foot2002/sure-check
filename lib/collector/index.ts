@@ -23,4 +23,6 @@ export * from "@/lib/collector/validationPriority";
 export * from "@/lib/collector/candidateTriage";
 export * from "@/lib/collector/canaryPolicy";
 export * from "@/lib/collector/kpi";
+export * from "@/lib/collector/searchPartitions";
+export * from "@/lib/collector/dailyCanaryCap";
 export * from "@/lib/collector/runOrgV11Collection";

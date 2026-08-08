@@ -21,9 +21,15 @@ import {
 } from "@/lib/collector/config";
 import {
   buildCollectorSearchQueries,
-  selectOrgV1PageOneQueries,
   type CollectorSearchQuery,
 } from "@/lib/collector/searchQueries";
+import {
+  COLLECTOR_PARTITION_RUNTIME_MAX_MS,
+  getPartitionApiBudget,
+  selectDeepQueriesForPartition,
+  selectOrgV1QueriesForPartition,
+  type CollectorPartition,
+} from "@/lib/collector/searchPartitions";
 import { extractSurveyUrlsFromText } from "@/lib/collector/extractLinks";
 import {
   NaverSearchError,
@@ -50,10 +56,20 @@ import {
   applyCanaryAbCaps,
   type TriageQueue,
 } from "@/lib/collector/candidateTriage";
+import { isCollectorCanaryEnabled } from "@/lib/collector/canaryPolicy";
 import {
-  getCanaryDailyCaps,
-  isCollectorCanaryEnabled,
-} from "@/lib/collector/canaryPolicy";
+  formatCapMarker,
+  getRemainingDailyAbCaps,
+} from "@/lib/collector/dailyCanaryCap";
+import {
+  createPhaseTiming,
+  finalizePhaseTiming,
+  formatPhaseTiming,
+  timePhase,
+  topPhase,
+  type PhaseTiming,
+} from "@/lib/collector/phaseTiming";
+import { mapPool } from "@/lib/collector/mapPool";
 import type {
   CollectionRunRow,
   CollectionRunTrigger,
@@ -63,6 +79,8 @@ import type {
   CollectionQueryStatInput,
 } from "@/lib/collector/types";
 
+/** Safe Naver concurrency for Production (do not raise above 5). */
+const NAVER_SEARCH_CONCURRENCY = 3;
 type Endpoint = "webkr" | "blog" | "cafearticle";
 
 const ENDPOINT_SOURCE: Record<Endpoint, CollectorSourceType> = {
@@ -96,14 +114,20 @@ export type OrgV11RunResult =
       stats: CollectionRunStats;
       meta: {
         strategy: "org_v1_2";
+        partition: CollectorPartition;
         inlinePageValidates: number;
         inlineBudget: number;
         deferredDiscovered: number;
         archivedSkipped: number;
         queueCounts: Record<TriageQueue, number>;
+        cappedA: number;
+        cappedB: number;
         elapsedMs: number;
         runtimeTargetMs: number;
         sampleOrgReview: Record<string, number>;
+        phaseTiming: PhaseTiming;
+        topPhase: string;
+        naverConcurrency: number;
       };
     }
   | { ok: false; status: number; error: string };
@@ -162,8 +186,12 @@ export async function runOrgV11Collection(input: {
   maxApiCalls?: number;
   dryRun?: boolean;
   inlinePageValidateBudget?: number;
+  /** a | b | all — sequential partitions share one daily canary cap */
+  partition?: CollectorPartition;
 }): Promise<OrgV11RunResult> {
   const dryRun = Boolean(input.dryRun);
+  const partition: CollectorPartition = input.partition || "all";
+  const timing = createPhaseTiming();
   if (dryRun) {
     if (!isNaverSearchConfigured()) {
       return {
@@ -191,42 +219,60 @@ export async function runOrgV11Collection(input: {
     run = fakeRun(input.trigger);
   }
 
+  const partBudget = getPartitionApiBudget(partition);
   const display = COLLECTOR_SEARCH_DISPLAY_ORG;
   const inlineBudget =
-    input.inlinePageValidateBudget ?? COLLECTOR_INLINE_PAGE_VALIDATE_ORG;
+    input.inlinePageValidateBudget ??
+    (partition === "all"
+      ? COLLECTOR_INLINE_PAGE_VALIDATE_ORG
+      : partBudget.inlineBudget);
   const stats = emptyStats();
   const startedAt = Date.now();
+  const runtimeMaxMs =
+    partition === "all"
+      ? COLLECTOR_MAX_RUNTIME_MS
+      : COLLECTOR_PARTITION_RUNTIME_MAX_MS;
+  const runtimeTargetMs =
+    partition === "all"
+      ? COLLECTOR_ORG_RUNTIME_TARGET_MS
+      : Math.min(60_000, COLLECTOR_PARTITION_RUNTIME_MAX_MS);
   const maxApiCalls = Math.min(
-    input.maxApiCalls ?? COLLECTOR_MAX_API_CALLS,
-    COLLECTOR_MAX_API_CALLS,
+    input.maxApiCalls ?? partBudget.maxApiCalls,
+    partition === "all" ? COLLECTOR_MAX_API_CALLS : partBudget.maxApiCalls,
   );
-  const deepReserve = Math.max(
-    1,
-    Math.floor(maxApiCalls * COLLECTOR_DEEP_SEARCH_API_SHARE),
-  );
+  const deepReserve =
+    partition === "all"
+      ? Math.max(1, Math.floor(maxApiCalls * COLLECTOR_DEEP_SEARCH_API_SHARE))
+      : partBudget.deepReserve;
 
-  let limited = selectOrgV1PageOneQueries(maxApiCalls, deepReserve);
+  let limited = selectOrgV1QueriesForPartition(
+    partition,
+    maxApiCalls,
+    deepReserve,
+  );
   if (typeof input.maxQueries === "number" && input.maxQueries > 0) {
     limited = limited.slice(0, input.maxQueries);
   }
 
   const knownSources = dryRun
     ? new Set<string>()
-    : await loadKnownSourceUrls();
+    : await timePhase(timing, "load_known", () => loadKnownSourceUrls());
   const knownCanonicals = dryRun
     ? new Map<
         string,
         { id: string; status: string; platform: CollectorPlatform }
       >()
-    : await loadKnownCanonicalUrls();
+    : await timePhase(timing, "load_known", () => loadKnownCanonicalUrls());
 
   // dry-run still benefits from known sets when DB is available
   if (dryRun && isCollectorConfigured()) {
     try {
-      const ks = await loadKnownSourceUrls();
-      for (const u of ks) knownSources.add(u);
-      const kc = await loadKnownCanonicalUrls();
-      for (const [k, v] of kc) knownCanonicals.set(k, v);
+      await timePhase(timing, "load_known", async () => {
+        const ks = await loadKnownSourceUrls();
+        for (const u of ks) knownSources.add(u);
+        const kc = await loadKnownCanonicalUrls();
+        for (const [k, v] of kc) knownCanonicals.set(k, v);
+      });
     } catch {
       /* ignore — pure search dry-run */
     }
@@ -256,28 +302,30 @@ export async function runOrgV11Collection(input: {
       });
       return "new";
     }
-    const upserted = await upsertSurveyLink({
-      canonicalUrl: p.canonicalUrl,
-      originalUrl: p.originalUrl,
-      platform: p.platform,
-      title: p.sourceTitle,
-      status: "discovered",
+    return timePhase(timing, "db_upsert", async () => {
+      const upserted = await upsertSurveyLink({
+        canonicalUrl: p.canonicalUrl,
+        originalUrl: p.originalUrl,
+        platform: p.platform,
+        title: p.sourceTitle,
+        status: "discovered",
+      });
+      knownCanonicals.set(p.canonicalUrl, {
+        id: upserted.link.id,
+        status: "discovered",
+        platform: p.platform,
+      });
+      await insertSurveySource({
+        surveyLinkId: upserted.link.id,
+        sourceType: p.sourceType,
+        sourceUrl: p.sourceUrl,
+        sourceTitle: p.sourceTitle,
+        searchQuery: p.searchQuery,
+        sourcePublishedAt: p.publishedAt,
+      });
+      knownSources.add(p.sourceUrl);
+      return upserted.isNew ? "new" : "dup";
     });
-    knownCanonicals.set(p.canonicalUrl, {
-      id: upserted.link.id,
-      status: "discovered",
-      platform: p.platform,
-    });
-    await insertSurveySource({
-      surveyLinkId: upserted.link.id,
-      sourceType: p.sourceType,
-      sourceUrl: p.sourceUrl,
-      sourceTitle: p.sourceTitle,
-      searchQuery: p.searchQuery,
-      sourcePublishedAt: p.publishedAt,
-    });
-    knownSources.add(p.sourceUrl);
-    return upserted.isNew ? "new" : "dup";
   }
 
   async function handleHits(
@@ -424,107 +472,33 @@ export async function runOrgV11Collection(input: {
   }
 
   try {
+    // Page-1: bounded concurrency Naver search (3), then sequential extract.
+    type SearchJob = {
+      item: CollectorSearchQuery;
+      endpoint: Endpoint;
+      sourceType: CollectorSourceType;
+      sort: "date" | "sim";
+      qStat: CollectionQueryStatInput;
+    };
+    const jobs: SearchJob[] = [];
     for (let qi = 0; qi < limited.length; qi += 1) {
-      if (Date.now() - startedAt > COLLECTOR_MAX_RUNTIME_MS) {
-        stats.errors.push("실행시간 한도 도달 — 조기 종료");
-        break;
-      }
       if (apiCalls >= maxApiCalls - deepReserve) break;
-
       const item = limited[qi]!;
       stats.queriesCount += 1;
       pageOneExecuted.push(item);
       const endpoint = CYCLE[qi % CYCLE.length]!;
       const sourceType = ENDPOINT_SOURCE[endpoint];
-      const sort = item.sort || item.preferredSort;
-
-      const qStat: CollectionQueryStatInput = {
-        collectionRunId: runId,
-        searchQuery: item.query,
-        sourceType,
-        sortMode: sort,
-        resultsCount: 0,
-        uniqueSourceCount: 0,
-        candidateCount: 0,
-        validSurveyCount: 0,
-        newSurveyCount: 0,
-        duplicateSurveyCount: 0,
-        invalidCount: 0,
-        unreachableCount: 0,
-        closedCount: 0,
-        restrictedCount: 0,
-        skippedKnownSourceCount: 0,
-        errorCount: 0,
-      };
-
+      const sort = (item.sort || item.preferredSort) as "date" | "sim";
       apiCalls += 1;
       stats.apiCalls = apiCalls;
-
-      try {
-        const result = await searchNaverEndpoint(endpoint, item.query, {
-          display,
-          sort,
-          start: 1,
-        });
-        qStat.resultsCount = result.resultCount;
-        stats.resultsCount += result.resultCount;
-        await handleHits(result.hits, qStat);
-      } catch (error) {
-        qStat.errorCount += 1;
-        stats.errorCount += 1;
-        const message =
-          error instanceof NaverSearchError
-            ? `[${endpoint}/${error.kind}] ${error.message}`
-            : String(error);
-        stats.errors.push(`${item.query}: ${message}`);
-      }
-
-      stats.queryStats = [...(stats.queryStats || []), qStat];
-      if (!dryRun) await upsertCollectionQueryStat(qStat);
-      await sleep(COLLECTOR_SEARCH_DELAY_MS);
-    }
-
-    // Deep pages (search only — still no page validate here)
-    const depthEnabled = new Map(
-      buildCollectorSearchQueries({ strategy: "org_v1" })
-        .filter((q) => q.depthEnabled)
-        .map((q) => [q.query, q]),
-    );
-    const historical = dryRun
-      ? []
-      : await loadTopPerformingSearchQueries({ lookbackDays: 7, limit: 20 });
-    const deepCandidates: CollectorSearchQuery[] = [];
-    const seenQ = new Set<string>();
-    for (const row of historical) {
-      const item = depthEnabled.get(row.searchQuery);
-      if (!item || seenQ.has(item.query) || row.newSurveyCount <= 0) continue;
-      deepCandidates.push(item);
-      seenQ.add(item.query);
-    }
-    if (deepCandidates.length === 0) {
-      for (const item of pageOneExecuted) {
-        if (!item.depthEnabled || seenQ.has(item.query)) continue;
-        deepCandidates.push(item);
-        seenQ.add(item.query);
-        if (deepCandidates.length >= 3) break;
-      }
-    }
-
-    const deepStarts = [101, 201].slice(0, COLLECTOR_DEEP_SEARCH_MAX_PAGES);
-    let deepIdx = 0;
-    outer: for (const item of deepCandidates) {
-      if (apiCalls >= maxApiCalls) break;
-      if (Date.now() - startedAt > COLLECTOR_MAX_RUNTIME_MS) break;
-      const endpoint = CYCLE[deepIdx % CYCLE.length]!;
-      deepIdx += 1;
-      for (const start of deepStarts) {
-        if (apiCalls >= maxApiCalls) break outer;
-        if (Date.now() - startedAt > COLLECTOR_MAX_RUNTIME_MS) break outer;
-        const sourceType = ENDPOINT_SOURCE[endpoint];
-        const sort = item.sort || item.preferredSort;
-        const qStat: CollectionQueryStatInput = {
+      jobs.push({
+        item,
+        endpoint,
+        sourceType,
+        sort,
+        qStat: {
           collectionRunId: runId,
-          searchQuery: `${item.query} [deep:start=${start}]`,
+          searchQuery: item.query,
           sourceType,
           sortMode: sort,
           resultsCount: 0,
@@ -539,31 +513,200 @@ export async function runOrgV11Collection(input: {
           restrictedCount: 0,
           skippedKnownSourceCount: 0,
           errorCount: 0,
+        },
+      });
+    }
+
+    const fetched = await mapPool(jobs, NAVER_SEARCH_CONCURRENCY, async (job) => {
+      if (Date.now() - startedAt > runtimeMaxMs) {
+        return {
+          job,
+          result: null as Awaited<ReturnType<typeof searchNaverEndpoint>> | null,
+          error: "runtime_budget" as string | null,
         };
+      }
+      try {
+        const result = await timePhase(timing, "naver_search", () =>
+          searchNaverEndpoint(job.endpoint, job.item.query, {
+            display,
+            sort: job.sort,
+            start: 1,
+          }),
+        );
+        await sleep(COLLECTOR_SEARCH_DELAY_MS);
+        return { job, result, error: null };
+      } catch (error) {
+        const message =
+          error instanceof NaverSearchError
+            ? `[${job.endpoint}/${error.kind}] ${error.message}`
+            : String(error);
+        return { job, result: null, error: message };
+      }
+    });
+
+    for (const row of fetched) {
+      if (Date.now() - startedAt > runtimeMaxMs) {
+        stats.errors.push("실행시간 한도 도달 — 조기 종료");
+        break;
+      }
+      const { job, result, error } = row;
+      if (error === "runtime_budget") {
+        stats.errors.push("실행시간 한도 도달 — 검색 중단");
+        continue;
+      }
+      if (error || !result) {
+        job.qStat.errorCount += 1;
+        stats.errorCount += 1;
+        stats.errors.push(`${job.item.query}: ${error || "search failed"}`);
+      } else {
+        job.qStat.resultsCount = result.resultCount;
+        stats.resultsCount += result.resultCount;
+        await handleHits(
+          result.hits.map((h) => ({
+            ...h,
+            searchQuery: job.item.query,
+            sourceType: job.sourceType,
+          })),
+          job.qStat,
+        );
+      }
+      stats.queryStats = [...(stats.queryStats || []), job.qStat];
+      if (!dryRun) {
+        await timePhase(timing, "query_stats", () =>
+          upsertCollectionQueryStat(job.qStat),
+        );
+      }
+    }
+
+    // Deep pages (partition-scoped, bounded concurrency)
+    const historical = dryRun
+      ? []
+      : await loadTopPerformingSearchQueries({ lookbackDays: 7, limit: 20 });
+    const deepFromHist: CollectorSearchQuery[] = [];
+    const seenQ = new Set<string>();
+    const depthCatalog = new Map(
+      buildCollectorSearchQueries({ strategy: "org_v1" })
+        .filter((q) => q.depthEnabled)
+        .map((q) => [q.query, q]),
+    );
+    for (const row of historical) {
+      const item = depthCatalog.get(row.searchQuery);
+      if (!item || seenQ.has(item.query) || row.newSurveyCount <= 0) continue;
+      deepFromHist.push(item);
+      seenQ.add(item.query);
+    }
+    const deepCandidates =
+      deepFromHist.length > 0
+        ? deepFromHist.slice(0, partition === "a" ? 2 : 3)
+        : selectDeepQueriesForPartition(
+            partition,
+            pageOneExecuted,
+            partition === "a" ? 2 : 3,
+          );
+
+    const deepStarts = [101, 201].slice(0, COLLECTOR_DEEP_SEARCH_MAX_PAGES);
+    const deepJobs: Array<{
+      item: CollectorSearchQuery;
+      endpoint: Endpoint;
+      start: number;
+      sourceType: CollectorSourceType;
+    }> = [];
+    let deepIdx = 0;
+    for (const item of deepCandidates) {
+      if (apiCalls >= maxApiCalls) break;
+      const endpoint = CYCLE[deepIdx % CYCLE.length]!;
+      deepIdx += 1;
+      for (const start of deepStarts) {
+        if (apiCalls >= maxApiCalls) break;
         apiCalls += 1;
         stats.apiCalls = apiCalls;
-        stats.queriesCount += 1;
+        deepJobs.push({
+          item,
+          endpoint,
+          start,
+          sourceType: ENDPOINT_SOURCE[endpoint],
+        });
+      }
+    }
+
+    const deepFetched = await mapPool(
+      deepJobs,
+      NAVER_SEARCH_CONCURRENCY,
+      async (job) => {
+        const qStat: CollectionQueryStatInput = {
+          collectionRunId: runId,
+          searchQuery: `${job.item.query} [deep:start=${job.start}]`,
+          sourceType: job.sourceType,
+          sortMode: "date",
+          resultsCount: 0,
+          uniqueSourceCount: 0,
+          candidateCount: 0,
+          validSurveyCount: 0,
+          newSurveyCount: 0,
+          duplicateSurveyCount: 0,
+          invalidCount: 0,
+          unreachableCount: 0,
+          closedCount: 0,
+          restrictedCount: 0,
+          skippedKnownSourceCount: 0,
+          errorCount: 0,
+        };
+        if (Date.now() - startedAt > runtimeMaxMs) {
+          return { job, result: null, error: "runtime_budget" as string | null, qStat };
+        }
         try {
-          const result = await searchNaverEndpoint(endpoint, item.query, {
-            display,
-            sort,
-            start,
-          });
-          qStat.resultsCount = result.resultCount;
-          stats.resultsCount += result.resultCount;
-          await handleHits(result.hits, qStat);
+          const result = await timePhase(timing, "naver_search", () =>
+            searchNaverEndpoint(job.endpoint, job.item.query, {
+              display,
+              sort: "date",
+              start: job.start,
+            }),
+          );
+          await sleep(COLLECTOR_SEARCH_DELAY_MS);
+          return { job, result, error: null, qStat };
         } catch (error) {
           qStat.errorCount += 1;
+          const message =
+            error instanceof NaverSearchError
+              ? `[${job.endpoint}/${error.kind}] ${error.message}`
+              : String(error);
+          return { job, result: null, error: message, qStat };
+        }
+      },
+    );
+
+    for (const row of deepFetched) {
+      stats.queriesCount += 1;
+      if (row.error || !row.result) {
+        if (row.error && row.error !== "runtime_budget") {
           stats.errorCount += 1;
           stats.errors.push(
-            `${item.query} deep@${start}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `${row.job.item.query} deep@${row.job.start}: ${row.error}`,
           );
         }
-        stats.queryStats = [...(stats.queryStats || []), qStat];
-        if (!dryRun) await upsertCollectionQueryStat(qStat);
-        await sleep(COLLECTOR_SEARCH_DELAY_MS);
+        stats.queryStats = [...(stats.queryStats || []), row.qStat];
+        if (!dryRun) {
+          await timePhase(timing, "query_stats", () =>
+            upsertCollectionQueryStat(row.qStat),
+          );
+        }
+        continue;
+      }
+      row.qStat.resultsCount = row.result.resultCount;
+      stats.resultsCount += row.result.resultCount;
+      await handleHits(
+        row.result.hits.map((h) => ({
+          ...h,
+          searchQuery: row.job.item.query,
+          sourceType: row.job.sourceType,
+        })),
+        row.qStat,
+      );
+      stats.queryStats = [...(stats.queryStats || []), row.qStat];
+      if (!dryRun) {
+        await timePhase(timing, "query_stats", () =>
+          upsertCollectionQueryStat(row.qStat),
+        );
       }
     }
 
@@ -573,35 +716,47 @@ export async function runOrgV11Collection(input: {
       B_PRIORITY: 0,
       C_ARCHIVE: 0,
     };
-    const enriched = pending.map((p) => {
-      const triage = triageCandidate({
-        sourceUrl: p.sourceUrl,
-        sourceTitle: p.sourceTitle,
-        description: p.description,
-        surveyTitle: p.sourceTitle,
-        searchQuery: p.searchQuery,
-        sourceType: p.sourceType,
-        sourcePublishedAt: p.publishedAt,
-        sortMode: p.sortMode || null,
-        firstSeenThisRun: true,
-      });
-      queueCounts[triage.queue] += 1;
-      return { ...p, triage, priority: p.priority + triage.organizationScore + triage.recencyScore };
-    });
+    const enriched = await timePhase(timing, "triage", async () =>
+      pending.map((p) => {
+        const triage = triageCandidate({
+          sourceUrl: p.sourceUrl,
+          sourceTitle: p.sourceTitle,
+          description: p.description,
+          surveyTitle: p.sourceTitle,
+          searchQuery: p.searchQuery,
+          sourceType: p.sourceType,
+          sourcePublishedAt: p.publishedAt,
+          sortMode: p.sortMode || null,
+          firstSeenThisRun: true,
+        });
+        queueCounts[triage.queue] += 1;
+        return {
+          ...p,
+          triage,
+          priority:
+            p.priority + triage.organizationScore + triage.recencyScore,
+        };
+      }),
+    );
 
     const aQueue = enriched.filter((p) => p.triage.queue === "A_PRIORITY");
     const bQueue = enriched.filter((p) => p.triage.queue === "B_PRIORITY");
     const cQueueBase = enriched.filter((p) => p.triage.queue === "C_ARCHIVE");
 
-    // Canary: A≤120, B≤30, AB≤150. Non-canary: soft AB cap (180) with A-first recency order.
-    const canaryOn = isCollectorCanaryEnabled();
-    const caps = canaryOn
-      ? getCanaryDailyCaps(true)
-      : {
-          maxA: COLLECTOR_DAILY_BACKLOG_CAP,
-          maxB: COLLECTOR_DAILY_BACKLOG_CAP,
-          maxAb: COLLECTOR_DAILY_BACKLOG_CAP,
-        };
+    // Shared daily canary cap across partitions (A+B same day ≤ 120 total).
+    const remaining = dryRun
+      ? {
+          maxA: isCollectorCanaryEnabled() ? 100 : COLLECTOR_DAILY_BACKLOG_CAP,
+          maxB: isCollectorCanaryEnabled() ? 20 : COLLECTOR_DAILY_BACKLOG_CAP,
+          maxAb: isCollectorCanaryEnabled() ? 120 : COLLECTOR_DAILY_BACKLOG_CAP,
+          used: { aUsed: 0, bUsed: 0, abUsed: 0, runsCounted: 0 },
+        }
+      : await getRemainingDailyAbCaps();
+    const caps = {
+      maxA: remaining.maxA,
+      maxB: remaining.maxB,
+      maxAb: remaining.maxAb,
+    };
     const { cappedAB, overflow, counts: cappedCounts } = applyCanaryAbCaps(
       aQueue,
       bQueue,
@@ -611,10 +766,12 @@ export async function runOrgV11Collection(input: {
     queueCounts.C_ARCHIVE = cQueue.length;
     queueCounts.A_PRIORITY = cappedCounts.A_PRIORITY;
     queueCounts.B_PRIORITY = cappedCounts.B_PRIORITY;
+    const cappedACount = cappedCounts.A_PRIORITY;
+    const cappedBCount = cappedCounts.B_PRIORITY;
 
     // C_ARCHIVE (+ overflow): preserve as discovered but not daily backlog
-    for (const p of cQueue) {
-      const kind = await persistDiscovered(p);
+    const persistKinds = await mapPool(cQueue, 4, async (p) => persistDiscovered(p));
+    for (const kind of persistKinds) {
       if (kind === "new") stats.newSurveysCount += 1;
       else stats.duplicateSurveysCount += 1;
     }
@@ -624,17 +781,14 @@ export async function runOrgV11Collection(input: {
     const toDefer = cappedAB.slice(inlineBudget);
     let inlinePageValidates = 0;
 
-    for (const p of toDefer) {
-      const kind = await persistDiscovered(p);
-      if (kind === "new") {
-        stats.newSurveysCount += 1;
-      } else {
-        stats.duplicateSurveysCount += 1;
-      }
+    const deferKinds = await mapPool(toDefer, 4, async (p) => persistDiscovered(p));
+    for (const kind of deferKinds) {
+      if (kind === "new") stats.newSurveysCount += 1;
+      else stats.duplicateSurveysCount += 1;
     }
 
     for (const p of toValidate) {
-      if (Date.now() - startedAt > COLLECTOR_MAX_RUNTIME_MS) {
+      if (Date.now() - startedAt > runtimeMaxMs) {
         const kind = await persistDiscovered(p);
         if (kind === "new") stats.newSurveysCount += 1;
         else stats.duplicateSurveysCount += 1;
@@ -642,10 +796,12 @@ export async function runOrgV11Collection(input: {
       }
       inlinePageValidates += 1;
       try {
-        const processed = await processSurveyCandidate({
-          rawUrl: p.candidateUrl,
-          searchTitle: p.sourceTitle,
-        });
+        const processed = await timePhase(timing, "inline_page_validate", () =>
+          processSurveyCandidate({
+            rawUrl: p.candidateUrl,
+            searchTitle: p.sourceTitle,
+          }),
+        );
         if (!processed.ok) {
           if (
             processed.stage === "page" &&
@@ -751,13 +907,17 @@ export async function runOrgV11Collection(input: {
       knownSources.add(p.sourceUrl);
     }
 
-    const elapsedMs = Date.now() - startedAt;
+    finalizePhaseTiming(timing);
+    const elapsedMs = timing.totalMs;
     const status =
       stats.errorCount === 0
         ? "completed"
         : stats.newSurveysCount + stats.duplicateSurveysCount > 0
           ? "partial"
           : "failed";
+
+    const capMarker = formatCapMarker(cappedACount, cappedBCount);
+    const summaryBase = `[org_v1.2] partition=${partition} ${capMarker} inline=${inlinePageValidates}/${inlineBudget} backlogAB=${toDefer.length + inlinePageValidates} archive=${cQueue.length} elapsedMs=${elapsedMs} ${formatPhaseTiming(timing)} usedBefore=${remaining.used.abUsed}`;
 
     let finished: CollectionRunRow | null = run;
     if (!dryRun && run) {
@@ -772,8 +932,11 @@ export async function runOrgV11Collection(input: {
         errorCount: stats.errorCount,
         errorSummary:
           stats.errors.length > 0
-            ? `[org_v1.1] ${stats.errors.slice(0, 30).join("\n")}`.slice(0, 4000)
-            : `[org_v1.2] inline=${inlinePageValidates}/${inlineBudget} backlogAB=${toDefer.length + inlinePageValidates} archive=${cQueue.length} elapsedMs=${elapsedMs}`,
+            ? `${summaryBase}\n${stats.errors.slice(0, 20).join("\n")}`.slice(
+                0,
+                4000,
+              )
+            : summaryBase.slice(0, 4000),
       });
     }
 
@@ -784,14 +947,20 @@ export async function runOrgV11Collection(input: {
       stats,
       meta: {
         strategy: "org_v1_2",
+        partition,
         inlinePageValidates,
         inlineBudget,
         deferredDiscovered: toDefer.length,
         archivedSkipped: cQueue.length,
         queueCounts,
+        cappedA: cappedACount,
+        cappedB: cappedBCount,
         elapsedMs,
-        runtimeTargetMs: COLLECTOR_ORG_RUNTIME_TARGET_MS,
+        runtimeTargetMs,
         sampleOrgReview: sampleReview,
+        phaseTiming: timing,
+        topPhase: topPhase(timing),
+        naverConcurrency: NAVER_SEARCH_CONCURRENCY,
       },
     };
   } catch (error) {
@@ -806,7 +975,8 @@ export async function runOrgV11Collection(input: {
         newSurveysCount: stats.newSurveysCount,
         duplicateSurveysCount: stats.duplicateSurveysCount,
         errorCount: stats.errorCount + 1,
-        errorSummary: `[org_v1.1] ${message}`.slice(0, 4000),
+        errorSummary:
+          `[org_v1.2] partition=${partition} failed: ${message}`.slice(0, 4000),
       });
     }
     return { ok: false, status: 500, error: message };
