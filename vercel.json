@@ -13,6 +13,28 @@
     "app/api/scan/file/route.ts": {
       "maxDuration": 120,
       "memory": 1024
+    },
+    "app/api/internal/collector/run/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "app/api/internal/collector/revalidate/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "app/api/report/admin/collector/run/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/internal/collector/run",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/internal/collector/revalidate",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

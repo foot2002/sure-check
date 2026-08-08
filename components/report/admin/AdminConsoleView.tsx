@@ -83,6 +83,12 @@ export function AdminConsoleView({
         </div>
         <div className="flex gap-2">
           <Link
+            href="/report/admin/collector"
+            className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-sm text-teal-100 hover:bg-teal-500/20"
+          >
+            수집함
+          </Link>
+          <Link
             href="/report"
             className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >

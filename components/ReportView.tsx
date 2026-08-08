@@ -119,16 +119,19 @@ export function ReportView({ report }: ReportViewProps) {
       if (isEndedSurveyReport(shell)) {
         return <EndedSurveyReportView report={shell} />;
       }
+      let audienceReport: ReturnType<typeof composeAudienceReport> | null = null;
       try {
-        const audienceReport = composeAudienceReport(shell);
+        audienceReport = composeAudienceReport(shell);
+      } catch {
+        audienceReport = null;
+      }
+      if (audienceReport) {
         return (
           <div className="report-readable report-stack">
             <SafetyTypeCard safetyType={audienceReport.safetyType} />
             <TrustNoticePanel report={shell} />
           </div>
         );
-      } catch {
-        /* fall through */
       }
     }
     return (

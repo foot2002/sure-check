@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function Error({
   error,
   reset,
@@ -27,12 +29,12 @@ export default function Error({
         >
           다시 시도
         </button>
-        <a
+        <Link
           href="/"
           className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800"
         >
           홈으로
-        </a>
+        </Link>
       </div>
     </div>
   );
