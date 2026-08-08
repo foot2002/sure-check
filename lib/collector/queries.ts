@@ -1,6 +1,8 @@
 import { bestTriageAcrossSources } from "@/lib/collector/candidateTriage";
+import { COLLECTOR_DIAGNOSIS_DAILY_MAX } from "@/lib/collector/diagnosisBridge";
 import {
   countDiagnosisLinksByStatus,
+  countDiagnosisLinksCreatedInKstDay,
   findDiagnosisLinksBySurveyIds,
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
@@ -229,7 +231,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
   const lastRunCandidates = lastRun?.candidate_links_count ?? 0;
   const lastRunNew = lastRun?.new_surveys_count ?? 0;
 
-  let diagnosis = {
+  let diagnosis: CollectorSummary["diagnosis"] = {
     queued: 0,
     running: 0,
     completed: 0,
@@ -239,6 +241,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
   };
   try {
     const counts = await countDiagnosisLinksByStatus();
+    const today = await countDiagnosisLinksCreatedInKstDay();
     diagnosis = {
       queued: counts.queued,
       running: counts.running,
@@ -246,6 +249,16 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
       limited: counts.limited,
       failed: counts.failed_retryable + counts.failed_final,
       skipped: counts.skipped,
+      today: {
+        kstDate: today.kstDate,
+        attempted: today.total,
+        completed: today.byStatus.completed,
+        limited: today.byStatus.limited,
+        failed:
+          today.byStatus.failed_retryable + today.byStatus.failed_final,
+        dailyMax: COLLECTOR_DIAGNOSIS_DAILY_MAX,
+        remaining: Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - today.total),
+      },
     };
   } catch {
     /* migration 007/008 may not be applied yet */

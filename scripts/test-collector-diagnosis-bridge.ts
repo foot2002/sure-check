@@ -4,7 +4,9 @@
 import assert from "node:assert/strict";
 import { triageCandidate } from "../lib/collector/candidateTriage";
 import {
+  COLLECTOR_DIAGNOSIS_DAILY_MAX,
   COLLECTOR_DIAGNOSIS_DISPATCH_MAX,
+  COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING,
   filterAndSortEligible,
   isEligibleTriage,
   pickWithPlatformDiversity,
@@ -13,6 +15,7 @@ import {
   authorizeCollectorCronRequest,
   isCollectorCronAuthConfigured,
 } from "../lib/collector/cronAuth";
+import { getKstDayBounds } from "../lib/collector/diagnosisLinkRepository";
 import type { CollectorPlatform } from "../lib/collector/types";
 
 function makeTriage(partial: Parameters<typeof triageCandidate>[0]) {
@@ -130,6 +133,21 @@ function makeTriage(partial: Parameters<typeof triageCandidate>[0]) {
 }
 
 assert.equal(COLLECTOR_DIAGNOSIS_DISPATCH_MAX, 10);
+assert.equal(COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING, 10);
+assert.equal(COLLECTOR_DIAGNOSIS_DAILY_MAX, 100);
+
+// KST day bounds: 2026-08-08 17:30Z is still KST Aug 9 02:30 → day starts 08-08 15:00Z
+{
+  const bounds = getKstDayBounds(new Date("2026-08-08T17:30:00.000Z"));
+  assert.equal(bounds.kstDate, "2026-08-09");
+  assert.equal(bounds.startUtcIso, "2026-08-08T15:00:00.000Z");
+  assert.equal(bounds.endUtcIso, "2026-08-09T15:00:00.000Z");
+}
+{
+  const bounds = getKstDayBounds(new Date("2026-08-08T14:59:59.000Z"));
+  assert.equal(bounds.kstDate, "2026-08-08");
+  assert.equal(bounds.startUtcIso, "2026-08-07T15:00:00.000Z");
+}
 
 assert.equal(typeof authorizeCollectorCronRequest, "function");
 assert.equal(typeof isCollectorCronAuthConfigured, "function");

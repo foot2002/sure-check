@@ -9,14 +9,20 @@ import {
   type TriageResult,
 } from "@/lib/collector/candidateTriage";
 import {
+  countDiagnosisLinksCreatedInKstDay,
   findActiveDiagnosisLinkForSurvey,
+  findSurveyIdsWithBlockingDiagnosis,
   insertDiagnosisLink,
   syncDiagnosisLinkFromScanJob,
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
 import type { CollectorOrgQualityClass } from "@/lib/collector/orgQuality";
 import type { CollectorPlatform } from "@/lib/collector/types";
-import { countInProgressScanJobs } from "@/lib/jobs/scanJobQueue";
+import {
+  countInProgressScanJobs,
+  findAnyCompletedScanByCacheKey,
+  findRunningScanByCacheKey,
+} from "@/lib/jobs/scanJobQueue";
 import { startUrlScanJob } from "@/lib/jobs/startUrlScanJob";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
@@ -24,6 +30,8 @@ import { normalizeUrl } from "@/lib/utils/normalizeUrl";
 
 export const COLLECTOR_DIAGNOSIS_DISPATCH_MAX = 10;
 export const COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING = 10;
+/** Hard cap for collector_auto linkage creates per KST calendar day. */
+export const COLLECTOR_DIAGNOSIS_DAILY_MAX = 100;
 
 const OFFICIAL_ORGS = new Set<CollectorOrgQualityClass>([
   "public",
@@ -74,11 +82,20 @@ export type DispatchResult = {
     skippedDuplicate: number;
     skippedNotEligible: number;
     skippedBackpressure: number;
+    skippedDailyLimit: number;
     failed: number;
   };
   organizationDistribution: Record<string, number>;
   platformDistribution: Record<string, number>;
   recencyDistribution: Record<string, number>;
+  daily: {
+    kstDate: string;
+    max: number;
+    used: number;
+    remaining: number;
+    limitReached: boolean;
+  };
+  reason?: string | null;
 };
 
 function scanIdentity(canonicalUrl: string): {
@@ -184,12 +201,15 @@ async function loadActiveCandidatesFromDb(
   fetchLimit: number,
 ): Promise<EligibleCandidate[]> {
   const supabase = createSupabaseServerClient();
+  // Deep enough to burn through recent already-diagnosed actives and still
+  // reach the undiagnosed A_PRIORITY backlog (~95+) for each wave.
+  const fetchSize = Math.min(Math.max(fetchLimit * 50, 400), 800);
   const { data: links, error } = await supabase
     .from("survey_links")
     .select("id, canonical_url, platform, title, status")
     .eq("status", "active")
     .order("last_discovered_at", { ascending: false })
-    .limit(Math.max(fetchLimit * 8, 80));
+    .limit(fetchSize);
 
   if (error) throw new Error(`load active survey_links: ${error.message}`);
   const rows = links || [];
@@ -239,6 +259,37 @@ async function loadActiveCandidatesFromDb(
   return filterAndSortEligible(mapped);
 }
 
+async function filterOpenForEnqueue(
+  candidates: EligibleCandidate[],
+): Promise<EligibleCandidate[]> {
+  if (candidates.length === 0) return [];
+  const blockedIds = await findSurveyIdsWithBlockingDiagnosis(
+    candidates.map((c) => c.surveyLinkId),
+  );
+  const open: EligibleCandidate[] = [];
+  for (const c of candidates) {
+    if (blockedIds.has(c.surveyLinkId)) continue;
+    const running = await findRunningScanByCacheKey(c.scanCacheKey);
+    if (running?.external_scan_id) continue;
+    const completed = await findAnyCompletedScanByCacheKey(c.scanCacheKey);
+    if (completed?.job.external_scan_id) continue;
+    open.push(c);
+  }
+  return open;
+}
+
+function emptyCounts() {
+  return {
+    wouldEnqueue: 0,
+    queued: 0,
+    skippedDuplicate: 0,
+    skippedNotEligible: 0,
+    skippedBackpressure: 0,
+    skippedDailyLimit: 0,
+    failed: 0,
+  };
+}
+
 export async function dispatchCollectorDiagnoses(input?: {
   limit?: number;
   dryRun?: boolean;
@@ -248,14 +299,45 @@ export async function dispatchCollectorDiagnoses(input?: {
   // Real enqueue stays at COLLECTOR_DIAGNOSIS_DISPATCH_MAX (10);
   // dry-run may inspect up to 20 candidates for quality review.
   const maxLimit = dryRun ? 20 : COLLECTOR_DIAGNOSIS_DISPATCH_MAX;
-  const limit = Math.min(
+  const requestedLimit = Math.min(
     Math.max(1, Math.floor(input?.limit ?? COLLECTOR_DIAGNOSIS_DISPATCH_MAX)),
     maxLimit,
   );
   const inProgress = await countInProgressScanJobs();
+  const day = await countDiagnosisLinksCreatedInKstDay();
+  const dailyRemaining = Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - day.total);
+  const daily = {
+    kstDate: day.kstDate,
+    max: COLLECTOR_DIAGNOSIS_DAILY_MAX,
+    used: day.total,
+    remaining: dailyRemaining,
+    limitReached: dailyRemaining <= 0,
+  };
+
+  if (!dryRun && daily.limitReached) {
+    return {
+      dryRun,
+      limit: requestedLimit,
+      inProgressScanJobs: inProgress,
+      eligibleBeforeDedupe: 0,
+      selected: 0,
+      outcomes: [],
+      counts: emptyCounts(),
+      organizationDistribution: {},
+      platformDistribution: {},
+      recencyDistribution: {},
+      daily,
+      reason: "daily_limit_reached",
+    };
+  }
+
+  const limit = dryRun
+    ? requestedLimit
+    : Math.min(requestedLimit, dailyRemaining);
 
   const eligible = await loadActiveCandidatesFromDb(limit);
-  const selectedPool = pickWithPlatformDiversity(eligible, limit);
+  const openEligible = await filterOpenForEnqueue(eligible);
+  const selectedPool = pickWithPlatformDiversity(openEligible, limit);
 
   const orgDist: Record<string, number> = {};
   const platDist: Record<string, number> = {};
@@ -267,19 +349,15 @@ export async function dispatchCollectorDiagnoses(input?: {
   }
 
   const outcomes: DispatchItemOutcome[] = [];
-  const counts = {
-    wouldEnqueue: 0,
-    queued: 0,
-    skippedDuplicate: 0,
-    skippedNotEligible: 0,
-    skippedBackpressure: 0,
-    failed: 0,
-  };
+  const counts = emptyCounts();
+  /** Rows actually inserted into survey_diagnosis_links this wave. */
+  let linkageCreated = 0;
 
   let remainingSlots = Math.max(
     0,
     COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING - inProgress,
   );
+  let remainingDaily = dailyRemaining;
 
   for (const c of selectedPool) {
     const base = {
@@ -290,6 +368,16 @@ export async function dispatchCollectorDiagnoses(input?: {
       queue: c.triage.queue,
       recency: c.triage.recency,
     };
+
+    if (!dryRun && remainingDaily <= 0) {
+      outcomes.push({
+        ...base,
+        outcome: "skipped_not_eligible",
+        skipReason: "daily_limit_reached",
+      });
+      counts.skippedDailyLimit += 1;
+      continue;
+    }
 
     if (!dryRun && remainingSlots <= 0) {
       outcomes.push({
@@ -315,9 +403,6 @@ export async function dispatchCollectorDiagnoses(input?: {
     }
 
     if (dryRun) {
-      // Probe scan dedupe without writing
-      const { findAnyCompletedScanByCacheKey, findRunningScanByCacheKey } =
-        await import("@/lib/jobs/scanJobQueue");
       const running = await findRunningScanByCacheKey(c.scanCacheKey);
       if (running?.external_scan_id) {
         outcomes.push({
@@ -364,6 +449,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     }
 
     if (started.alreadyCompleted || started.reusedRunningJob) {
+      // Still creates an auto linkage row — counts toward daily cap.
       await insertDiagnosisLink({
         surveyLinkId: c.surveyLinkId,
         diagnosisJobId: started.scanId,
@@ -375,6 +461,8 @@ export async function dispatchCollectorDiagnoses(input?: {
           ? "existing_completed_scan"
           : "reused_running_scan",
       });
+      linkageCreated += 1;
+      remainingDaily -= 1;
       outcomes.push({
         ...base,
         outcome: "skipped_duplicate",
@@ -395,6 +483,11 @@ export async function dispatchCollectorDiagnoses(input?: {
       scanCacheKey: started.cacheKey,
       status: "queued",
     });
+    linkageCreated += 1;
+
+    if (input?.processInline && link?.id && started.scanId) {
+      await syncDiagnosisLinkFromScanJob(link.id, started.scanId);
+    }
 
     outcomes.push({
       ...base,
@@ -404,8 +497,10 @@ export async function dispatchCollectorDiagnoses(input?: {
     });
     counts.queued += 1;
     remainingSlots -= 1;
+    remainingDaily -= 1;
   }
 
+  const usedAfter = day.total + (dryRun ? 0 : linkageCreated);
   return {
     dryRun,
     limit,
@@ -417,6 +512,17 @@ export async function dispatchCollectorDiagnoses(input?: {
     organizationDistribution: orgDist,
     platformDistribution: platDist,
     recencyDistribution: recDist,
+    daily: {
+      ...daily,
+      used: dryRun ? day.total : usedAfter,
+      remaining: dryRun
+        ? dailyRemaining
+        : Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - usedAfter),
+      limitReached:
+        (dryRun ? dailyRemaining : Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - usedAfter)) <=
+        0,
+    },
+    reason: null,
   };
 }
 

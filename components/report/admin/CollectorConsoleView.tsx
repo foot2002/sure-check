@@ -239,45 +239,99 @@ export function CollectorConsoleView({
       ) : null}
 
       {summary?.diagnosis ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {[
-            ["대기", summary.diagnosis.queued, "border-sky-800/50 text-sky-100"],
-            [
-              "진행",
-              summary.diagnosis.running,
-              "border-sky-800/50 text-sky-100",
-            ],
-            [
-              "완료",
-              summary.diagnosis.completed,
-              "border-emerald-800/50 text-emerald-100",
-            ],
-            [
-              "제한 진단",
-              summary.diagnosis.limited,
-              "border-amber-800/50 text-amber-100",
-            ],
-            [
-              "실패",
-              summary.diagnosis.failed,
-              "border-rose-800/50 text-rose-100",
-            ],
-          ].map(([label, value, tone]) => (
-            <div
-              key={String(label)}
-              className={`rounded-xl border bg-slate-900/50 p-3 ${String(tone).split(" ")[0]}`}
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-400">
-                {label}
-              </p>
-              <p
-                className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
+        <>
+          <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              [
+                "대기",
+                summary.diagnosis.queued,
+                "border-sky-800/50 text-sky-100",
+              ],
+              [
+                "진행",
+                summary.diagnosis.running,
+                "border-sky-800/50 text-sky-100",
+              ],
+              [
+                "완료",
+                summary.diagnosis.completed,
+                "border-emerald-800/50 text-emerald-100",
+              ],
+              [
+                "제한 진단",
+                summary.diagnosis.limited,
+                "border-amber-800/50 text-amber-100",
+              ],
+              [
+                "실패",
+                summary.diagnosis.failed,
+                "border-rose-800/50 text-rose-100",
+              ],
+            ].map(([label, value, tone]) => (
+              <div
+                key={String(label)}
+                className={`rounded-xl border bg-slate-900/50 p-3 ${String(tone).split(" ")[0]}`}
               >
-                {Number(value).toLocaleString("ko-KR")}
-              </p>
-            </div>
-          ))}
-        </section>
+                <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                  {label}
+                </p>
+                <p
+                  className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
+                >
+                  {Number(value).toLocaleString("ko-KR")}
+                </p>
+              </div>
+            ))}
+          </section>
+          {summary.diagnosis.today ? (
+            <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                [
+                  `오늘 시도(${summary.diagnosis.today.kstDate})`,
+                  summary.diagnosis.today.attempted,
+                  "border-violet-800/50 text-violet-100",
+                ],
+                [
+                  "오늘 완료",
+                  summary.diagnosis.today.completed,
+                  "border-emerald-800/50 text-emerald-100",
+                ],
+                [
+                  "오늘 제한",
+                  summary.diagnosis.today.limited,
+                  "border-amber-800/50 text-amber-100",
+                ],
+                [
+                  "오늘 실패",
+                  summary.diagnosis.today.failed,
+                  "border-rose-800/50 text-rose-100",
+                ],
+                [
+                  "오늘 남은 용량",
+                  summary.diagnosis.today.remaining,
+                  "border-cyan-800/50 text-cyan-100",
+                ],
+              ].map(([label, value, tone]) => (
+                <div
+                  key={String(label)}
+                  className={`rounded-xl border bg-slate-900/50 p-3 ${String(tone).split(" ")[0]}`}
+                >
+                  <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                    {label}
+                  </p>
+                  <p
+                    className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
+                  >
+                    {Number(value).toLocaleString("ko-KR")}
+                    {String(label).includes("남은")
+                      ? ` / ${summary.diagnosis?.today?.dailyMax ?? 100}`
+                      : ""}
+                  </p>
+                </div>
+              ))}
+            </section>
+          ) : null}
+        </>
       ) : null}
 
       {summary ? (

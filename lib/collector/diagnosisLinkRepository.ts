@@ -236,6 +236,91 @@ export async function countDiagnosisLinksByStatus(): Promise<
   return empty;
 }
 
+/** KST calendar day bounds as UTC instants (Asia/Seoul, UTC+9, no DST). */
+export function getKstDayBounds(now: Date = new Date()): {
+  kstDate: string;
+  startUtcIso: string;
+  endUtcIso: string;
+} {
+  const kstMs = now.getTime() + 9 * 60 * 60 * 1000;
+  const kstAsUtc = new Date(kstMs);
+  const y = kstAsUtc.getUTCFullYear();
+  const m = kstAsUtc.getUTCMonth();
+  const d = kstAsUtc.getUTCDate();
+  const startUtcMs = Date.UTC(y, m, d, 0, 0, 0) - 9 * 60 * 60 * 1000;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+  const kstDate = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return {
+    kstDate,
+    startUtcIso: new Date(startUtcMs).toISOString(),
+    endUtcIso: new Date(endUtcMs).toISOString(),
+  };
+}
+
+/**
+ * Count auto-diagnosis linkage rows created in the current KST day.
+ * Manual SURE-Check scans do not write survey_diagnosis_links.
+ */
+export async function countDiagnosisLinksCreatedInKstDay(
+  now: Date = new Date(),
+): Promise<{
+  kstDate: string;
+  total: number;
+  byStatus: Record<SurveyDiagnosisLinkStatus, number>;
+}> {
+  const { kstDate, startUtcIso, endUtcIso } = getKstDayBounds(now);
+  const byStatus: Record<SurveyDiagnosisLinkStatus, number> = {
+    queued: 0,
+    running: 0,
+    completed: 0,
+    limited: 0,
+    failed_retryable: 0,
+    failed_final: 0,
+    skipped: 0,
+  };
+  const supabase = createSupabaseServerClient();
+  let total = 0;
+  for (const status of Object.keys(byStatus) as SurveyDiagnosisLinkStatus[]) {
+    const { count, error } = await supabase
+      .from("survey_diagnosis_links")
+      .select("id", { count: "exact", head: true })
+      .eq("status", status)
+      .gte("created_at", startUtcIso)
+      .lt("created_at", endUtcIso);
+    if (!error) {
+      byStatus[status] = count ?? 0;
+      total += byStatus[status];
+    }
+  }
+  return { kstDate, total, byStatus };
+}
+
+/** Survey link IDs that already have a blocking auto-diagnosis linkage. */
+export async function findSurveyIdsWithBlockingDiagnosis(
+  surveyLinkIds: string[],
+): Promise<Set<string>> {
+  const blocked = new Set<string>();
+  if (surveyLinkIds.length === 0) return blocked;
+  const supabase = createSupabaseServerClient();
+  const chunk = 200;
+  for (let i = 0; i < surveyLinkIds.length; i += chunk) {
+    const slice = surveyLinkIds.slice(i, i + chunk);
+    const { data, error } = await supabase
+      .from("survey_diagnosis_links")
+      .select("survey_link_id")
+      .in("survey_link_id", slice)
+      .in("status", DIAGNOSIS_LINK_BLOCKING_STATUSES);
+    if (error) {
+      console.error("[diagnosisLink] findBlocking", error.message);
+      continue;
+    }
+    for (const row of data || []) {
+      blocked.add(String(row.survey_link_id));
+    }
+  }
+  return blocked;
+}
+
 export async function syncDiagnosisLinkFromScanJob(
   linkId: string,
   externalScanId: string,

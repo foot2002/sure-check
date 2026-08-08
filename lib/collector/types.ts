@@ -200,6 +200,16 @@ export interface CollectorSummary {
     /** failed_retryable + failed_final */
     failed: number;
     skipped: number;
+    /** KST-day auto-diagnosis ops (survey_diagnosis_links only). */
+    today?: {
+      kstDate: string;
+      attempted: number;
+      completed: number;
+      limited: number;
+      failed: number;
+      dailyMax: number;
+      remaining: number;
+    };
   };
 }
 
