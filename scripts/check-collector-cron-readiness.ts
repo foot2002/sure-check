@@ -186,19 +186,31 @@ async function main() {
         crons?: Array<{ path?: string; schedule?: string }>;
       };
       const crons = vercel.crons || [];
-      const hasCollect = crons.some(
+      const hasCollectA = crons.some(
         (c) =>
-          c.path === "/api/internal/collector/run" &&
-          c.schedule === "0 21 * * *",
+          c.path === "/api/internal/collector/run/a" &&
+          c.schedule === "0 17 * * *",
       );
-      const hasRevalidate = crons.some(
+      const hasCollectB = crons.some(
         (c) =>
-          c.path === "/api/internal/collector/revalidate" &&
-          c.schedule === "0 3 * * *",
+          c.path === "/api/internal/collector/run/b" &&
+          c.schedule === "0 19 * * *",
       );
-      vercelCronsOk = hasCollect && hasRevalidate;
+      const hasLegacyFullRun = crons.some(
+        (c) => c.path === "/api/internal/collector/run",
+      );
+      const revalidateSchedules = crons
+        .filter((c) => c.path === "/api/internal/collector/revalidate")
+        .map((c) => c.schedule)
+        .sort();
+      const expectedRevalidate = ["0 23 * * *", "0 3 * * *", "0 7 * * *"].sort();
+      const hasRevalidateTriple =
+        revalidateSchedules.length === 3 &&
+        revalidateSchedules.every((s, i) => s === expectedRevalidate[i]);
+      vercelCronsOk =
+        hasCollectA && hasCollectB && !hasLegacyFullRun && hasRevalidateTriple;
       vercelDetail = vercelCronsOk
-        ? "run@21:00UTC(06:00KST) + revalidate@03:00UTC(12:00KST)"
+        ? "A@17UTC(02KST) + B@19UTC(04KST) + revalidate×3 (08/12/16KST); legacy /run Cron removed"
         : `불완전: ${JSON.stringify(crons)}`;
     } catch (e) {
       vercelDetail = e instanceof Error ? e.message : String(e);

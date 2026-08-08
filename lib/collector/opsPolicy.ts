@@ -35,19 +35,18 @@ export const COLLECTOR_REVALIDATE_MAX_RETRIES = 2;
 export const COLLECTOR_STALE_RUNNING_MS = 15 * 60 * 1000;
 
 /**
- * Production schedule (Vercel Cron in vercel.json, UTC) — DO NOT change until approved:
- * - Collect: 0 21 * * * → 06:00 KST
- * - Revalidate: 0 3 * * * → 12:00 KST
- *
- * Proposed org_v1.1 backlog drain (not registered yet):
- * - Discovered-only: 12:00 / 16:00 / 20:00 KST (batch 50 each ≈ 150/day)
- * - Unreachable: keep with noon job or separate small batch
+ * Production schedule (Vercel Cron in vercel.json, UTC) — org_v1.2 auto ops:
+ * - Collect A: 0 17 * * * → 02:00 KST  /api/internal/collector/run/a
+ * - Collect B: 0 19 * * * → 04:00 KST  /api/internal/collector/run/b
+ * - Revalidate ×3: 0 23 / 0 3 / 0 7 UTC → 08:00 / 12:00 / 16:00 KST
+ * Legacy single /api/internal/collector/run Cron removed (endpoint kept for manual).
  */
 export const COLLECTOR_OPS_SCHEDULE_NOTES = {
-  dailyCollect: "매일 06:00 KST (21:00 UTC) Vercel Cron → /api/internal/collector/run",
+  dailyCollectA: "매일 02:00 KST (17:00 UTC) → /api/internal/collector/run/a",
+  dailyCollectB: "매일 04:00 KST (19:00 UTC) → /api/internal/collector/run/b",
   discoveredBacklog:
-    "현재 등록: 매일 12:00 KST batch~50. 제안(미등록): 12/16/20시 KST ×50 = ~150/일",
-  unreachableRetry: "discovered 우선 후 unreachable 15건 (동일 또는 별도 job)",
+    "매일 08:00 / 12:00 / 16:00 KST × batch~50 → /api/internal/collector/revalidate (~150/일)",
+  unreachableRetry: "discovered 우선 후 unreachable 15건 (동일 revalidate job)",
 } as const;
 
 /** Target collect wall time ≤ 70% of Vercel maxDuration (120s → 84s). */
@@ -61,11 +60,9 @@ export const COLLECTOR_ORG_RUNTIME_TARGET_MS = 84_000;
 export const COLLECTOR_DAILY_BACKLOG_CAP = 180;
 
 /**
- * Fast-track canary backlog (manual same-day; Cron schedule unchanged until ops decision).
- * Proposed after partition split (NOT in vercel.json yet):
- * - Collect A: 06:00 KST
- * - Collect B: 06:20 KST (after A releases running lock)
- * - Revalidate: 12/16/20 × 50 if discovered backlog ≥100
+ * Fast-track canary backlog + org_v1.2 Production Cron (registered in vercel.json):
+ * - Collect A: 02:00 KST / Collect B: 04:00 KST
+ * - Revalidate: 08/12/16 × 50 ≈ 150/day
  */
 export const COLLECTOR_CANARY_BACKLOG_NOTES = {
   maxAPerDay: 100,
@@ -76,7 +73,7 @@ export const COLLECTOR_CANARY_BACKLOG_NOTES = {
   batchSize: 50,
   dailyCapacity: 150,
   proposedCollectPartitions: {
-    a: { kst: "06:00", utcCron: "0 21 * * *", path: "/api/internal/collector/run/a" },
-    b: { kst: "06:20", utcCron: "20 21 * * *", path: "/api/internal/collector/run/b" },
+    a: { kst: "02:00", utcCron: "0 17 * * *", path: "/api/internal/collector/run/a" },
+    b: { kst: "04:00", utcCron: "0 19 * * *", path: "/api/internal/collector/run/b" },
   },
 } as const;

@@ -37,12 +37,24 @@
   },
   "crons": [
     {
-      "path": "/api/internal/collector/run",
-      "schedule": "0 21 * * *"
+      "path": "/api/internal/collector/run/a",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/internal/collector/run/b",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/internal/collector/revalidate",
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/internal/collector/revalidate",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/internal/collector/revalidate",
+      "schedule": "0 7 * * *"
     }
   ]
 }

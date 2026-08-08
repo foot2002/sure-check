@@ -8,6 +8,7 @@ import type {
   SurveyLinkListItem,
   SurveySourceRow,
 } from "@/lib/collector/types";
+import { classifyCollectorRunSummary } from "@/lib/collector/runKindLabel";
 
 type Filters = {
   platform: string;
@@ -286,9 +287,10 @@ export function CollectorConsoleView({
             <span className="font-semibold text-teal-200">
               {summary.lastRun.status}
             </span>
-            {summary.lastRun.error_summary?.startsWith("[revalidate]")
-              ? " · 유형 재검증(backlog)"
-              : " · 유형 검색수집"}{" "}
+            {" · "}
+            <span className="font-semibold text-sky-200">
+              {classifyCollectorRunSummary(summary.lastRun.error_summary).labelKo}
+            </span>{" "}
             · API {summary.lastRunApiCalls} · 결과{" "}
             {summary.lastRun.results_count} · 후보{" "}
             {summary.lastRun.candidate_links_count} · 신규{" "}
@@ -319,7 +321,8 @@ export function CollectorConsoleView({
           ) : null}
           {summary.lastRun.error_summary ? (
             <p className="mt-2 whitespace-pre-wrap text-xs text-rose-200/90">
-              {summary.lastRun.error_summary.startsWith("[revalidate]")
+              {classifyCollectorRunSummary(summary.lastRun.error_summary).kind ===
+              "revalidate"
                 ? "최근 재검증 요약"
                 : "최근 실행 요약"}
               : {summary.lastRun.error_summary.slice(0, 600)}
