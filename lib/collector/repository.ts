@@ -121,6 +121,53 @@ export async function finishCollectionRun(input: {
   return data as CollectionRunRow;
 }
 
+/**
+ * Prefer INSERT for brand-new canonicals (skips SELECT round-trip).
+ * On unique conflict, falls back to the update path.
+ */
+export async function upsertSurveyLinkPreferInsert(input: {
+  canonicalUrl: string;
+  originalUrl: string;
+  platform: CollectorPlatform;
+  title?: string | null;
+  status?: CollectorSurveyStatus;
+}): Promise<UpsertSurveyResult> {
+  const supabase = getClient();
+  const now = new Date().toISOString();
+  const nextTitle = sanitizeSurveyTitle(input.title);
+  const nextStatus = input.status || "discovered";
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("survey_links")
+    .insert({
+      canonical_url: input.canonicalUrl,
+      original_url: input.originalUrl,
+      platform: input.platform,
+      title: nextTitle || "제목 확인 필요",
+      status: nextStatus,
+      first_discovered_at: now,
+      last_discovered_at: now,
+      discovery_count: 1,
+    })
+    .select("*")
+    .single();
+
+  if (!insertError && inserted) {
+    return { link: inserted as SurveyLinkRow, isNew: true };
+  }
+  if (insertError && insertError.code !== "23505") {
+    throw new Error(`survey_links 저장 실패: ${insertError.message}`);
+  }
+  // Conflict: existing row — use standard update path
+  return upsertSurveyLink({
+    canonicalUrl: input.canonicalUrl,
+    originalUrl: input.originalUrl,
+    platform: input.platform,
+    title: input.title,
+    status: input.status,
+  });
+}
+
 export async function upsertSurveyLink(input: {
   canonicalUrl: string;
   originalUrl: string;

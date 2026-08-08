@@ -9,8 +9,13 @@ import {
   getCanaryDailyCaps,
   isCollectorCanaryEnabled,
 } from "@/lib/collector/canaryPolicy";
+import type { CapUsageTriple } from "@/lib/collector/partitionCanaryQuota";
+import { emptyCapUsageTriple } from "@/lib/collector/partitionCanaryQuota";
 
-const CAP_MARKER = /\[cap\]\s*A=(\d+)\s*B=(\d+)\s*AB=(\d+)/i;
+/** Prefer `[cap] partition=a A=n B=m AB=k`; also accept legacy without partition. */
+const CAP_MARKER =
+  /\[cap\](?:\s*partition=(a|b|all))?\s*A=(\d+)\s*B=(\d+)\s*AB=(\d+)/i;
+const OUTER_PARTITION = /partition=(a|b|all)/i;
 
 function startOfTodayKstIso(): string {
   const now = new Date();
@@ -21,7 +26,14 @@ function startOfTodayKstIso(): string {
   return new Date(`${y}-${m}-${d}T00:00:00+09:00`).toISOString();
 }
 
-export function formatCapMarker(a: number, b: number): string {
+export function formatCapMarker(
+  a: number,
+  b: number,
+  partition?: "a" | "b" | "all",
+): string {
+  if (partition === "a" || partition === "b" || partition === "all") {
+    return `[cap] partition=${partition} A=${a} B=${b} AB=${a + b}`;
+  }
   return `[cap] A=${a} B=${b} AB=${a + b}`;
 }
 
@@ -29,14 +41,25 @@ export function parseCapMarker(text: string | null | undefined): {
   a: number;
   b: number;
   ab: number;
+  partition: "a" | "b" | "all" | "unknown";
 } | null {
   if (!text) return null;
   const m = text.match(CAP_MARKER);
   if (!m) return null;
+  let partition: "a" | "b" | "all" | "unknown" = "unknown";
+  if (m[1] === "a" || m[1] === "b" || m[1] === "all") {
+    partition = m[1];
+  } else {
+    const outer = text.match(OUTER_PARTITION);
+    if (outer?.[1] === "a" || outer?.[1] === "b" || outer?.[1] === "all") {
+      partition = outer[1];
+    }
+  }
   return {
-    a: Number(m[1] || 0),
-    b: Number(m[2] || 0),
-    ab: Number(m[3] || 0),
+    a: Number(m[2] || 0),
+    b: Number(m[3] || 0),
+    ab: Number(m[4] || 0),
+    partition,
   };
 }
 
@@ -45,6 +68,7 @@ export async function getTodayAbCapUsage(): Promise<{
   bUsed: number;
   abUsed: number;
   runsCounted: number;
+  byPartition: { a: CapUsageTriple; b: CapUsageTriple; unknown: CapUsageTriple };
 }> {
   const supabase = createSupabaseServerClient();
   const since = startOfTodayKstIso();
@@ -56,9 +80,15 @@ export async function getTodayAbCapUsage(): Promise<{
     .order("started_at", { ascending: true })
     .limit(50);
 
+  const byPartition = {
+    a: emptyCapUsageTriple(),
+    b: emptyCapUsageTriple(),
+    unknown: emptyCapUsageTriple(),
+  };
+
   if (error) {
     console.error("[collector] getTodayAbCapUsage", error.message);
-    return { aUsed: 0, bUsed: 0, abUsed: 0, runsCounted: 0 };
+    return { aUsed: 0, bUsed: 0, abUsed: 0, runsCounted: 0, byPartition };
   }
 
   let aUsed = 0;
@@ -70,21 +100,48 @@ export async function getTodayAbCapUsage(): Promise<{
     aUsed += parsed.a;
     bUsed += parsed.b;
     runsCounted += 1;
+    const bucket =
+      parsed.partition === "a" || parsed.partition === "b"
+        ? byPartition[parsed.partition]
+        : byPartition.unknown;
+    bucket.a += parsed.a;
+    bucket.b += parsed.b;
+    bucket.ab += parsed.ab;
   }
-  return { aUsed, bUsed, abUsed: aUsed + bUsed, runsCounted };
+  return { aUsed, bUsed, abUsed: aUsed + bUsed, runsCounted, byPartition };
 }
 
 export async function getRemainingDailyAbCaps(): Promise<{
   maxA: number;
   maxB: number;
   maxAb: number;
-  used: { aUsed: number; bUsed: number; abUsed: number; runsCounted: number };
+  used: {
+    aUsed: number;
+    bUsed: number;
+    abUsed: number;
+    runsCounted: number;
+    byPartition: {
+      a: CapUsageTriple;
+      b: CapUsageTriple;
+      unknown: CapUsageTriple;
+    };
+  };
 }> {
   const canaryOn = isCollectorCanaryEnabled();
   const base = getCanaryDailyCaps(canaryOn);
   const used = canaryOn
     ? await getTodayAbCapUsage()
-    : { aUsed: 0, bUsed: 0, abUsed: 0, runsCounted: 0 };
+    : {
+        aUsed: 0,
+        bUsed: 0,
+        abUsed: 0,
+        runsCounted: 0,
+        byPartition: {
+          a: emptyCapUsageTriple(),
+          b: emptyCapUsageTriple(),
+          unknown: emptyCapUsageTriple(),
+        },
+      };
 
   return {
     maxA: Math.max(0, base.maxA - used.aUsed),

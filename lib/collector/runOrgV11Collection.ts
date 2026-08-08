@@ -10,6 +10,7 @@ import {
   COLLECTOR_DEEP_SEARCH_MAX_PAGES,
   COLLECTOR_INLINE_PAGE_VALIDATE_ORG,
   COLLECTOR_DAILY_BACKLOG_CAP,
+  COLLECTOR_DB_PERSIST_CONCURRENCY,
   COLLECTOR_MAX_API_CALLS,
   COLLECTOR_MAX_RUNTIME_MS,
   COLLECTOR_ORG_RUNTIME_TARGET_MS,
@@ -46,6 +47,7 @@ import {
   tryStartCollectionRun,
   upsertCollectionQueryStat,
   upsertSurveyLink,
+  upsertSurveyLinkPreferInsert,
 } from "@/lib/collector/repository";
 import { validateSurveyResponseUrl } from "@/lib/collector/surveyUrlRules";
 import { normalizeSurveyUrl } from "@/lib/collector/urlNormalize";
@@ -62,9 +64,14 @@ import {
   getRemainingDailyAbCaps,
 } from "@/lib/collector/dailyCanaryCap";
 import {
+  emptyCapUsageTriple,
+  resolvePartitionCanaryCaps,
+} from "@/lib/collector/partitionCanaryQuota";
+import {
   createPhaseTiming,
   finalizePhaseTiming,
   formatPhaseTiming,
+  timeAggregateWorker,
   timePhase,
   topPhase,
   type PhaseTiming,
@@ -128,6 +135,18 @@ export type OrgV11RunResult =
         phaseTiming: PhaseTiming;
         topPhase: string;
         naverConcurrency: number;
+        dbPersist: {
+          concurrency: number;
+          surveyLinkUpserts: number;
+          surveyLinkSkippedKnown: number;
+          surveySourceInserts: number;
+        };
+        partitionCaps?: {
+          maxA: number;
+          maxB: number;
+          maxAb: number;
+          reservedOther: { maxA: number; maxB: number; maxAb: number };
+        };
       };
     }
   | { ok: false; status: number; error: string };
@@ -291,6 +310,12 @@ export async function runOrgV11Collection(input: {
   };
 
   const runId = run.id;
+  const dbPersist = {
+    concurrency: COLLECTOR_DB_PERSIST_CONCURRENCY,
+    surveyLinkUpserts: 0,
+    surveyLinkSkippedKnown: 0,
+    surveySourceInserts: 0,
+  };
 
   async function persistDiscovered(p: PendingCandidate): Promise<"new" | "dup"> {
     if (dryRun) {
@@ -302,8 +327,27 @@ export async function runOrgV11Collection(input: {
       });
       return "new";
     }
-    return timePhase(timing, "db_upsert", async () => {
-      const upserted = await upsertSurveyLink({
+    return timeAggregateWorker(timing, "db_upsert", async () => {
+      const known = knownCanonicals.get(p.canonicalUrl);
+      if (known) {
+        dbPersist.surveyLinkSkippedKnown += 1;
+        if (!knownSources.has(p.sourceUrl)) {
+          await insertSurveySource({
+            surveyLinkId: known.id,
+            sourceType: p.sourceType,
+            sourceUrl: p.sourceUrl,
+            sourceTitle: p.sourceTitle,
+            searchQuery: p.searchQuery,
+            sourcePublishedAt: p.publishedAt,
+          });
+          dbPersist.surveySourceInserts += 1;
+          knownSources.add(p.sourceUrl);
+        }
+        return "dup";
+      }
+
+      dbPersist.surveyLinkUpserts += 1;
+      const upserted = await upsertSurveyLinkPreferInsert({
         canonicalUrl: p.canonicalUrl,
         originalUrl: p.originalUrl,
         platform: p.platform,
@@ -315,15 +359,18 @@ export async function runOrgV11Collection(input: {
         status: "discovered",
         platform: p.platform,
       });
-      await insertSurveySource({
-        surveyLinkId: upserted.link.id,
-        sourceType: p.sourceType,
-        sourceUrl: p.sourceUrl,
-        sourceTitle: p.sourceTitle,
-        searchQuery: p.searchQuery,
-        sourcePublishedAt: p.publishedAt,
-      });
-      knownSources.add(p.sourceUrl);
+      if (!knownSources.has(p.sourceUrl)) {
+        await insertSurveySource({
+          surveyLinkId: upserted.link.id,
+          sourceType: p.sourceType,
+          sourceUrl: p.sourceUrl,
+          sourceTitle: p.sourceTitle,
+          searchQuery: p.searchQuery,
+          sourcePublishedAt: p.publishedAt,
+        });
+        dbPersist.surveySourceInserts += 1;
+        knownSources.add(p.sourceUrl);
+      }
       return upserted.isNew ? "new" : "dup";
     });
   }
@@ -517,32 +564,34 @@ export async function runOrgV11Collection(input: {
       });
     }
 
-    const fetched = await mapPool(jobs, NAVER_SEARCH_CONCURRENCY, async (job) => {
-      if (Date.now() - startedAt > runtimeMaxMs) {
-        return {
-          job,
-          result: null as Awaited<ReturnType<typeof searchNaverEndpoint>> | null,
-          error: "runtime_budget" as string | null,
-        };
-      }
-      try {
-        const result = await timePhase(timing, "naver_search", () =>
-          searchNaverEndpoint(job.endpoint, job.item.query, {
-            display,
-            sort: job.sort,
-            start: 1,
-          }),
-        );
-        await sleep(COLLECTOR_SEARCH_DELAY_MS);
-        return { job, result, error: null };
-      } catch (error) {
-        const message =
-          error instanceof NaverSearchError
-            ? `[${job.endpoint}/${error.kind}] ${error.message}`
-            : String(error);
-        return { job, result: null, error: message };
-      }
-    });
+    const fetched = await timePhase(timing, "naver_search", () =>
+      mapPool(jobs, NAVER_SEARCH_CONCURRENCY, async (job) => {
+        if (Date.now() - startedAt > runtimeMaxMs) {
+          return {
+            job,
+            result: null as Awaited<ReturnType<typeof searchNaverEndpoint>> | null,
+            error: "runtime_budget" as string | null,
+          };
+        }
+        try {
+          const result = await timeAggregateWorker(timing, "naver_search", () =>
+            searchNaverEndpoint(job.endpoint, job.item.query, {
+              display,
+              sort: job.sort,
+              start: 1,
+            }),
+          );
+          await sleep(COLLECTOR_SEARCH_DELAY_MS);
+          return { job, result, error: null };
+        } catch (error) {
+          const message =
+            error instanceof NaverSearchError
+              ? `[${job.endpoint}/${error.kind}] ${error.message}`
+              : String(error);
+          return { job, result: null, error: message };
+        }
+      }),
+    );
 
     for (const row of fetched) {
       if (Date.now() - startedAt > runtimeMaxMs) {
@@ -629,10 +678,8 @@ export async function runOrgV11Collection(input: {
       }
     }
 
-    const deepFetched = await mapPool(
-      deepJobs,
-      NAVER_SEARCH_CONCURRENCY,
-      async (job) => {
+    const deepFetched = await timePhase(timing, "naver_search", () =>
+      mapPool(deepJobs, NAVER_SEARCH_CONCURRENCY, async (job) => {
         const qStat: CollectionQueryStatInput = {
           collectionRunId: runId,
           searchQuery: `${job.item.query} [deep:start=${job.start}]`,
@@ -652,10 +699,15 @@ export async function runOrgV11Collection(input: {
           errorCount: 0,
         };
         if (Date.now() - startedAt > runtimeMaxMs) {
-          return { job, result: null, error: "runtime_budget" as string | null, qStat };
+          return {
+            job,
+            result: null,
+            error: "runtime_budget" as string | null,
+            qStat,
+          };
         }
         try {
-          const result = await timePhase(timing, "naver_search", () =>
+          const result = await timeAggregateWorker(timing, "naver_search", () =>
             searchNaverEndpoint(job.endpoint, job.item.query, {
               display,
               sort: "date",
@@ -672,7 +724,7 @@ export async function runOrgV11Collection(input: {
               : String(error);
           return { job, result: null, error: message, qStat };
         }
-      },
+      }),
     );
 
     for (const row of deepFetched) {
@@ -743,19 +795,42 @@ export async function runOrgV11Collection(input: {
     const bQueue = enriched.filter((p) => p.triage.queue === "B_PRIORITY");
     const cQueueBase = enriched.filter((p) => p.triage.queue === "C_ARCHIVE");
 
-    // Shared daily canary cap across partitions (A+B same day ≤ 120 total).
+    // Shared daily canary cap + partition reserved quotas (A must not invade B).
     const remaining = dryRun
       ? {
           maxA: isCollectorCanaryEnabled() ? 100 : COLLECTOR_DAILY_BACKLOG_CAP,
           maxB: isCollectorCanaryEnabled() ? 20 : COLLECTOR_DAILY_BACKLOG_CAP,
           maxAb: isCollectorCanaryEnabled() ? 120 : COLLECTOR_DAILY_BACKLOG_CAP,
-          used: { aUsed: 0, bUsed: 0, abUsed: 0, runsCounted: 0 },
+          used: {
+            aUsed: 0,
+            bUsed: 0,
+            abUsed: 0,
+            runsCounted: 0,
+            byPartition: {
+              a: emptyCapUsageTriple(),
+              b: emptyCapUsageTriple(),
+              unknown: emptyCapUsageTriple(),
+            },
+          },
         }
       : await getRemainingDailyAbCaps();
+    const resolvedCaps = resolvePartitionCanaryCaps({
+      partition,
+      remainingDaily: {
+        maxA: remaining.maxA,
+        maxB: remaining.maxB,
+        maxAb: remaining.maxAb,
+      },
+      usedByPartition: {
+        a: remaining.used.byPartition.a,
+        b: remaining.used.byPartition.b,
+      },
+      canaryEnabled: isCollectorCanaryEnabled(),
+    });
     const caps = {
-      maxA: remaining.maxA,
-      maxB: remaining.maxB,
-      maxAb: remaining.maxAb,
+      maxA: resolvedCaps.maxA,
+      maxB: resolvedCaps.maxB,
+      maxAb: resolvedCaps.maxAb,
     };
     const { cappedAB, overflow, counts: cappedCounts } = applyCanaryAbCaps(
       aQueue,
@@ -770,7 +845,11 @@ export async function runOrgV11Collection(input: {
     const cappedBCount = cappedCounts.B_PRIORITY;
 
     // C_ARCHIVE (+ overflow): preserve as discovered but not daily backlog
-    const persistKinds = await mapPool(cQueue, 4, async (p) => persistDiscovered(p));
+    const persistKinds = await timePhase(timing, "db_upsert", () =>
+      mapPool(cQueue, COLLECTOR_DB_PERSIST_CONCURRENCY, async (p) =>
+        persistDiscovered(p),
+      ),
+    );
     for (const kind of persistKinds) {
       if (kind === "new") stats.newSurveysCount += 1;
       else stats.duplicateSurveysCount += 1;
@@ -781,7 +860,11 @@ export async function runOrgV11Collection(input: {
     const toDefer = cappedAB.slice(inlineBudget);
     let inlinePageValidates = 0;
 
-    const deferKinds = await mapPool(toDefer, 4, async (p) => persistDiscovered(p));
+    const deferKinds = await timePhase(timing, "db_upsert", () =>
+      mapPool(toDefer, COLLECTOR_DB_PERSIST_CONCURRENCY, async (p) =>
+        persistDiscovered(p),
+      ),
+    );
     for (const kind of deferKinds) {
       if (kind === "new") stats.newSurveysCount += 1;
       else stats.duplicateSurveysCount += 1;
@@ -916,8 +999,14 @@ export async function runOrgV11Collection(input: {
           ? "partial"
           : "failed";
 
-    const capMarker = formatCapMarker(cappedACount, cappedBCount);
-    const summaryBase = `[org_v1.2] partition=${partition} ${capMarker} inline=${inlinePageValidates}/${inlineBudget} backlogAB=${toDefer.length + inlinePageValidates} archive=${cQueue.length} elapsedMs=${elapsedMs} ${formatPhaseTiming(timing)} usedBefore=${remaining.used.abUsed}`;
+    const capMarker = formatCapMarker(
+      cappedACount,
+      cappedBCount,
+      partition === "a" || partition === "b" || partition === "all"
+        ? partition
+        : undefined,
+    );
+    const summaryBase = `[org_v1.2] partition=${partition} ${capMarker} inline=${inlinePageValidates}/${inlineBudget} backlogAB=${toDefer.length + inlinePageValidates} archive=${cQueue.length} elapsedMs=${elapsedMs} ${formatPhaseTiming(timing)} usedBefore=${remaining.used.abUsed} caps=${caps.maxA}/${caps.maxB}/${caps.maxAb}`;
 
     let finished: CollectionRunRow | null = run;
     if (!dryRun && run) {
@@ -961,6 +1050,13 @@ export async function runOrgV11Collection(input: {
         phaseTiming: timing,
         topPhase: topPhase(timing),
         naverConcurrency: NAVER_SEARCH_CONCURRENCY,
+        dbPersist,
+        partitionCaps: {
+          maxA: caps.maxA,
+          maxB: caps.maxB,
+          maxAb: caps.maxAb,
+          reservedOther: resolvedCaps.reservedOther,
+        },
       },
     };
   } catch (error) {

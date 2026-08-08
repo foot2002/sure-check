@@ -1,8 +1,11 @@
 /**
  * Ops backlog revalidation policy + batch caps for Cron readiness.
  * Collection and backlog revalidation are separate so one Vercel run
- * (maxDuration≈120s) does not try to verify the entire backlog.
+ * does not try to verify the entire backlog.
  */
+
+/** Bounded concurrency for discovered/C-archive survey_links persist. */
+export const COLLECTOR_DB_PERSIST_CONCURRENCY = 6;
 
 /** After search (org_v1.1), only this many new candidates get full page validate. */
 export const COLLECTOR_INLINE_PAGE_VALIDATE_BUDGET = 48;
