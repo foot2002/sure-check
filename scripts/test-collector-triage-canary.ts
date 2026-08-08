@@ -11,6 +11,8 @@ import {
 import { getCanaryDailyCaps } from "../lib/collector/canaryPolicy";
 import { evidenceReviewLabel } from "../lib/collector/independentReview";
 import { resolveCollectorSearchStrategy } from "../lib/collector/searchQueries";
+import { assertOrgStrategyForPartition } from "../lib/collector/handleCollectorRun";
+import { selectOrgV1QueriesForPartition } from "../lib/collector/searchPartitions";
 
 function t(partial: Parameters<typeof triageCandidate>[0]) {
   return triageCandidate(partial);
@@ -127,6 +129,35 @@ assert.ok(compareRecencyForValidation("unknown", "likely_old") < 0);
   assert.equal(ev.label, "company");
   assert.equal(ev.sourceIsPersonalShare, true);
   assert.equal(ev.surveyOwnerLikelyOfficial, true);
+}
+
+// Partition a/b must not run under legacy
+{
+  const prev = process.env.COLLECTOR_SEARCH_STRATEGY;
+  delete process.env.COLLECTOR_SEARCH_STRATEGY;
+  const legacyA = assertOrgStrategyForPartition("a");
+  assert.equal(legacyA.ok, false);
+  const legacyB = assertOrgStrategyForPartition("b");
+  assert.equal(legacyB.ok, false);
+  const legacyAll = assertOrgStrategyForPartition("all");
+  assert.equal(legacyAll.ok, true);
+
+  process.env.COLLECTOR_SEARCH_STRATEGY = "org_v1.2";
+  assert.equal(assertOrgStrategyForPartition("a").ok, true);
+  assert.equal(assertOrgStrategyForPartition("b").ok, true);
+
+  if (prev === undefined) delete process.env.COLLECTOR_SEARCH_STRATEGY;
+  else process.env.COLLECTOR_SEARCH_STRATEGY = prev;
+}
+
+// Partition query sets are exclusive (no shared ids)
+{
+  const a = selectOrgV1QueriesForPartition("a", 20, 2);
+  const b = selectOrgV1QueriesForPartition("b", 16, 4);
+  const aIds = new Set(a.map((q) => q.id));
+  const overlap = b.filter((q) => aIds.has(q.id));
+  assert.equal(overlap.length, 0, `overlap ids: ${overlap.map((q) => q.id)}`);
+  assert.ok(a.length > 0 && b.length > 0);
 }
 
 console.log("test-collector-triage-canary: ok");

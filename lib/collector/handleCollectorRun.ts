@@ -15,6 +15,25 @@ import {
 } from "@/lib/collector/searchPartitions";
 import { resolveCollectorSearchStrategy } from "@/lib/collector/searchQueries";
 
+/**
+ * Fail closed: never run /run/a or /run/b under legacy
+ * (would silently execute the full legacy collector and risk 504).
+ */
+export function assertOrgStrategyForPartition(partition: CollectorPartition):
+  | { ok: true; strategy: "legacy" | "org_v1" }
+  | { ok: false; strategy: "legacy" | "org_v1"; error: string } {
+  const strategy = resolveCollectorSearchStrategy();
+  if ((partition === "a" || partition === "b") && strategy !== "org_v1") {
+    return {
+      ok: false,
+      strategy,
+      error:
+        "partition a/b requires COLLECTOR_SEARCH_STRATEGY=org_v1.2 (or org_v1). Current strategy is legacy.",
+    };
+  }
+  return { ok: true, strategy };
+}
+
 export async function handleCollectorRunRequest(
   request: Request,
   options?: { partition?: CollectorPartition },
@@ -69,19 +88,19 @@ export async function handleCollectorRunRequest(
   }
 
   // /run/a and /run/b require org_v1.2 search strategy — never silently fall back to legacy full run.
-  const strategy = resolveCollectorSearchStrategy();
-  if ((partition === "a" || partition === "b") && strategy !== "org_v1") {
+  const strategyGate = assertOrgStrategyForPartition(partition);
+  if (!strategyGate.ok) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "partition a/b requires COLLECTOR_SEARCH_STRATEGY=org_v1.2 (or org_v1). Current strategy is legacy.",
+        error: strategyGate.error,
         partition,
-        strategy,
+        strategy: strategyGate.strategy,
       },
       { status: 409 },
     );
   }
+  const strategy = strategyGate.strategy;
 
   const result = await runCollection({
     trigger: "cron",
