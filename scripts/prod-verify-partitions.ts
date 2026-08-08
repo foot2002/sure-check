@@ -38,9 +38,9 @@ async function invokePartition(partition: "a" | "b") {
     process.env.COLLECTOR_PROD_BASE_URL?.replace(/\/$/, "") ||
     "https://sure-check.vercel.app";
   const secret =
-    process.env.COLLECTOR_CRON_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim();
-  if (!secret) throw new Error("COLLECTOR_CRON_SECRET or CRON_SECRET required");
+    process.env.CRON_SECRET?.trim() ||
+    process.env.COLLECTOR_CRON_SECRET?.trim();
+  if (!secret) throw new Error("CRON_SECRET or COLLECTOR_CRON_SECRET required");
 
   const started = Date.now();
   const res = await fetch(`${base}/api/internal/collector/run/${partition}`, {

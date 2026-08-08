@@ -13,6 +13,7 @@ import {
   parseCollectorPartition,
   type CollectorPartition,
 } from "@/lib/collector/searchPartitions";
+import { resolveCollectorSearchStrategy } from "@/lib/collector/searchQueries";
 
 export async function handleCollectorRunRequest(
   request: Request,
@@ -67,6 +68,21 @@ export async function handleCollectorRunRequest(
     }
   }
 
+  // /run/a and /run/b require org_v1.2 search strategy — never silently fall back to legacy full run.
+  const strategy = resolveCollectorSearchStrategy();
+  if ((partition === "a" || partition === "b") && strategy !== "org_v1") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "partition a/b requires COLLECTOR_SEARCH_STRATEGY=org_v1.2 (or org_v1). Current strategy is legacy.",
+        partition,
+        strategy,
+      },
+      { status: 409 },
+    );
+  }
+
   const result = await runCollection({
     trigger: "cron",
     maxQueries,
@@ -82,6 +98,7 @@ export async function handleCollectorRunRequest(
   return NextResponse.json({
     ok: true,
     partition,
+    strategy,
     run: result.run,
     stats: result.stats,
     meta: "meta" in result ? result.meta : undefined,
