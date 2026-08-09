@@ -208,6 +208,121 @@ export function CollectorConsoleView({
         </div>
       ) : null}
 
+      {summary?.todayFunnel ? (
+        <section className="mb-4 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-100">
+              오늘 자동화 퍼널 (KST)
+            </h2>
+            <p className="text-[11px] text-slate-500">
+              단계별 모수가 다릅니다. 검색결과 ≠ 신규URL ≠ 검증 ≠ 진단 결과로
+              해석하세요.
+            </p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {(
+              [
+                ["검색결과", summary.todayFunnel.searchResults],
+                ["신규 URL", summary.todayFunnel.newUrls],
+                ["검증(후보)", summary.todayFunnel.validations],
+                ["active 전환", summary.todayFunnel.activeTransitions],
+                ["A급 추정", summary.todayFunnel.newAPriorityApprox],
+                ["discovered 잔여", summary.todayFunnel.discoveredBacklog],
+                ["진단 backlog", summary.todayFunnel.diagnosisBacklog],
+                ["진단 시도", summary.todayFunnel.diagnosisAttempted],
+                ["정상 진단", summary.todayFunnel.normalDiagnosis],
+                ["종료(오늘)", summary.todayFunnel.closedToday],
+                ["접근제한(오늘)", summary.todayFunnel.restrictedToday],
+                ["추출제한", summary.todayFunnel.extractionLimitedToday],
+                ["시스템실패", summary.todayFunnel.systemFailureToday],
+                ["진단 잔여", summary.todayFunnel.diagnosisRemaining],
+              ] as const
+            ).map(([label, value], index, arr) => (
+              <div
+                key={label}
+                className="flex shrink-0 items-center gap-2"
+              >
+                <div className="min-w-[5.5rem] rounded-lg border border-slate-700 bg-slate-950/50 px-2.5 py-2">
+                  <p className="text-[10px] font-medium text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold tabular-nums text-white">
+                    {value.toLocaleString("ko-KR")}
+                  </p>
+                </div>
+                {index < arr.length - 1 ? (
+                  <span className="text-slate-600" aria-hidden>
+                    →
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {summary?.qualityKpis ? (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold text-slate-100">운영 품질</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            {(
+              [
+                [
+                  "시스템 실패율",
+                  `${(summary.qualityKpis.systemFailureRateToday * 100).toFixed(1)}%`,
+                  "종료·접근제한 제외",
+                ],
+                [
+                  "Stuck 수집",
+                  summary.qualityKpis.stuckCollectionRuns.toLocaleString("ko-KR"),
+                  "running >30분",
+                ],
+                [
+                  "Stuck 스캔",
+                  summary.qualityKpis.stuckScanJobs.toLocaleString("ko-KR"),
+                  "queued/running >30분",
+                ],
+                [
+                  "추출 제한",
+                  summary.qualityKpis.extractionLimitedToday.toLocaleString(
+                    "ko-KR",
+                  ),
+                  "실패와 분리",
+                ],
+                [
+                  "discovered 잔여",
+                  summary.qualityKpis.discoveredBacklog.toLocaleString("ko-KR"),
+                  "미검증 backlog",
+                ],
+                [
+                  "진단 backlog",
+                  summary.qualityKpis.diagnosisBacklog.toLocaleString("ko-KR"),
+                  "최근 active 표본",
+                ],
+                [
+                  "진단 잔여 용량",
+                  `${summary.qualityKpis.dailyDiagnosisRemaining.toLocaleString("ko-KR")} / ${summary.qualityKpis.dailyDiagnosisCapacity.toLocaleString("ko-KR")}`,
+                  "일일 한도",
+                ],
+              ] as const
+            ).map(([label, value, hint]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"
+              >
+                <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                  {label}
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-white">
+                  {value}
+                </p>
+                <p className="mt-1 text-[10px] text-slate-500">{hint}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {summary ? (
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {[

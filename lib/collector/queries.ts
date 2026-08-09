@@ -4,8 +4,10 @@ import {
   countDiagnosisLinksByStatus,
   countDiagnosisLinksCreatedInKstDay,
   findDiagnosisLinksBySurveyIds,
+  findSurveyIdsWithBlockingDiagnosis,
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
+import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -23,6 +25,10 @@ import {
   countSurveyLinks,
   listQueryStatsForRun,
 } from "@/lib/collector/repository";
+
+const STUCK_JOB_MS = 30 * 60 * 1000;
+/** Cap for diagnosis-backlog / A_PRIORITY approx samples (avoid full active scans). */
+const OPS_ACTIVE_SAMPLE_LIMIT = 400;
 
 function startOfTodayKstIso(): string {
   const now = new Date();
@@ -276,6 +282,12 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     diagnosisEligibleActive: active,
   };
 
+  const { todayFunnel, qualityKpis } = await buildTodayOpsMetrics({
+    todayIso: startOfTodayKstIso(),
+    discoveredBacklog: discovered,
+    diagnosis,
+  });
+
   return {
     totalSurveys,
     totalLinksAll,
@@ -311,7 +323,290 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     lastRunNewSurveyConversionRate:
       lastRunCandidates > 0 ? lastRunNew / lastRunCandidates : 0,
     diagnosis,
+    todayFunnel,
+    qualityKpis,
   };
+}
+
+async function countLinksExact(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  filters: { status?: string; updatedSince?: string } = {},
+): Promise<number> {
+  let q = supabase
+    .from("survey_links")
+    .select("id", { count: "exact", head: true });
+  if (filters.status) q = q.eq("status", filters.status);
+  if (filters.updatedSince) q = q.gte("updated_at", filters.updatedSince);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+/**
+ * Populate todayFunnel + qualityKpis from existing tables (no migrations).
+ * Stage cohorts intentionally differ — UI must not treat them as one pipeline sum.
+ */
+async function buildTodayOpsMetrics(input: {
+  todayIso: string;
+  discoveredBacklog: number;
+  diagnosis: CollectorSummary["diagnosis"];
+}): Promise<{
+  todayFunnel: NonNullable<CollectorSummary["todayFunnel"]>;
+  qualityKpis: NonNullable<CollectorSummary["qualityKpis"]>;
+}> {
+  const supabase = createSupabaseServerClient();
+  const stuckBeforeIso = new Date(Date.now() - STUCK_JOB_MS).toISOString();
+
+  let searchResults = 0;
+  let newUrls = 0;
+  let validations = 0;
+  let extractionLimitedToday = 0;
+  let systemFailureToday = 0;
+  let stuckCollectionRuns = 0;
+  let stuckScanJobs = 0;
+  let diagnosisBacklog = 0;
+  let newAPriorityApprox = 0;
+
+  try {
+    const { data: runsToday } = await supabase
+      .from("collection_runs")
+      .select(
+        "id, status, started_at, results_count, new_surveys_count, candidate_links_count, queries_count, error_summary",
+      )
+      .gte("started_at", input.todayIso)
+      .limit(200);
+
+    const searchRunIds: string[] = [];
+    for (const run of runsToday || []) {
+      const isRevalidate = String(run.error_summary || "").startsWith(
+        "[revalidate]",
+      );
+      if (!isRevalidate) {
+        searchResults += Number(run.results_count) || 0;
+        newUrls += Number(run.new_surveys_count) || 0;
+        validations += Number(run.candidate_links_count) || 0;
+        if (run.id) searchRunIds.push(String(run.id));
+      }
+      if (run.status === "running") {
+        const ageMs = Date.now() - new Date(String(run.started_at)).getTime();
+        if (Number.isFinite(ageMs) && ageMs > STUCK_JOB_MS) {
+          stuckCollectionRuns += 1;
+        }
+      }
+    }
+
+    // Prefer query-stats candidate/valid totals when available for today's search runs.
+    if (searchRunIds.length > 0) {
+      const { data: qstats } = await supabase
+        .from("collection_query_stats")
+        .select("candidate_count, valid_survey_count, results_count, new_survey_count")
+        .in("collection_run_id", searchRunIds.slice(0, 50));
+      if (qstats && qstats.length > 0) {
+        let cand = 0;
+        let valid = 0;
+        let results = 0;
+        let news = 0;
+        for (const row of qstats) {
+          cand += Number(row.candidate_count) || 0;
+          valid += Number(row.valid_survey_count) || 0;
+          results += Number(row.results_count) || 0;
+          news += Number(row.new_survey_count) || 0;
+        }
+        if (results > 0) searchResults = results;
+        if (news > 0) newUrls = news;
+        if (cand > 0 || valid > 0) {
+          validations = cand > 0 ? cand : valid;
+        }
+      }
+    }
+  } catch {
+    /* collection_query_stats / runs optional */
+  }
+
+  // Also catch stuck runs that started before today but are still running.
+  try {
+    const { count } = await supabase
+      .from("collection_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "running")
+      .lt("started_at", stuckBeforeIso);
+    stuckCollectionRuns = Math.max(stuckCollectionRuns, count ?? 0);
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const { count } = await supabase
+      .from("scan_jobs")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["queued", "running"])
+      .lt("updated_at", stuckBeforeIso);
+    stuckScanJobs = count ?? 0;
+  } catch {
+    /* ignore */
+  }
+
+  const [
+    activeTransitions,
+    closedToday,
+    restrictedToday,
+  ] = await Promise.all([
+    countLinksExact(supabase, {
+      status: "active",
+      updatedSince: input.todayIso,
+    }),
+    countLinksExact(supabase, {
+      status: "closed",
+      updatedSince: input.todayIso,
+    }),
+    countLinksExact(supabase, {
+      status: "restricted",
+      updatedSince: input.todayIso,
+    }),
+  ]);
+
+  try {
+    const { data: diagToday } = await supabase
+      .from("survey_diagnosis_links")
+      .select("status, skip_reason, last_error")
+      .gte("created_at", input.todayIso)
+      .limit(500);
+    for (const row of diagToday || []) {
+      const reasonText = [row.skip_reason, row.last_error]
+        .filter(Boolean)
+        .join(" ");
+      const bucket = classifyLimitedOutcome({
+        diagnosisStatus:
+          row.status === "completed"
+            ? "completed"
+            : row.status === "limited"
+              ? "limited"
+              : row.status === "failed_final" ||
+                  row.status === "failed_retryable"
+                ? "failed"
+                : null,
+        limitedReason: reasonText,
+        errorMessage: row.last_error,
+        scanStatus: String(row.status),
+      });
+      // closed/restricted diagnosis signals are tracked via survey_links status
+      // transitions above — never fold them into system_failure.
+      if (bucket === "extraction_limited") extractionLimitedToday += 1;
+      else if (bucket === "system_failure") systemFailureToday += 1;
+    }
+  } catch {
+    /* migration 007 optional */
+  }
+
+  // diagnosisBacklog: bounded sample of recent actives without blocking linkage.
+  // Full undiagnosed-eligible count is too expensive for admin summary.
+  try {
+    const { data: recentActives } = await supabase
+      .from("survey_links")
+      .select("id, title, last_discovered_at, discovery_count, updated_at")
+      .eq("status", "active")
+      .order("last_discovered_at", { ascending: false })
+      .limit(OPS_ACTIVE_SAMPLE_LIMIT);
+    const ids = (recentActives || []).map((r) => String(r.id));
+    const blocked = await findSurveyIdsWithBlockingDiagnosis(ids);
+    diagnosisBacklog = ids.filter((id) => !blocked.has(id)).length;
+
+    // newAPriorityApprox: triage today's active transitions (subset of sample).
+    const todayActiveIds = (recentActives || [])
+      .filter(
+        (r) =>
+          r.updated_at &&
+          String(r.updated_at) >= input.todayIso,
+      )
+      .map((r) => String(r.id))
+      .slice(0, 80);
+    if (todayActiveIds.length > 0) {
+      const { data: sources } = await supabase
+        .from("survey_sources")
+        .select(
+          "survey_link_id, source_url, source_title, search_query, source_published_at, source_type",
+        )
+        .in("survey_link_id", todayActiveIds)
+        .limit(800);
+      const byLink = new Map<string, typeof sources>();
+      for (const s of sources || []) {
+        const key = String(s.survey_link_id);
+        const list = byLink.get(key) || [];
+        list.push(s);
+        byLink.set(key, list);
+      }
+      const titleById = new Map(
+        (recentActives || []).map((r) => [String(r.id), r.title as string | null]),
+      );
+      for (const id of todayActiveIds) {
+        const srcList = byLink.get(id) || [];
+        type SourceLite = {
+          source_url?: string | null;
+          source_title?: string | null;
+          search_query?: string | null;
+          source_published_at?: string | null;
+          source_type?: string | null;
+        };
+        const triageInputs: SourceLite[] =
+          srcList.length > 0 ? (srcList as SourceLite[]) : [{}];
+        const triage = bestTriageAcrossSources(
+          triageInputs.map((s) => ({
+            sourceUrl: s.source_url || undefined,
+            sourceTitle: s.source_title || titleById.get(id),
+            surveyTitle: titleById.get(id),
+            searchQuery: s.search_query || undefined,
+            sourcePublishedAt: s.source_published_at || undefined,
+            sourceType:
+              (s.source_type as "web" | "blog" | "cafe" | "unknown") ||
+              "unknown",
+            firstSeenThisRun: false,
+          })),
+        );
+        if (triage.queue === "A_PRIORITY") newAPriorityApprox += 1;
+      }
+    }
+  } catch {
+    // Fall back to queued linkage count as a coarse proxy when sample fails.
+    diagnosisBacklog = input.diagnosis?.queued ?? 0;
+    newAPriorityApprox = 0;
+  }
+
+  const diagnosisAttempted = input.diagnosis?.today?.attempted ?? 0;
+  const normalDiagnosis = input.diagnosis?.today?.completed ?? 0;
+  const diagnosisRemaining =
+    input.diagnosis?.today?.remaining ??
+    Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - diagnosisAttempted);
+  const systemFailureRateToday =
+    diagnosisAttempted > 0 ? systemFailureToday / diagnosisAttempted : 0;
+
+  const todayFunnel: NonNullable<CollectorSummary["todayFunnel"]> = {
+    searchResults,
+    newUrls,
+    validations,
+    activeTransitions,
+    newAPriorityApprox,
+    discoveredBacklog: input.discoveredBacklog,
+    diagnosisBacklog,
+    diagnosisAttempted,
+    normalDiagnosis,
+    closedToday,
+    restrictedToday,
+    extractionLimitedToday,
+    systemFailureToday,
+    diagnosisRemaining,
+  };
+
+  const qualityKpis: NonNullable<CollectorSummary["qualityKpis"]> = {
+    stuckCollectionRuns,
+    stuckScanJobs,
+    systemFailureRateToday,
+    extractionLimitedToday,
+    diagnosisBacklog,
+    discoveredBacklog: input.discoveredBacklog,
+    dailyDiagnosisCapacity: COLLECTOR_DIAGNOSIS_DAILY_MAX,
+    dailyDiagnosisRemaining: diagnosisRemaining,
+  };
+
+  return { todayFunnel, qualityKpis };
 }
 
 export async function listSurveyLinks(

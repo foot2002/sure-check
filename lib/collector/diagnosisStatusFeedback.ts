@@ -86,10 +86,27 @@ export async function planCollectorStatusFeedback(input: {
     };
   }
 
-  // Safety: if rediscovered very recently as active evidence after diagnosis,
-  // skip overwrite (last_discovered within 2h of now while currently active
-  // and target is closed — still allow closed/login feedback for stale active).
-  // Keep simple: only skip when status is already terminal matching family.
+  // Recent live rediscovery evidence: do not overwrite active → closed/restricted
+  // when last_discovered_at is within ~6h. Stale actives (or non-active) still allow.
+  const RECENT_REDISCOVERY_MS = 6 * 60 * 60 * 1000;
+  if (
+    fromStatus === "active" &&
+    (target === "closed" || target === "restricted") &&
+    link.last_discovered_at
+  ) {
+    const ageMs = Date.now() - Date.parse(String(link.last_discovered_at));
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < RECENT_REDISCOVERY_MS) {
+      return {
+        surveyLinkId: input.surveyLinkId,
+        fromStatus,
+        toStatus: target,
+        applied: false,
+        reason: "skip_recent_live_rediscovery",
+        limitedReason: input.limitedReason || null,
+      };
+    }
+  }
+
   if (fromStatus === "restricted" && target === "closed") {
     // Allow upgrade restricted → closed when response ended.
   }

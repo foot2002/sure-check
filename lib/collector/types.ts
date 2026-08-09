@@ -229,6 +229,45 @@ export interface CollectorSummary {
       remaining: number;
     };
   };
+  /**
+   * KST-day automation funnel. Stage populations differ (search hits ≠ new URLs ≠
+   * validations ≠ diagnosis outcomes); treat each field as its own cohort.
+   */
+  todayFunnel?: {
+    searchResults: number;
+    newUrls: number;
+    /** Proxy: candidate_count (or valid) from today's query stats / runs. */
+    validations: number;
+    /** Links becoming active today (updated_at today + status active), best-effort. */
+    activeTransitions: number;
+    /** Best-effort A_PRIORITY among recent actives; 0 if skipped as too expensive. */
+    newAPriorityApprox: number;
+    discoveredBacklog: number;
+    /**
+     * Undiagnosed eligible approx: up to 400 recent actives without blocking
+     * linkage (not a full-table scan).
+     */
+    diagnosisBacklog: number;
+    diagnosisAttempted: number;
+    /** completed today */
+    normalDiagnosis: number;
+    closedToday: number;
+    restrictedToday: number;
+    extractionLimitedToday: number;
+    systemFailureToday: number;
+    diagnosisRemaining: number;
+  };
+  qualityKpis?: {
+    stuckCollectionRuns: number;
+    stuckScanJobs: number;
+    /** 0–1; closed/restricted are NOT counted as system failure. */
+    systemFailureRateToday: number;
+    extractionLimitedToday: number;
+    diagnosisBacklog: number;
+    discoveredBacklog: number;
+    dailyDiagnosisCapacity: number;
+    dailyDiagnosisRemaining: number;
+  };
 }
 
 export interface SurveyLinkListItem extends SurveyLinkRow {

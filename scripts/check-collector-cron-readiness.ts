@@ -203,14 +203,19 @@ async function main() {
         .filter((c) => c.path === "/api/internal/collector/revalidate")
         .map((c) => c.schedule)
         .sort();
-      const expectedRevalidate = ["0 23 * * *", "0 3 * * *", "0 7 * * *"].sort();
-      const hasRevalidateTriple =
-        revalidateSchedules.length === 3 &&
+      const expectedRevalidate = [
+        "0 23 * * *",
+        "0 3 * * *",
+        "0 7 * * *",
+        "0 13 * * *",
+      ].sort();
+      const hasRevalidateWaves =
+        revalidateSchedules.length === 4 &&
         revalidateSchedules.every((s, i) => s === expectedRevalidate[i]);
       vercelCronsOk =
-        hasCollectA && hasCollectB && !hasLegacyFullRun && hasRevalidateTriple;
+        hasCollectA && hasCollectB && !hasLegacyFullRun && hasRevalidateWaves;
       vercelDetail = vercelCronsOk
-        ? "A@17UTC(02KST) + B@19UTC(04KST) + revalidate×3 (08/12/16KST); legacy /run Cron removed"
+        ? "A@17UTC(02KST) + B@19UTC(04KST) + revalidate×4 (08/12/16/22KST); legacy /run Cron removed"
         : `불완전: ${JSON.stringify(crons)}`;
     } catch (e) {
       vercelDetail = e instanceof Error ? e.message : String(e);

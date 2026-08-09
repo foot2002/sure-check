@@ -27,7 +27,11 @@ import {
   isNaverSearchConfigured,
   isCollectorStorageConfigured,
 } from "../lib/collector/config";
-import { buildCollectorSearchQueries } from "../lib/collector/searchQueries";
+import {
+  buildCollectorSearchQueries,
+  getCollectorQueryCount,
+  resolveCollectorSearchStrategy,
+} from "../lib/collector/searchQueries";
 import {
   finishCollectionRun,
   insertSurveySource,
@@ -186,14 +190,34 @@ async function main() {
   });
 
   await run("검색어 조합 생성", () => {
-    const queries = buildCollectorSearchQueries();
-    assert.ok(queries.length >= 20 && queries.length <= 40);
+    const strategy = resolveCollectorSearchStrategy();
+    const queries = buildCollectorSearchQueries({ strategy });
+    const expected = getCollectorQueryCount(strategy);
+    assert.equal(queries.length, expected);
     assert.ok(queries.some((q) => q.query.includes("forms.gle")));
-    assert.ok(queries.some((q) => q.query.includes("form.naver.com")));
-    assert.ok(queries.some((q) => q.query.includes("moaform.com")));
-    assert.ok(queries.some((q) => q.group === "domain"));
-    assert.ok(queries.some((q) => q.group === "intent"));
-    assert.ok(queries.some((q) => q.seed === "만족도 조사"));
+    assert.ok(
+      queries.some(
+        (q) =>
+          q.query.includes("form.naver.com") || q.query.includes("naver"),
+      ),
+    );
+    assert.ok(queries.some((q) => q.query.includes("moaform")));
+    if (strategy === "org_v1") {
+      // org_v1.2 curated set is intentionally >40 (do not force 20–40).
+      assert.ok(
+        queries.length > 40 && queries.length <= 120,
+        `org_v1 query count out of range: ${queries.length}`,
+      );
+      assert.ok(
+        queries.some((q) => q.strategyGroup === "date_breadth") &&
+          queries.some((q) => q.strategyGroup === "sim_relevance"),
+      );
+    } else {
+      assert.ok(queries.length >= 20 && queries.length <= 40);
+      assert.ok(queries.some((q) => q.group === "domain"));
+      assert.ok(queries.some((q) => q.group === "intent"));
+      assert.ok(queries.some((q) => q.seed === "만족도 조사"));
+    }
   });
 
   await run("A. moaform.com/q/... 허용", () => {

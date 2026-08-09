@@ -61,6 +61,10 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/internal/collector/revalidate",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/internal/collector/diagnosis-dispatch",
       "schedule": "0 0 * * *"
     },

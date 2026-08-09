@@ -275,18 +275,33 @@ function DecisionList({ rows }: { rows: PublicDecisionStatRow[] }) {
     return <p className="text-sm text-slate-500">해당 기간 응답 권고 집계가 없습니다.</p>;
   }
   return (
-    <ul className="space-y-3">
-      {rows.map((row) => (
-        <li key={row.decisionKey}>
-          <RateBar
-            label={row.label}
-            rate={row.rate}
-            barClassName={decisionTone(row.decisionKey)}
-            meta={`${row.count.toLocaleString("ko-KR")}건`}
-          />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <ul className="space-y-3">
+        {rows.map((row) => (
+          <li key={row.decisionKey}>
+            <RateBar
+              label={row.label}
+              rate={row.rate}
+              barClassName={decisionTone(row.decisionKey)}
+              meta={`${row.count.toLocaleString("ko-KR")}건`}
+            />
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs leading-relaxed text-slate-500">
+        자동진단 참고 판단이며 법 위반 확정이 아닙니다.
+      </p>
+    </div>
+  );
+}
+
+function AnalysisScopeDisclaimer() {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600">
+      본 통계는 탐지·수집된 설문 중 문항 분석이 가능한 사례를 기준으로 산출한
+      참고 지표입니다. 온라인에 존재하는 모든 설문을 대표하지 않으며, 개별
+      설문의 법 위반 여부를 확정하지 않습니다.
+    </div>
   );
 }
 
@@ -602,6 +617,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
   if (!data.hasData) {
     return (
       <div className="space-y-8">
+        <AnalysisScopeDisclaimer />
         <OneLineConclusion insights={data.insights} />
         <KeySignals insights={data.insights} />
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
@@ -628,6 +644,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
         </div>
       ) : null}
 
+      <AnalysisScopeDisclaimer />
       <OneLineConclusion insights={data.insights} />
       <KeySignals insights={data.insights} />
 

@@ -6,7 +6,10 @@
 import { COLLECTOR_SEARCH_DELAY_MS } from "@/lib/collector/config";
 import {
   bestTriageAcrossSources,
+  compareRecencyForValidation,
+  compareTriageQueue,
   isDailyBacklogQueue,
+  type TriageResult,
 } from "@/lib/collector/candidateTriage";
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { updateSurveyLinkStatus } from "@/lib/collector/repository";
@@ -109,8 +112,9 @@ async function validateWithRetry(
  * One-pass revalidation of discovered and/or unreachable rows.
  * Does not start a collection_run / Naver search.
  *
- * Ordering: oldest first (first_discovered_at / last_discovered_at ascending)
- * so backlog drains FIFO under batch caps.
+ * Discovered (A/B filter on): sort A_PRIORITY → B_PRIORITY, then recency,
+ * discovery_count, last_discovered_at. Unreachable / FIFO modes keep
+ * first_discovered_at order.
  */
 export async function revalidatePendingSurveyLinks(input?: {
   statuses?: Array<"discovered" | "unreachable">;
@@ -204,7 +208,7 @@ export async function revalidatePendingSurveyLinks(input?: {
       });
       byLink.set(key, list);
     }
-    const filtered: SurveyLinkRow[] = [];
+    const enriched: Array<{ row: SurveyLinkRow; triage: TriageResult }> = [];
     for (const row of rows) {
       const srcList = byLink.get(row.id) || [{}];
       // Best across sources: C can promote to A/B when rediscovered from official source.
@@ -222,10 +226,22 @@ export async function revalidatePendingSurveyLinks(input?: {
         })),
       );
       if (!isDailyBacklogQueue(triage.queue)) continue;
-      filtered.push(row);
-      if (filtered.length >= limit) break;
+      enriched.push({ row, triage });
     }
-    rows = filtered;
+    enriched.sort((a, b) => {
+      const q = compareTriageQueue(a.triage.queue, b.triage.queue);
+      if (q !== 0) return q;
+      const r = compareRecencyForValidation(a.triage.recency, b.triage.recency);
+      if (r !== 0) return r;
+      const dc =
+        (b.row.discovery_count || 0) - (a.row.discovery_count || 0);
+      if (dc !== 0) return dc;
+      return (
+        Date.parse(b.row.last_discovered_at) -
+        Date.parse(a.row.last_discovered_at)
+      );
+    });
+    rows = enriched.slice(0, limit).map((e) => e.row);
   } else {
     rows = rows.slice(0, limit);
   }

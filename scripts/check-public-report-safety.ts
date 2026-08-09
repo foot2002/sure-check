@@ -306,6 +306,14 @@ async function main(): Promise<void> {
         "general report must not expose 문항 분석 불가 decision row",
       );
       assert(
+        live.decisionStats.every((d) => d.decisionKey !== "JUDGMENT_UNKNOWN"),
+        "live dashboard decisionStats must contain zero JUDGMENT_UNKNOWN keys",
+      );
+      assert(
+        !live.decisionStats.some((d) => /문항 분석 불가/.test(d.label)),
+        "live dashboard must not show 문항 분석 불가 decision label",
+      );
+      assert(
         !/문항 분석 불가|문항 분석이 제한|extraction limited|JS questions/i.test(
           live.insights.oneLineConclusion,
         ),
@@ -320,6 +328,16 @@ async function main(): Promise<void> {
         live.rawTotalScans >= live.summary.totalScans,
         "rawTotalScans must be >= analyzable totalScans",
       );
+      if (live.summary.totalScans > 0) {
+        assert(
+          live.decisionStats.length > 0,
+          "analyzable dashboard must expose decisionStats rows",
+        );
+        assert(
+          decisionSum > 0 && decisionSum === live.summary.totalScans,
+          "decision denominator regression: sum must match analyzable totalScans",
+        );
+      }
       const attentionFromDecisions = live.decisionStats
         .filter((d) =>
           ["STOP_RESPONSE", "NOTICE_CHECK", "SECURITY_CHECK"].includes(

@@ -18,24 +18,25 @@ export const COLLECTOR_CANARY = {
   /** C_ARCHIVE is never auto-validated in canary */
   validateCArchive: false,
   /**
-   * Manual same-day backlog drain (Cron unchanged until ops decision):
-   * revalidate discovered × up to 3 runs × ~50
+   * Production backlog drain via Cron (4 waves × ~70 ≈ 280/day discovered)
+   * (+ inline A/B validates ≈ ~300/day target). Diagnosis daily max stays 100.
    */
   proposedBacklogBatches: [
-    { kst: "manual_1", batchSize: 50 },
-    { kst: "manual_2", batchSize: 50 },
-    { kst: "manual_3", batchSize: 50 },
+    { kst: "08:00", batchSize: 70 },
+    { kst: "12:00", batchSize: 70 },
+    { kst: "16:00", batchSize: 70 },
+    { kst: "22:00", batchSize: 70 },
   ],
-  dailyBacklogCapacity: 120,
+  dailyBacklogCapacity: 280,
   notes: [
     "Search: COLLECTOR_SEARCH_STRATEGY=org_v1.2 (aliases: org_v1, org_v1_2, …)",
     "Canary caps: COLLECTOR_CANARY=1 → A≤100, B≤20, A+B≤120 shared across partitions",
     "Partition quotas: A→70/10/80, B→30/10/40 (B reserved; A must not invade)",
-    "Cron: A 02:00KST / B 04:00KST / revalidate 08·12·16KST (same path ×3 schedules OK)",
+    "Cron: A 02:00KST / B 04:00KST / revalidate 08·12·16·22KST (×4 ×70 ≈ 280/day)",
     "Endpoints: /api/internal/collector/run/a and /run/b (sequential; reject if strategy=legacy)",
     "Rollback: COLLECTOR_SEARCH_STRATEGY=legacy (or unset) + COLLECTOR_CANARY unset/0",
     "C_ARCHIVE stored; promote to A/B when rediscovered from official source",
-    "Do not connect SURE-Check diagnosis until explicitly approved",
+    "Diagnosis daily max remains 100 (separate from collector validation throughput)",
   ],
 } as const;
 
