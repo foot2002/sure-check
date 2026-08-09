@@ -77,6 +77,22 @@ export interface ScanDebugInfo {
   analysisDurationMs?: number;
   saveDurationMs?: number;
   totalDurationMs?: number;
+  /** Form-wide context summary for notice/org/contact evidence (no raw screenshot). */
+  formContextSummary?: {
+    blockCount: number;
+    organizationCandidates: Array<{
+      value: string;
+      evidence: string;
+      confidence: string;
+    }>;
+    contactCandidates: Array<{
+      value: string;
+      evidence: string;
+      confidence: string;
+    }>;
+    privacyNoticeBlockCount: number;
+    contactBlockCount: number;
+  };
 }
 
 export interface ReportBuildContext {

@@ -107,14 +107,17 @@ export async function persistCaptureEvidence(params: {
       errorMessage: "diagnosisId missing",
     };
   }
-  if (result.mode !== "evidence_full_walkthrough") {
+  if (
+    result.mode !== "evidence_full_walkthrough" &&
+    result.mode !== "safe_public_only"
+  ) {
     return {
       evidenceStored: false,
       storedEvidenceFiles: 0,
       captureJobId: null,
       zipPath: null,
       keyScreenshotCount: 0,
-      errorMessage: "not full walkthrough",
+      errorMessage: "unsupported capture mode",
     };
   }
   if (result.screenshots.length === 0) {
@@ -127,6 +130,7 @@ export async function persistCaptureEvidence(params: {
       errorMessage: "no screenshots",
     };
   }
+  const isPreview = result.mode === "safe_public_only";
 
   const monitoring = getSupabaseMonitoringRepository();
   const linked = await monitoring.findMonitoringIdsByExternalScanId(diagnosisId);
@@ -208,39 +212,56 @@ export async function persistCaptureEvidence(params: {
   const bucket = getEvidenceBucketName();
   const evidenceRows: Array<Record<string, unknown>> = [];
   let storedEvidenceFiles = 0;
+  let zipPath: string | null = null;
 
-  // 1) Temporary ZIP of full screenshot set (not long-term individual storage)
-  const zipPath = `evidence/${diagnosisId}/package/sure-check-evidence.zip`;
-  const zipBuffer = await buildTemporaryEvidenceZip(result);
-  const zipUpload = await uploadEvidenceFile({
-    path: zipPath,
-    body: zipBuffer,
-    contentType: "application/zip",
-    upsert: true,
-  });
-  evidenceRows.push({
-    survey_record_id: linked.surveyRecordId,
-    capture_job_id: captureJobId,
-    scan_job_id: linked.scanJobId,
-    evidence_type: "temporary_zip",
-    is_key_evidence: false,
-    retention_level: "temporary",
-    storage_bucket: zipUpload.bucket,
-    storage_path: zipUpload.path,
-    mime_type: zipUpload.contentType,
-    byte_size: zipUpload.byteSize,
-    sha256: zipUpload.sha256,
-    page_number: null,
-    captured_url: null,
-    label: "신고용 전체 캡처 ZIP (임시)",
-    expires_at: zipExpiresAt,
-    observed_at: observedAt,
-    observed_date_kst: observedDateKst,
-  });
-  storedEvidenceFiles += 1;
+  // 1) Full walkthrough: temporary ZIP of all screenshots
+  if (!isPreview) {
+    zipPath = `evidence/${diagnosisId}/package/sure-check-evidence.zip`;
+    const zipBuffer = await buildTemporaryEvidenceZip(result);
+    const zipUpload = await uploadEvidenceFile({
+      path: zipPath,
+      body: zipBuffer,
+      contentType: "application/zip",
+      upsert: true,
+    });
+    evidenceRows.push({
+      survey_record_id: linked.surveyRecordId,
+      capture_job_id: captureJobId,
+      scan_job_id: linked.scanJobId,
+      evidence_type: "temporary_zip",
+      is_key_evidence: false,
+      retention_level: "temporary",
+      storage_bucket: zipUpload.bucket,
+      storage_path: zipUpload.path,
+      mime_type: zipUpload.contentType,
+      byte_size: zipUpload.byteSize,
+      sha256: zipUpload.sha256,
+      page_number: null,
+      captured_url: null,
+      label: "신고용 전체 캡처 ZIP (임시)",
+      expires_at: zipExpiresAt,
+      observed_at: observedAt,
+      observed_date_kst: observedDateKst,
+    });
+    storedEvidenceFiles += 1;
+  }
 
-  // 2) Key screenshots only
-  for (const item of keySelections) {
+  // 2) Key / preview screenshots (no giant base64 in report_json)
+  const screenshotItems = isPreview
+    ? result.screenshots.slice(0, 3).map((screenshot, index) => ({
+        screenshot,
+        pageMeta: (result.pageMetas?.[index] ?? null) as
+          | (typeof result.pageMetas)[number]
+          | null,
+        evidenceType: "key_screenshot" as const,
+        retentionLevel: "temporary" as const,
+        label:
+          screenshot.label ||
+          (index === 0 ? "설문 상단 미리보기" : `미리보기 ${index + 1}`),
+      }))
+    : keySelections;
+
+  for (const item of screenshotItems) {
     const fileName = item.screenshot.fileName || `page_${item.screenshot.pageNumber || 0}.png`;
     const storagePath = `evidence/${diagnosisId}/screenshots/${fileName}`;
     const bytes = base64ToBuffer(item.screenshot.base64);
@@ -255,7 +276,7 @@ export async function persistCaptureEvidence(params: {
       capture_job_id: captureJobId,
       scan_job_id: linked.scanJobId,
       evidence_type: item.evidenceType,
-      is_key_evidence: true,
+      is_key_evidence: !isPreview,
       retention_level: item.retentionLevel,
       storage_bucket: uploaded.bucket || bucket,
       storage_path: uploaded.path,
@@ -267,7 +288,7 @@ export async function persistCaptureEvidence(params: {
       captured_url:
         item.pageMeta?.capturedUrl || item.screenshot.capturedUrl || null,
       label: item.label,
-      expires_at: null,
+      expires_at: isPreview ? zipExpiresAt : null,
       observed_at: observedAt,
       observed_date_kst: observedDateKst,
     });
@@ -286,6 +307,6 @@ export async function persistCaptureEvidence(params: {
     storedEvidenceFiles,
     captureJobId,
     zipPath,
-    keyScreenshotCount: keySelections.length,
+    keyScreenshotCount: screenshotItems.length,
   };
 }

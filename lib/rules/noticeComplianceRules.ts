@@ -1,6 +1,7 @@
 import type { ComplianceGap, ComplianceStatus, DataRiskLevel, ObligationKey } from "@/lib/types/analyzer";
 import type { NormalizedForm } from "@/lib/types/scan";
 import type { ObligationItem } from "@/lib/types/analyzer";
+import { formWideNoticeCorpus } from "@/lib/analyzer/formContext";
 import {
   hasDirectIdentifier,
   hasPersonalData,
@@ -30,33 +31,8 @@ function checkField(
 }
 
 function noticeCorpus(form: NormalizedForm): string {
-  const consentBlocks = form.questions
-    .filter(
-      (q) =>
-        q.type === "privacy_consent" ||
-        q.riskTags?.includes("privacy_consent"),
-    )
-    .map((q) => [q.questionText ?? q.label, q.auxiliaryText].filter(Boolean).join(" "));
-
-  return [
-    form.notices?.description,
-    form.notices?.purpose,
-    form.notices?.items,
-    form.notices?.retention,
-    form.notices?.destruction,
-    form.notices?.refusalRight,
-    form.notices?.refusalDisadvantage,
-    form.notices?.privacyNotice,
-    form.notices?.consentText,
-    form.notices?.trustee,
-    form.notices?.overseasTransfer,
-    form.notices?.processor,
-    form.notices?.contactDepartment,
-    ...(form.metadata?.noticeTexts ?? []),
-    ...consentBlocks,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Form-wide (title/intro/sections/questions/footer metadata) — not a local window.
+  return formWideNoticeCorpus(form);
 }
 
 function fieldOrCorpus(

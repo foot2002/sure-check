@@ -1,3 +1,4 @@
+import { buildSurveyFormContext } from "@/lib/analyzer/formContext";
 import type { AnalysisResult } from "@/lib/types/analyzer";
 import type { ScanDebugInfo } from "@/lib/types/debug";
 import type { ScanReport } from "@/lib/types/scan";
@@ -36,6 +37,8 @@ export function buildScanDebug(
         }))
     : [];
 
+  const formCtx = buildSurveyFormContext(form);
+
   return {
     inputUrl: options.inputUrl,
     normalizedUrl: options.normalizedUrl,
@@ -68,5 +71,22 @@ export function buildScanDebug(
     finalScore: report.score,
     finalGrade: report.grade,
     scoreBreakdown: analysis?.score,
+    formContextSummary: {
+      blockCount: formCtx.blocks.length,
+      organizationCandidates: formCtx.organizationCandidates
+        .slice(0, 5)
+        .map((c) => ({
+          value: c.value,
+          evidence: c.evidence,
+          confidence: c.confidence,
+        })),
+      contactCandidates: formCtx.contactCandidates.slice(0, 5).map((c) => ({
+        value: c.value,
+        evidence: c.evidence,
+        confidence: c.confidence,
+      })),
+      privacyNoticeBlockCount: formCtx.privacyNoticeBlocks.length,
+      contactBlockCount: formCtx.contactBlocks.length,
+    },
   };
 }

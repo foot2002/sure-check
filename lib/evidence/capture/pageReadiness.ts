@@ -26,6 +26,33 @@ export async function installEvaluateNameHelper(page: Page): Promise<void> {
   await page.evaluate(source).catch(() => undefined);
 }
 
+/**
+ * Nudge lazy-rendered survey content into view before screenshot.
+ * Scrolls gently; does not fill inputs or submit.
+ */
+export async function scrollForLazyRender(page: Page): Promise<void> {
+  await page
+    .evaluate(async () => {
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const maxY = Math.max(
+        document.body?.scrollHeight || 0,
+        document.documentElement?.scrollHeight || 0,
+        1,
+      );
+      const step = Math.max(280, Math.floor(window.innerHeight * 0.75));
+      for (let y = 0; y < maxY; y += step) {
+        window.scrollTo(0, y);
+        await sleep(80);
+      }
+      window.scrollTo(0, maxY);
+      await sleep(120);
+      window.scrollTo(0, 0);
+      await sleep(100);
+    })
+    .catch(() => undefined);
+}
+
 export async function prepareCapturePage(page: Page): Promise<void> {
   await installEvaluateNameHelper(page);
   // Stock Chrome UA on serverless — a custom suffix can keep Google Forms on
@@ -118,6 +145,18 @@ export async function gotoSurveyPage(
         .catch(() => undefined);
       await sleep(isServerlessCaptureRuntime() ? 500 : 300);
     }
+
+    if (isGoogleForms) {
+      await page
+        .waitForSelector(
+          ".freebirdFormviewerViewFormContent, .freebirdFormviewerViewItemsItemItem, [role='listitem']",
+          { timeout: isServerlessCaptureRuntime() ? 8_000 : 5_000 },
+        )
+        .catch(() => undefined);
+    }
+
+    await scrollForLazyRender(page);
+    await sleep(CAPTURE_SETTLE_MS);
 
     return { ok: true, status };
   } catch {

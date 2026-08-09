@@ -1,6 +1,9 @@
 import { cloneReportForScan, getUrlCache } from "@/lib/cache/inMemoryUrlCache";
 import { getJobWorkerConfig, isMonitoringConfigured } from "@/lib/jobs/config";
 import {
+  enqueuePendingCaptureJob,
+} from "@/lib/jobs/captureJobQueue";
+import {
   claimNextScanJob,
   claimScanJobByExternalId,
   getScanJobByExternalId,
@@ -18,6 +21,33 @@ import { SCAN_PROGRESS_STEPS } from "@/lib/types/scan";
 import type { ScanReport, ScanStatus } from "@/lib/types/scan";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
 import { normalizeUrl } from "@/lib/utils/normalizeUrl";
+
+function createPreviewCaptureId(): string {
+  return `cap_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Best-effort preview capture after diagnosis.
+ * Must never throw into the scan job path.
+ */
+async function enqueuePostDiagnosisPreviewCapture(input: {
+  diagnosisId: string;
+  surveyUrl: string;
+  finalUrl: string;
+}): Promise<void> {
+  if (!isMonitoringConfigured()) return;
+  if (!input.diagnosisId || !input.surveyUrl) return;
+  const captureJobId = createPreviewCaptureId();
+  // Enqueue only — capture worker/cron processes separately so scan timeout
+  // is not inflated by screenshot work.
+  await enqueuePendingCaptureJob({
+    externalCaptureId: captureJobId,
+    diagnosisId: input.diagnosisId,
+    surveyUrl: input.surveyUrl,
+    finalUrl: input.finalUrl || input.surveyUrl,
+    mode: "safe_public_only",
+  });
+}
 
 async function setProgress(
   externalScanId: string,
@@ -134,10 +164,34 @@ async function processClaimedScanJob(
     }
     mockStore.saveReport(report);
 
+    // Capture runs async separately — never block or fail diagnosis.
+    let captureEnqueued = false;
+    if (
+      monitoringSaved &&
+      isMonitoringConfigured() &&
+      jobStatus !== "failed" &&
+      !report.form?.loginRequired
+    ) {
+      try {
+        await enqueuePostDiagnosisPreviewCapture({
+          diagnosisId: externalScanId,
+          surveyUrl: formUrl,
+          finalUrl: report.form?.url || formUrl,
+        });
+        captureEnqueued = true;
+      } catch (err) {
+        console.warn(
+          "[jobs] preview capture enqueue skipped:",
+          err instanceof Error ? err.message : err,
+        );
+        captureEnqueued = false;
+      }
+    }
+
     await recordScanJobStep({
       scanJobId: claimed.id,
       stepName: "capture_evidence",
-      status: "skipped",
+      status: captureEnqueued ? "completed" : "skipped",
     });
     await recordScanJobStep({
       scanJobId: claimed.id,

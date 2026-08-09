@@ -1,44 +1,12 @@
+import { formWideNoticeCorpus } from "@/lib/analyzer/formContext";
 import type { NormalizedForm, ScanReport } from "@/lib/types/scan";
 
 /**
  * 고지문·안내문 원문 코퍼스.
- * privacy_consent 블록 전문을 포함해 문장 단위 300자 절단 누락을 보완한다.
+ * 설문 전체(상단·문항·하단 metadata)를 포함해 좁은 문항 창만 보지 않는다.
  */
 export function buildNoticeCorpus(form: NormalizedForm): string {
-  const consentBlocks = form.questions
-    .filter(
-      (q) =>
-        q.type === "privacy_consent" ||
-        q.riskTags?.includes("privacy_consent") ||
-        /개인정보\s*(수집|이용|동의)/.test(q.questionText ?? q.label),
-    )
-    .map((q) =>
-      [q.questionText ?? q.label, q.auxiliaryText].filter(Boolean).join("\n"),
-    );
-
-  return [
-    form.notices?.description,
-    form.notices?.purpose,
-    form.notices?.items,
-    form.notices?.retention,
-    form.notices?.destruction,
-    form.notices?.refusalRight,
-    form.notices?.refusalDisadvantage,
-    form.notices?.privacyNotice,
-    form.notices?.consentText,
-    form.notices?.trustee,
-    form.notices?.trusteeTask,
-    form.notices?.overseasTransfer,
-    form.notices?.overseasCountry,
-    form.notices?.overseasRecipient,
-    form.notices?.processor,
-    form.notices?.contactDepartment,
-    form.notices?.sensitiveConsent,
-    ...(form.metadata?.noticeTexts ?? []),
-    ...consentBlocks,
-  ]
-    .filter((v): v is string => Boolean(v && v.trim()))
-    .join("\n");
+  return formWideNoticeCorpus(form);
 }
 
 function includesAny(text: string, keywords: string[]): boolean {

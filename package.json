@@ -55,6 +55,8 @@
     "evidence:preservation": "tsx scripts/check-evidence-preservation.ts",
     "diagnosis:regression": "tsx scripts/check-diagnosis-regression.ts",
     "diagnosis:ended-check": "tsx scripts/check-ended-survey-handling.ts",
+    "check:form-context": "tsx scripts/check-form-context.ts",
+    "check:key-problems": "tsx scripts/check-key-problems.ts",
     "check:survey-liveness": "tsx scripts/check-survey-liveness-precheck.ts",
     "report:public-safety": "tsx scripts/check-public-report-safety.ts",
     "queue:schema-check": "tsx scripts/check-queue-schema.ts",

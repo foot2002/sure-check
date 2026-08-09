@@ -51,6 +51,13 @@ export interface CapturePageMeta {
   finalSubmitClicked?: boolean;
 }
 
+export type CaptureSectionType =
+  | "survey_top"
+  | "page_body"
+  | "question_focus"
+  | "footer"
+  | "unknown";
+
 export interface CaptureScreenshot {
   id: string;
   label: string;
@@ -67,6 +74,9 @@ export interface CaptureScreenshot {
   size: number;
   pageNumber?: number;
   mode?: CaptureMode;
+  /** Logical section hint for evidence linking (not a separate crop). */
+  sectionType?: CaptureSectionType;
+  platform?: CaptureProvider | "unknown";
 }
 
 export interface AutoScreenshotPayload {

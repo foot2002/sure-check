@@ -42,11 +42,7 @@ async function processClaimedCaptureJob(
 
     let evidenceStored = false;
     let storedEvidenceFiles = 0;
-    if (
-      mode === "evidence_full_walkthrough" &&
-      diagnosisId &&
-      result.screenshots.length > 0
-    ) {
+    if (diagnosisId && result.screenshots.length > 0) {
       try {
         const persisted = await persistCaptureEvidence({
           diagnosisId,

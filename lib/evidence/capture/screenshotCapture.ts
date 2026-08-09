@@ -160,6 +160,17 @@ export async function captureFullPage(
   // before the orchestrator has re-checked Next.
   await applyKoreanFontsToPage(page);
   await expandScrollRegions(page, serverless);
+  // Brief settle after expand so layout/lazy nodes finish painting.
+  await page
+    .evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            setTimeout(resolve, 120);
+          });
+        }),
+    )
+    .catch(() => undefined);
 
   const buffer = serverless
     ? await takeServerlessScreenshot(page)
@@ -170,6 +181,15 @@ export async function captureFullPage(
           captureBeyondViewport: true,
         }),
       );
+
+  const pageUrl = page.url();
+  const platform = /docs\.google\.com\/forms|forms\.gle/i.test(pageUrl)
+    ? ("google_forms" as const)
+    : /form\.naver\.com/i.test(pageUrl)
+      ? ("naver_form" as const)
+      : /moaform\.com|surveyl\.ink/i.test(pageUrl)
+        ? ("moaform" as const)
+        : ("unknown" as const);
 
   return {
     id:
@@ -182,8 +202,8 @@ export async function captureFullPage(
     buffer,
     capturedAt: capturedAt.toISOString(),
     capturedAtKst: formatKstDateTime(capturedAt),
-    capturedUrl: page.url(),
-    finalUrl: page.url(),
+    capturedUrl: pageUrl,
+    finalUrl: pageUrl,
     pageTitle: await page.title(),
     viewport: {
       ...(serverless ? CAPTURE_SERVERLESS_VIEWPORT : CAPTURE_VIEWPORT),
@@ -192,5 +212,7 @@ export async function captureFullPage(
     size: buffer.byteLength,
     pageNumber: pageNo,
     mode,
+    sectionType: pageNo === 1 ? "survey_top" : "page_body",
+    platform,
   };
 }
