@@ -75,9 +75,32 @@ export function isNaverFormsFinalUrl(url: string): boolean {
   }
 }
 
+/** Unwrap Facebook interstitial / redirect wrappers to the nested survey URL. */
+export function unwrapNestedNaverSurveyUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const nested = parsed.searchParams.get("u");
+    if (!nested) return null;
+    const decoded = decodeURIComponent(nested);
+    if (/form\.naver\.com|naver\.me/i.test(decoded)) {
+      return decoded;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export function extractNaverSurveyId(url: string): string | null {
-  const match = url.match(/\/response\/([A-Za-z0-9_-]+)/i);
-  return match?.[1] ?? null;
+  const direct = url.match(/\/response\/([A-Za-z0-9_-]+)/i);
+  if (direct?.[1]) return direct[1];
+
+  const nested = unwrapNestedNaverSurveyUrl(url);
+  if (nested) {
+    const nestedId = nested.match(/\/response\/([A-Za-z0-9_-]+)/i);
+    if (nestedId?.[1]) return nestedId[1];
+  }
+  return null;
 }
 
 export const NAVER_FORMS_DIAGNOSIS_NOTICE =

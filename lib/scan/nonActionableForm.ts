@@ -43,12 +43,19 @@ function limitedContextText(
  * marketing/footer copy in the HTML (e.g. "찾을 수 없", "접근 제한") override.
  */
 const RECOVERABLE_DYNAMIC_LIMITED_RE =
-  /JavaScript\s*실행\s*후\s*문항이\s*로딩|fetch\s*기반\s*추출이\s*제한|문항을\s*자동으로\s*읽지\s*못했|문항\s*후보를\s*찾지\s*못했|동적\s*로딩|MOAFORM_DYNAMIC_RENDERING|MOAFORM_QUESTIONS_NOT_FOUND|구조를\s*자동으로\s*해석하지\s*못했/i;
+  /JavaScript\s*실행\s*후\s*문항이\s*로딩|fetch\s*기반\s*추출이\s*제한|문항을\s*자동으로\s*읽지\s*못했|문항\s*또는\s*입력\s*필드를\s*자동으로\s*확인하지\s*못했|확인하지\s*못했습니다|문항\s*후보를\s*찾지\s*못했|동적(?:으로)?\s*로딩|MOAFORM_DYNAMIC_RENDERING|MOAFORM_QUESTIONS_NOT_FOUND|구조를\s*자동으로\s*해석하지\s*못했|HTML에서\s*질문을\s*확인하지\s*못했/i;
 
 export function isRecoverableDynamicLimitedReason(
   reason: string | null | undefined,
 ): boolean {
   return RECOVERABLE_DYNAMIC_LIMITED_RE.test(reason || "");
+}
+
+function formLooksRecoverableDynamic(
+  form: Pick<NormalizedForm, "limitedReason" | "metadata">,
+): boolean {
+  if (isRecoverableDynamicLimitedReason(form.limitedReason)) return true;
+  return isRecoverableDynamicLimitedReason(limitedContextText(form));
 }
 
 /**
@@ -62,18 +69,19 @@ export function isNonActionableLimitedForm(
   >,
   html = "",
 ): boolean {
-  if (form.loginRequired) return true;
-
   const questionCount = form.questions?.length || 0;
   if (questionCount > 0 && !form.isLimited) return false;
 
-  // Explicit ended/closed on the form reason — skip browser even without HTML.
-  if (textLooksEndedSurvey(form.limitedReason || "")) return true;
-
-  // Recoverable dynamic shells: ignore HTML noise for the non-actionable check.
-  if (isRecoverableDynamicLimitedReason(form.limitedReason)) {
+  // Recoverable JS shells first — do not let loginRequired false-positives
+  // (e.g. bare "login" in SPA bundles) or HTML chrome block browser fallback.
+  if (formLooksRecoverableDynamic(form)) {
     return false;
   }
+
+  if (form.loginRequired) return true;
+
+  // Explicit ended/closed on the form reason — skip browser even without HTML.
+  if (textLooksEndedSurvey(form.limitedReason || "")) return true;
 
   const text = limitedContextText(form, [html.slice(0, 8000)]);
 
@@ -89,7 +97,7 @@ export function shouldSkipBrowserFallback(
   form: NormalizedForm,
   html = "",
 ): boolean {
-  if (isRecoverableDynamicLimitedReason(form.limitedReason)) {
+  if (formLooksRecoverableDynamic(form)) {
     return false;
   }
   return isNonActionableLimitedForm(form, html);

@@ -6,6 +6,7 @@ import {
 } from "@/lib/extractors/htmlTextUtils";
 import { parseNaverFormsDocument } from "@/lib/extractors/naverFormsParser";
 import type { NaverFormsExtractorInput } from "@/lib/extractors/naverFormsTypes";
+import { unwrapNestedNaverSurveyUrl } from "@/lib/extractors/naverFormsTypes";
 import type {
   DetectedCategory,
   NormalizedForm,
@@ -83,7 +84,11 @@ function detectNoticeFlags(noticeTexts: string[], description: string) {
 export async function extractNaverForms(
   input: NaverFormsExtractorInput,
 ): Promise<NormalizedForm> {
-  const parsed = await parseNaverFormsDocument(input.html, input.finalUrl);
+  const targetUrl =
+    unwrapNestedNaverSurveyUrl(input.url) ||
+    unwrapNestedNaverSurveyUrl(input.finalUrl) ||
+    input.finalUrl;
+  const parsed = await parseNaverFormsDocument(input.html, targetUrl);
   const normalizedQuestions = parsed.questions.map(toNormalizedQuestion);
   const pages = buildPages(normalizedQuestions);
   const noticeFlags = detectNoticeFlags(parsed.noticeTexts, parsed.description);

@@ -3,7 +3,10 @@ import type {
   FallbackReason,
   FastExtractionResult,
 } from "@/lib/extractors/fastExtractionTypes";
-import { isNonActionableLimitedForm } from "@/lib/scan/nonActionableForm";
+import {
+  isNonActionableLimitedForm,
+  isRecoverableDynamicLimitedReason,
+} from "@/lib/scan/nonActionableForm";
 
 const MULTI_PAGE_RE =
   /다음|계속|다음\s*페이지|next|continue|섹션|section/i;
@@ -22,7 +25,21 @@ export function evaluateConfidenceGate(
     highRiskCount?: number;
   },
 ): ConfidenceGateDecision {
-  if (fast.form && isNonActionableLimitedForm(fast.form)) {
+  // Closed/login/private can skip browser — but JS-dynamic recoverable shells
+  // must never be accepted as final (confidenceGate previously short-circuited
+  // on loginRequired false-positives and blocked fallback).
+  if (
+    fast.form &&
+    isNonActionableLimitedForm(fast.form) &&
+    !isRecoverableDynamicLimitedReason(fast.form.limitedReason) &&
+    !isRecoverableDynamicLimitedReason(
+      [
+        fast.form.limitedReason || "",
+        ...(fast.form.metadata?.extractionWarnings ?? []),
+        fast.form.metadata?.failureReason || "",
+      ].join(" "),
+    )
+  ) {
     return {
       accept: true,
       fallbackTriggered: false,

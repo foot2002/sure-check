@@ -118,8 +118,11 @@ export function AdminConsoleView({
             ["고위험/신고 검토", data.kpi.highOrReportReviewCount],
             ["공공부문 확인 필요", data.kpi.publicSectorReviewCount],
             ["증빙 캡처 확보", data.kpi.evidenceCaptureCount],
-            ["문항 분석 제한", data.kpi.limitedAnalysisCount],
             ["공개 후보 건수", data.kpi.publicationCandidateCount],
+            [
+              "제한 합계(참고)",
+              data.kpi.limitedAnalysisCount,
+            ],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -133,6 +136,43 @@ export function AdminConsoleView({
               </p>
             </div>
           ))}
+        </section>
+      ) : null}
+
+      {data?.kpi?.outcomeBuckets ? (
+        <section className="mb-6">
+          <p className="mb-2 text-xs text-slate-400">
+            진단 결과 구분 — 응답 종료·접근 제한은 문항 추출 실패로 보지 않습니다.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["정상 진단", data.kpi.outcomeBuckets.normalDiagnosis, "text-emerald-100"],
+              ["응답 종료", data.kpi.outcomeBuckets.surveyClosed, "text-slate-100"],
+              [
+                "접근 제한/로그인",
+                data.kpi.outcomeBuckets.accessRestricted,
+                "text-amber-100",
+              ],
+              [
+                "문항 추출 제한",
+                data.kpi.outcomeBuckets.extractionLimited,
+                "text-orange-100",
+              ],
+              ["시스템 실패", data.kpi.outcomeBuckets.systemFailure, "text-rose-100"],
+            ].map(([label, value, tone]) => (
+              <div
+                key={String(label)}
+                className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"
+              >
+                <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                  {label}
+                </p>
+                <p className={`mt-1 text-2xl font-bold ${String(tone)}`}>
+                  {Number(value).toLocaleString("ko-KR")}
+                </p>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -276,7 +316,7 @@ export function AdminConsoleView({
           },
           {
             key: "limitedOnly",
-            label: "문항 분석 제한",
+            label: "제한 진단(종료·접근·추출·시스템)",
             options: [
               ["all", "전체"],
               ["true", "제한만"],

@@ -14,7 +14,9 @@ import type {
 import {
   extractNaverSurveyId,
   NAVER_FORMS_API_BASE,
+  unwrapNestedNaverSurveyUrl,
 } from "@/lib/extractors/naverFormsTypes";
+import { readCapturedNetworkJsonFromHtml } from "@/lib/extractors/networkCaptureHtml";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
 const TIMEOUT_MS = 8000;
@@ -41,6 +43,7 @@ const CLOSED_STATUSES = new Set([
   "FINISHED",
   "STOPPED",
   "EXPIRED",
+  "PAUSED",
 ]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -268,11 +271,19 @@ function parseDomFallback(
   const questions: NaverFormsParsedQuestion[] = [];
   let questionIndex = 0;
 
-  $('[class*="formItem"], [qid], [data-qid]').each((_, el) => {
+  $(
+    ".question_area, .questionnaire_item, [class*='question_area'], [class*='formItem'], [qid], [data-qid]",
+  ).each((_, el) => {
     const $item = $(el);
     const questionText =
-      collapseWhitespace($item.find(".title, .question, h3, h4, label").first().text()) ||
-      collapseWhitespace($item.attr("aria-label") ?? "");
+      collapseWhitespace(
+        $item
+          .find(
+            ".question_title, .title, .question, [class*='question_title'], h3, h4, label, legend",
+          )
+          .first()
+          .text(),
+      ) || collapseWhitespace($item.attr("aria-label") ?? "");
 
     if (!isMeaningfulText(questionText, 2)) return;
 
@@ -400,41 +411,141 @@ export async function fetchNaverFormAccessData(
   }
 }
 
+async function resolveNaverFormTargetUrl(finalUrl: string): Promise<string> {
+  const nested = unwrapNestedNaverSurveyUrl(finalUrl);
+  const candidate = nested || finalUrl;
+  if (/form\.naver\.com\/response\//i.test(candidate)) return candidate;
+  if (!/naver\.me\//i.test(candidate)) return finalUrl;
+
+  const safety = await safeUrlCheck(candidate);
+  if (!safety.safe) return finalUrl;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(candidate, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "SURE-Check/1.0 (Privacy Survey Scanner)",
+      },
+    });
+    clearTimeout(timeout);
+    if (response.url && /form\.naver\.com/i.test(response.url)) {
+      return response.url;
+    }
+  } catch {
+    clearTimeout(timeout);
+  }
+  return finalUrl;
+}
+
 export async function parseNaverFormsDocument(
   html: string,
   finalUrl: string,
 ): Promise<NaverFormsParseResult> {
+  const resolvedUrl = await resolveNaverFormTargetUrl(finalUrl);
   const htmlMeta = extractHtmlMeta(html);
   const flags = detectFormFlags(html);
-  const surveyId = extractNaverSurveyId(finalUrl);
+  const surveyId =
+    extractNaverSurveyId(resolvedUrl) || extractNaverSurveyId(finalUrl);
   const embedded = extractEmbeddedJsonFromHtml(html);
 
-  if (embedded?.pages) {
+  if (embedded && (embedded.pages || asString(embedded.status))) {
     const parsed = parseSurveyPayload(embedded, flags, htmlMeta);
     if (parsed.questions.length > 0) {
       return {
         ...parsed,
         extractionMethod: "embedded_json",
         loginRequired: false,
-        isLimited: flags.closedForm,
+        isLimited: parsed.closedForm,
+        limitedReason: parsed.closedForm ? parsed.limitedReason : undefined,
+        surveyId: surveyId ?? undefined,
+      };
+    }
+    if (parsed.closedForm) {
+      return {
+        ...parsed,
+        extractionMethod: "embedded_json",
+        loginRequired: false,
+        isLimited: true,
+        limitedReason: parsed.limitedReason || "네이버폼 응답이 종료되었습니다.",
         surveyId: surveyId ?? undefined,
       };
     }
   }
 
+  // Prefer a survey payload with pages/status even when questions are empty
+  // (FINISHED/CLOSED APIs return pages:[] — must not fall through to JS-limited).
+  const preferSurveyPayload = (
+    parsed: NaverFormsParseResult,
+    method: NaverFormsParseResult["extractionMethod"],
+    warnings: string[] = [],
+  ): NaverFormsParseResult | null => {
+    if (parsed.questions.length > 0) {
+      return {
+        ...parsed,
+        extractionMethod: method,
+        loginRequired: false,
+        isLimited: parsed.closedForm,
+        limitedReason: parsed.closedForm ? parsed.limitedReason : undefined,
+        surveyId: surveyId ?? undefined,
+        warnings: [...(parsed.warnings || []), ...warnings],
+      };
+    }
+    if (parsed.closedForm) {
+      return {
+        ...parsed,
+        extractionMethod: method,
+        loginRequired: false,
+        isLimited: true,
+        limitedReason: parsed.limitedReason || "네이버폼 응답이 종료되었습니다.",
+        surveyId: surveyId ?? undefined,
+        warnings: [...(parsed.warnings || []), ...warnings],
+      };
+    }
+    return null;
+  };
+
+  // Browser fallback may inject XHR/fetch JSON (survey-api /access).
+  for (const captured of readCapturedNetworkJsonFromHtml(html)) {
+    const record =
+      typeof captured.json === "object" && captured.json !== null
+        ? (captured.json as Record<string, unknown>)
+        : null;
+    if (!record) continue;
+    // Unwrap common envelopes if present.
+    const payload =
+      asRecord(record.result) ||
+      asRecord(record.data) ||
+      asRecord(record.survey) ||
+      asRecord(record.form) ||
+      record;
+    const parsed = parseSurveyPayload(payload, flags, htmlMeta);
+    const preferred = preferSurveyPayload(parsed, "access_api", [
+      `browser_network_capture:${captured.url.slice(0, 120)}`,
+    ]);
+    if (preferred) return preferred;
+  }
+
   if (surveyId) {
-    const access = await fetchNaverFormAccessData(surveyId, finalUrl, htmlMeta.apiBase);
+    const access = await fetchNaverFormAccessData(
+      surveyId,
+      resolvedUrl || finalUrl,
+      htmlMeta.apiBase,
+    );
     if (access.ok && access.data) {
-      const parsed = parseSurveyPayload(access.data, flags, htmlMeta);
-      if (parsed.questions.length > 0) {
-        return {
-          ...parsed,
-          loginRequired: false,
-          isLimited: parsed.closedForm,
-          limitedReason: parsed.closedForm ? parsed.limitedReason : undefined,
-          surveyId,
-        };
-      }
+      const payload =
+        asRecord(access.data.result) ||
+        asRecord(access.data.data) ||
+        asRecord(access.data.survey) ||
+        asRecord(access.data.form) ||
+        access.data;
+      const parsed = parseSurveyPayload(payload, flags, htmlMeta);
+      const preferred = preferSurveyPayload(parsed, "access_api");
+      if (preferred) return preferred;
     }
 
     if (!access.ok && access.limitedReason?.includes("로그인")) {

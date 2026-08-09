@@ -138,10 +138,16 @@ async function main(): Promise<void> {
       "moaform",
       "모아폼 페이지는 확인했지만, 설문 문항을 자동으로 읽지 못했습니다.",
     ),
+    makeLimitedForm(
+      "generic",
+      "설문 문항 또는 입력 필드를 자동으로 확인하지 못했습니다.",
+    ),
   ];
   for (const form of recoverable) {
-    const skip = shouldSkipBrowserFallback(form);
-    const nonActionable = isNonActionableLimitedForm(form);
+    // Even if loginRequired was falsely set from HTML markers, recoverable wins.
+    const withFalseLogin = { ...form, loginRequired: true };
+    const skip = shouldSkipBrowserFallback(withFalseLogin);
+    const nonActionable = isNonActionableLimitedForm(withFalseLogin);
     const ok = !skip && !nonActionable;
     console.log(
       `recoverable ${form.platform}: skip=${skip} nonActionable=${nonActionable} → ${ok ? "PASS" : "FAIL"}`,

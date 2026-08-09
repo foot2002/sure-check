@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getQueueCounts } from "@/lib/jobs/scanJobQueue";
+import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import type {
   OverallRiskLevel,
   Platform,
@@ -31,8 +32,17 @@ export interface AdminKpi {
   highOrReportReviewCount: number;
   publicSectorReviewCount: number;
   evidenceCaptureCount: number;
+  /** @deprecated Prefer outcome buckets — kept for backward-compatible UI. */
   limitedAnalysisCount: number;
   publicationCandidateCount: number;
+  /** Outcome split so closed/login are not counted as extraction failure. */
+  outcomeBuckets: {
+    normalDiagnosis: number;
+    surveyClosed: number;
+    accessRestricted: number;
+    extractionLimited: number;
+    systemFailure: number;
+  };
 }
 
 export interface AdminQueueSummary {
@@ -265,7 +275,7 @@ export async function listAdminCases(
       reportIds.length
         ? supabase
             .from("scan_reports")
-            .select("id, diagnosis_status, score, user_decision_label")
+            .select("id, diagnosis_status, score, user_decision_label, report_json")
             .in("id", reportIds)
         : Promise.resolve({ data: [], error: null }),
       from || to
@@ -332,13 +342,28 @@ export async function listAdminCases(
   }
   const reportMap = new Map<
     string,
-    { diagnosis_status: string | null; score: number | null; user_decision_label: string | null }
+    {
+      diagnosis_status: string | null;
+      score: number | null;
+      user_decision_label: string | null;
+      limited_reason: string | null;
+      summary: string | null;
+    }
   >();
   for (const row of reportsRes.data || []) {
+    const rj = (row.report_json as Record<string, unknown> | null) || null;
+    const form = (rj?.form as Record<string, unknown> | undefined) || undefined;
+    const limitedReason =
+      (typeof rj?.limitedReason === "string" && rj.limitedReason) ||
+      (typeof form?.limitedReason === "string" && form.limitedReason) ||
+      null;
+    const summary = typeof rj?.summary === "string" ? rj.summary : null;
     reportMap.set(row.id, {
       diagnosis_status: row.diagnosis_status,
       score: row.score,
       user_decision_label: row.user_decision_label,
+      limited_reason: limitedReason,
+      summary,
     });
   }
 
@@ -408,6 +433,34 @@ export async function listAdminCases(
       (c.captured_page_count || 0) > 0,
   ).length;
 
+  const outcomeBuckets = {
+    normalDiagnosis: 0,
+    surveyClosed: 0,
+    accessRestricted: 0,
+    extractionLimited: 0,
+    systemFailure: 0,
+  };
+  for (const row of rows) {
+    const report = row.scan_report_id
+      ? reportMap.get(row.scan_report_id as string)
+      : undefined;
+    const bucket = classifyLimitedOutcome({
+      overallRiskLevel: row.overall_risk_level as string | null,
+      diagnosisStatus: report?.diagnosis_status || null,
+      userDecisionLabel:
+        (row.user_decision_label as string | null) ||
+        report?.user_decision_label ||
+        null,
+      limitedReason: report?.limited_reason || null,
+      summary: report?.summary || null,
+    });
+    if (bucket === "normal_diagnosis") outcomeBuckets.normalDiagnosis += 1;
+    else if (bucket === "survey_closed") outcomeBuckets.surveyClosed += 1;
+    else if (bucket === "access_restricted") outcomeBuckets.accessRestricted += 1;
+    else if (bucket === "system_failure") outcomeBuckets.systemFailure += 1;
+    else outcomeBuckets.extractionLimited += 1;
+  }
+
   const kpi: AdminKpi = {
     totalScans: cases.length,
     reviewPendingCount: cases.filter(
@@ -426,18 +479,18 @@ export async function listAdminCases(
         c.platform !== "wiseon_csap",
     ).length,
     evidenceCaptureCount,
-    limitedAnalysisCount: cases.filter(
-      (c) =>
-        c.overallRiskLevel === "limited" ||
-        c.diagnosisStatus === "limited" ||
-        /문항 분석 불가/.test(c.userDecisionLabel || ""),
-    ).length,
+    limitedAnalysisCount:
+      outcomeBuckets.surveyClosed +
+      outcomeBuckets.accessRestricted +
+      outcomeBuckets.extractionLimited +
+      outcomeBuckets.systemFailure,
     publicationCandidateCount: cases.filter(
       (c) =>
         c.publicationStatus === "aggregate_only" ||
         c.publicationStatus === "public_anonymized" ||
         (c.reviewStatus === "resolved" && c.publicationStatus === "private"),
     ).length,
+    outcomeBuckets,
   };
 
   let queue: AdminQueueSummary = {

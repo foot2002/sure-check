@@ -21,36 +21,43 @@ import {
   extractMoaformId,
   resolveMoaformFailureReason,
 } from "@/lib/extractors/moaformTypes";
+import { readCapturedNetworkJsonFromHtml } from "@/lib/extractors/networkCaptureHtml";
 import { fetchMoaformSpaForm } from "@/lib/extractors/moaformSpaClient";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 2 * 1024 * 1024;
 
+/** Phrase-level only — bare "login"/"closed" match SPA bundle noise. */
 const LOGIN_MARKERS = [
-  "sign in",
-  "log in",
-  "login",
-  "로그인",
-  "접근 권한",
+  "로그인이 필요",
+  "로그인 후 이용",
+  "로그인 후 참여",
+  "접근 권한이 없",
+  "권한이 필요",
   "permission to view",
   "do not have permission",
+  "please sign in",
+  "please log in",
 ];
 
 const CLOSED_MARKERS = [
-  "closed",
   "no longer accepting",
+  "form is closed",
+  "this form is closed",
   "응답이 마감",
   "설문이 종료",
   "응답 기간이 종료",
   "더 이상 응답",
+  "응답이 종료",
 ];
 
 const NOT_FOUND_MARKERS = [
-  "cannot be found",
   "form cannot be found",
-  "찾을 수 없",
-  "존재하지 않",
+  "cannot be found",
+  "페이지를 찾을 수 없",
+  "설문을 찾을 수 없",
+  "존재하지 않는 설문",
 ];
 
 /** UI chrome that must not be treated as questions */
@@ -115,16 +122,26 @@ function extractPrivacyPolicyUrls(html: string, description: string): string[] {
   return [...urls];
 }
 
-function detectFormFlags(html: string, status?: string): {
+function detectFormFlags(
+  html: string,
+  status?: string,
+  finalUrl = "",
+): {
   loginRequired: boolean;
   closedForm: boolean;
   notFound: boolean;
 } {
   const lower = html.toLowerCase();
   const statusUpper = (status ?? "").toUpperCase();
+  const urlLower = finalUrl.toLowerCase();
+  const closedByUrl =
+    /\/closed(?:\/|$|\?|#)/i.test(urlLower) ||
+    /[?&]status=closed\b/i.test(urlLower) ||
+    /answer\.moaform\.com\/answers\/[^/]+\/closed/i.test(urlLower);
   return {
     loginRequired: LOGIN_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
     closedForm:
+      closedByUrl ||
       statusUpper === "CLOSED" ||
       CLOSED_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
     notFound:
@@ -669,33 +686,23 @@ function parseDomFallback(
     collapseWhitespace($('[class*="Welcome"], [class*="Description"]').first().text()) ||
     htmlMeta.description;
 
+  // Prefer real question chrome over welcome/title/CTA noise.
   const labelSelectors = [
+    ".js-question",
     ".AnswerInputBox__label",
-    '[class*="BlockContent"]',
     '[class*="QuestionTitle"]',
     '[class*="questionTitle"]',
     '[class*="BlockTitle"]',
-    '[class*="question"]',
-    '[class*="Question"]',
-    '[class*="survey"]',
-    '[class*="Survey"]',
+    '[class*="QuestionText"]',
     '[class*="field-label"]',
     '[class*="FieldLabel"]',
     '[class*="answer"] label',
-    '[class*="form"] label',
-    '[role="group"]',
-    '[role="radiogroup"]',
     "fieldset legend",
     "legend",
-    "label",
-    "h2",
-    "h3",
     "textarea[placeholder]",
     "input[placeholder]",
     "select[aria-label]",
     "[data-question]",
-    "[data-item]",
-    "[data-field]",
     "[data-qid]",
   ];
 
@@ -783,6 +790,17 @@ function parseDomFallback(
     });
   }
 
+  // Single title-only candidate is welcome chrome, not a real question.
+  const filteredQuestions = questions.filter((q) => {
+    const text = collapseWhitespace(q.questionText);
+    const titleNorm = collapseWhitespace(title);
+    if (titleNorm && text === titleNorm) return false;
+    if (htmlMeta.headings.some((h) => collapseWhitespace(h) === text)) {
+      return q.options.length > 0 || q.questionType !== "short_text";
+    }
+    return true;
+  });
+
   const noticeTexts = collectNoticeTexts(
     title,
     description,
@@ -794,31 +812,31 @@ function parseDomFallback(
     closedForm: flags.closedForm,
     notFound: flags.notFound,
     htmlFetched: true,
-    questionCount: questions.length,
+    questionCount: filteredQuestions.length,
   });
   const messages = MOAFORM_FAILURE_MESSAGES[failureReason];
   const isLimited =
     flags.loginRequired ||
     flags.closedForm ||
     flags.notFound ||
-    questions.length === 0;
+    filteredQuestions.length === 0;
 
   return {
     title,
     description,
-    questions,
+    questions: filteredQuestions,
     noticeTexts,
     privacyPolicyUrls: extractPrivacyPolicyUrls(html, description),
     loginRequired: flags.loginRequired,
     closedForm: flags.closedForm,
     branchDetected: false,
-    emailCollectionPossible: questions.some((q) =>
+    emailCollectionPossible: filteredQuestions.some((q) =>
       q.detectedCategories.includes("email"),
     ),
-    privacyConsentPossible: questions.some(
+    privacyConsentPossible: filteredQuestions.some(
       (q) => q.questionType === "privacy_consent",
     ),
-    extractionMethod: questions.length > 0 ? "dom_fallback" : "none",
+    extractionMethod: filteredQuestions.length > 0 ? "dom_fallback" : "none",
     partialScan: true,
     isLimited,
     limitedReason: isLimited ? messages.limitedReason : undefined,
@@ -826,7 +844,7 @@ function parseDomFallback(
     warnings: [
       `Moaform HTML fetched`,
       `Embedded JSON: absent (DOM path)`,
-      `DOM fallback question count: ${questions.length}`,
+      `DOM fallback question count: ${filteredQuestions.length}`,
       ...(isLimited
         ? [`Final limitation reason: ${failureReason}`]
         : ["DOM fallback으로 일부 문항만 추출했습니다."]),
@@ -1026,9 +1044,49 @@ export async function parseMoaformDocument(
   finalUrl: string,
 ): Promise<MoaformParseResult> {
   const htmlMeta = extractHtmlMeta(html);
-  const flags = detectFormFlags(html);
+  const flags = detectFormFlags(html, undefined, finalUrl);
   const formId = extractMoaformId(finalUrl) ?? extractMoaformId(html);
   const trace: string[] = ["Moaform HTML fetched"];
+
+  // answer.moaform.com/.../closed — response window over; do not invent questions.
+  if (flags.closedForm) {
+    const failureReason: MoaformFailureReason = "MOAFORM_CLOSED_OR_PRIVATE";
+    const messages = MOAFORM_FAILURE_MESSAGES[failureReason];
+    const endedByUrl = /\/closed(?:\/|$|\?|#)/i.test(finalUrl);
+    return {
+      title: htmlMeta.title || htmlMeta.headings[0] || "모아폼 설문",
+      description: htmlMeta.description,
+      questions: [],
+      noticeTexts: collectNoticeTexts(
+        htmlMeta.title,
+        htmlMeta.description,
+        ...htmlMeta.headings,
+      ),
+      privacyPolicyUrls: [],
+      loginRequired: false,
+      closedForm: true,
+      branchDetected: false,
+      emailCollectionPossible: false,
+      privacyConsentPossible: false,
+      extractionMethod: "none",
+      partialScan: true,
+      isLimited: true,
+      limitedReason: endedByUrl
+        ? "모아폼 응답이 종료되었습니다."
+        : messages.limitedReason,
+      failureReason,
+      warnings: [
+        ...trace,
+        endedByUrl
+          ? `closed_url:${finalUrl.slice(0, 160)}`
+          : `Final limitation reason: ${failureReason}`,
+      ],
+      formId: formId ?? undefined,
+      pageMeta: htmlMeta,
+      operatorHint: htmlMeta.operatorHint,
+      operatorCandidates: htmlMeta.operatorCandidates,
+    };
+  }
 
   const embedded = extractEmbeddedJsonFromHtml(html);
   trace.push(
@@ -1042,6 +1100,31 @@ export async function parseMoaformDocument(
         ...buildParseResult(
           parsed,
           "embedded_json",
+          flags,
+          html,
+          false,
+          [...trace, `Question count: ${parsed.questions.length}`],
+          htmlMeta,
+        ),
+        formId: formId ?? undefined,
+      };
+    }
+  }
+
+  // Browser fallback may inject form2/next2/answer JSON from network.
+  for (const captured of readCapturedNetworkJsonFromHtml(html)) {
+    const record =
+      typeof captured.json === "object" && captured.json !== null
+        ? (captured.json as Record<string, unknown>)
+        : null;
+    if (!record) continue;
+    const parsed = parseBlocksPayload(record);
+    if (parsed.questions.length > 0) {
+      trace.push(`browser_network_capture: ${captured.url.slice(0, 120)}`);
+      return {
+        ...buildParseResult(
+          parsed,
+          "spa_session",
           flags,
           html,
           false,

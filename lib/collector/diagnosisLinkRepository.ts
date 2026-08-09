@@ -372,5 +372,35 @@ export async function syncDiagnosisLinkFromScanJob(
     lastError: errMsg,
     skipReason: next === "limited" ? errMsg : undefined,
   });
+
+  if (next === "limited") {
+    try {
+      const { data: linkRow } = await supabase
+        .from("survey_diagnosis_links")
+        .select("survey_link_id")
+        .eq("id", linkId)
+        .maybeSingle();
+      const surveyLinkId = linkRow?.survey_link_id
+        ? String(linkRow.survey_link_id)
+        : null;
+      if (surveyLinkId) {
+        const { feedbackCollectorStatusFromDiagnosisLink } = await import(
+          "@/lib/collector/diagnosisStatusFeedback"
+        );
+        await feedbackCollectorStatusFromDiagnosisLink({
+          surveyLinkId,
+          linkageStatus: next,
+          limitedReason:
+            errMsg ||
+            (typeof reportJson?.limitedReason === "string"
+              ? reportJson.limitedReason
+              : null),
+        });
+      }
+    } catch (err) {
+      console.warn("[diagnosisLink] collector status feedback skipped:", err);
+    }
+  }
+
   return next;
 }
