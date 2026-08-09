@@ -10,7 +10,7 @@ import { UserEvidenceCards } from "@/components/report/UserEvidenceCards";
 import { ReportSubsection } from "@/components/report/ui/ReportExpandTrigger";
 import { PlatformMark } from "@/components/report/ui/PlatformMark";
 import type { AudienceReport } from "@/lib/reporting/reportMessages";
-import { reportEmphasisForSubject } from "@/lib/rules/ruleScope";
+import { reportEmphasisForSubject, findingDimensionsForScope } from "@/lib/rules/ruleScope";
 import type { ScanReport } from "@/lib/types/scan";
 
 interface UserSafetyReportProps {
@@ -156,6 +156,16 @@ export function UserSafetyReport({
                   className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800"
                 >
                   {title}
+                </li>
+              ))}
+            </ul>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {findingDimensionsForScope(emphasis.scope).map((dim) => (
+                <li
+                  key={dim}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600"
+                >
+                  {dim}
                 </li>
               ))}
             </ul>

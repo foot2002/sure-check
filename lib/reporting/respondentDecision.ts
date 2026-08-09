@@ -7,8 +7,53 @@ function hasAny(items: string[]): boolean {
   return items.length > 0;
 }
 
+/** Core obligation keys that may support a strong "고지 없음" claim. */
+const CORE_MISSING_NOTICE_KEYS = new Set([
+  "collection_purpose",
+  "collection_items",
+  "retention_period",
+  "consent_refusal_right",
+  "refusal_disadvantage",
+  "destruction_timing",
+  "processor_contact",
+  "contact_department",
+  "purpose_destruction",
+]);
+
+/**
+ * Confirmed missing core notices only — excludes unclear / prize / marketing /
+ * trustee gaps so TOP3 does not escalate soft uncertainty to "고지 없음".
+ */
 export function missingNoticeLabels(report: ScanReport): string[] {
-  return report.debug?.missingNotices.map((gap) => gap.label) ?? [];
+  const gaps = report.debug?.missingNotices ?? [];
+  return gaps
+    .filter((gap) => gap.status === "missing")
+    .filter(
+      (gap) =>
+        !gap.key.startsWith("overseas_") &&
+        !gap.key.startsWith("trustee") &&
+        !gap.key.startsWith("sensitive_") &&
+        !/경품|마케팅|홍보|이벤트|프로모션/.test(gap.label),
+    )
+    .filter(
+      (gap) =>
+        CORE_MISSING_NOTICE_KEYS.has(gap.key) ||
+        /목적|항목|보유|파기|거부|불이익|담당|문의|처리자/.test(gap.label),
+    )
+    // Overseas retention label "보유기간" can collide — only keep core keys then.
+    .filter(
+      (gap) =>
+        CORE_MISSING_NOTICE_KEYS.has(gap.key) ||
+        (!gap.key.includes("overseas") && !gap.key.includes("trustee")),
+    )
+    .map((gap) => gap.label);
+}
+
+/** Soft/uncertain gaps for review copy — not used for Critical TOP3. */
+export function unclearNoticeLabels(report: ScanReport): string[] {
+  return (report.debug?.missingNotices ?? [])
+    .filter((gap) => gap.status === "unclear")
+    .map((gap) => gap.label);
 }
 
 export function isEmployeeContext(report: ScanReport): boolean {

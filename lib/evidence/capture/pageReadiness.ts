@@ -31,25 +31,40 @@ export async function installEvaluateNameHelper(page: Page): Promise<void> {
  * Scrolls gently; does not fill inputs or submit.
  */
 export async function scrollForLazyRender(page: Page): Promise<void> {
+  const serverless = isServerlessCaptureRuntime();
   await page
-    .evaluate(async () => {
-      const sleep = (ms: number) =>
-        new Promise<void>((resolve) => setTimeout(resolve, ms));
-      const maxY = Math.max(
-        document.body?.scrollHeight || 0,
-        document.documentElement?.scrollHeight || 0,
-        1,
-      );
-      const step = Math.max(280, Math.floor(window.innerHeight * 0.75));
-      for (let y = 0; y < maxY; y += step) {
-        window.scrollTo(0, y);
-        await sleep(80);
-      }
-      window.scrollTo(0, maxY);
-      await sleep(120);
-      window.scrollTo(0, 0);
-      await sleep(100);
-    })
+    .evaluate(
+      async (serverlessMode) => {
+        const sleep = (ms: number) =>
+          new Promise<void>((resolve) => setTimeout(resolve, ms));
+        const maxY = Math.max(
+          document.body?.scrollHeight || 0,
+          document.documentElement?.scrollHeight || 0,
+          1,
+        );
+        // Cap scroll work on serverless so screenshot budget remains.
+        const hardCap = serverlessMode
+          ? Math.min(maxY, window.innerHeight * 4)
+          : maxY;
+        const step = Math.max(
+          serverlessMode ? 420 : 280,
+          Math.floor(window.innerHeight * (serverlessMode ? 0.9 : 0.75)),
+        );
+        const pause = serverlessMode ? 40 : 80;
+        let steps = 0;
+        const maxSteps = serverlessMode ? 6 : 40;
+        for (let y = 0; y < hardCap && steps < maxSteps; y += step) {
+          window.scrollTo(0, y);
+          await sleep(pause);
+          steps += 1;
+        }
+        window.scrollTo(0, Math.min(hardCap, maxY));
+        await sleep(serverlessMode ? 60 : 120);
+        window.scrollTo(0, 0);
+        await sleep(serverlessMode ? 50 : 100);
+      },
+      serverless,
+    )
     .catch(() => undefined);
 }
 

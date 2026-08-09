@@ -34,6 +34,10 @@
       "maxDuration": 300,
       "memory": 1024
     },
+    "app/api/internal/jobs/run-next/route.ts": {
+      "maxDuration": 300,
+      "memory": 2048
+    },
     "app/api/report/admin/collector/run/route.ts": {
       "maxDuration": 120,
       "memory": 1024
@@ -103,6 +107,10 @@
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/internal/jobs/run-next",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

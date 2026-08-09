@@ -1,8 +1,10 @@
+import { after } from "next/server";
 import { cloneReportForScan, getUrlCache } from "@/lib/cache/inMemoryUrlCache";
 import { getJobWorkerConfig, isMonitoringConfigured } from "@/lib/jobs/config";
 import {
   enqueuePendingCaptureJob,
 } from "@/lib/jobs/captureJobQueue";
+import { processCaptureJob } from "@/lib/jobs/processCaptureJob";
 import {
   claimNextScanJob,
   claimScanJobByExternalId,
@@ -27,6 +29,26 @@ function createPreviewCaptureId(): string {
 }
 
 /**
+ * Kick capture worker without blocking diagnosis.
+ * Prefer Next `after()` so the HTTP/cron response can finish first; fall back
+ * to a detached promise when request context is unavailable.
+ */
+function kickPreviewCaptureJob(captureJobId: string): void {
+  const run = () =>
+    void processCaptureJob(captureJobId).catch((err) => {
+      console.warn(
+        "[jobs] preview capture kick failed:",
+        err instanceof Error ? err.message : err,
+      );
+    });
+  try {
+    after(run);
+  } catch {
+    run();
+  }
+}
+
+/**
  * Best-effort preview capture after diagnosis.
  * Must never throw into the scan job path.
  */
@@ -38,8 +60,7 @@ async function enqueuePostDiagnosisPreviewCapture(input: {
   if (!isMonitoringConfigured()) return;
   if (!input.diagnosisId || !input.surveyUrl) return;
   const captureJobId = createPreviewCaptureId();
-  // Enqueue only — capture worker/cron processes separately so scan timeout
-  // is not inflated by screenshot work.
+  // Enqueue, then kick worker — do not await capture work on the scan path.
   await enqueuePendingCaptureJob({
     externalCaptureId: captureJobId,
     diagnosisId: input.diagnosisId,
@@ -47,6 +68,7 @@ async function enqueuePostDiagnosisPreviewCapture(input: {
     finalUrl: input.finalUrl || input.surveyUrl,
     mode: "safe_public_only",
   });
+  kickPreviewCaptureJob(captureJobId);
 }
 
 async function setProgress(

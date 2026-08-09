@@ -181,6 +181,67 @@ export function AdminConsoleView({
         </section>
       ) : null}
 
+      {(data?.recentCollect?.length || data?.recentDiagnosis?.length) ? (
+        <section className="mb-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">최근 수집</h2>
+              <Link
+                href="/report/admin/collector"
+                className="text-xs text-teal-300 hover:text-teal-200"
+              >
+                수집함 전체
+              </Link>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {(data?.recentCollect || []).map((row) => (
+                <li
+                  key={`collect-${row.id}`}
+                  className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm"
+                >
+                  <p className="truncate text-slate-100">
+                    {row.title || row.url || "(제목 없음)"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {row.platform} · {row.status}
+                    {row.diagnosisStatus ? ` · 진단 ${row.diagnosisStatus}` : ""}
+                  </p>
+                </li>
+              ))}
+              {!data?.recentCollect?.length ? (
+                <li className="text-xs text-slate-500">최근 수집 없음</li>
+              ) : null}
+            </ul>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+            <h2 className="text-sm font-semibold text-white">최근 진단</h2>
+            <ul className="mt-3 space-y-2">
+              {(data?.recentDiagnosis || []).map((row) => (
+                <li key={`diag-${row.id}`}>
+                  <Link
+                    href={`/report/admin/cases/${row.id}`}
+                    className="block rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900"
+                  >
+                    <p className="truncate text-slate-100">
+                      {row.operatorName || "기관 미확인"} ·{" "}
+                      {row.surveyTitle || "(제목 없음)"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {row.overallRiskLevel}
+                      {row.captureStatus ? ` · 캡처 ${row.captureStatus}` : ""}
+                      {` · 증거 ${row.evidenceCount}`}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+              {!data?.recentDiagnosis?.length ? (
+                <li className="text-xs text-slate-500">최근 진단 없음</li>
+              ) : null}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+
       {data?.cases?.length ? (
         <section className="mb-5 rounded-xl border border-rose-500/30 bg-rose-950/20 p-4">
           <h2 className="text-sm font-semibold text-rose-100">오늘 꼭 볼 설문</h2>
@@ -453,7 +514,12 @@ export function AdminConsoleView({
                   {row.publicPrivateType}
                 </td>
                 <td className="px-3 py-2.5 tabular-nums text-slate-200">
-                  {row.evidenceCount}
+                  <span className="block">{row.evidenceCount}</span>
+                  {row.captureStatus ? (
+                    <span className="mt-0.5 block text-[10px] text-slate-500">
+                      {row.captureStatus}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2.5">
                   <span className={`${statusBadgeClass()} border-slate-600 text-slate-200`}>

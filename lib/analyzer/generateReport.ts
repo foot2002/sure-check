@@ -184,15 +184,7 @@ function buildFindings(analysis: AnalysisResult, form: NormalizedForm): ScanFind
     });
   }
 
-  for (const override of analysis.overrides) {
-    findings.push({
-      id: `f${id++}`,
-      category: "override",
-      severity: override.minGrade === "high_risk" ? "critical" : "high",
-      title: "최소등급 강제 룰 적용",
-      description: override.reason,
-    });
-  }
+  // Grade overrides remain in analysis.overrides / debug — not user findings.
 
   if (shouldShowPartialScanFinding(form)) {
     findings.push({

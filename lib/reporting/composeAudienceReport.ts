@@ -158,8 +158,23 @@ function collectDataSummary(report: ScanReport): CollectedDataSummary {
       else if (HIGH_RISK_CATEGORIES.has(category)) highRiskItems.push(label);
     }
 
-    if (categories.length === 0 && question.dataRiskLevel === "D2") {
+    // Fixtures / parsers may set personalDataTypes without detectedCategories.
+    if (categories.length === 0 && (question.personalDataTypes?.length || 0) > 0) {
+      const joined = question.personalDataTypes!.join(" ");
+      if (/이름|성명|전화|연락처|이메일|주소|주민/.test(joined) || question.hasPersonalData) {
+        directIdentifiers.push(text);
+      } else {
+        quasiIdentifiers.push(text);
+      }
+    }
+
+    if (categories.length === 0 && !(question.personalDataTypes?.length) && question.dataRiskLevel === "D2") {
       quasiIdentifiers.push(text);
+    }
+    if (categories.length === 0 && !(question.personalDataTypes?.length) && question.dataRiskLevel === "D3") {
+      if (question.hasPersonalData || /이름|성명|전화|연락|이메일|주소/.test(text)) {
+        directIdentifiers.push(text);
+      }
     }
     if (categories.length === 0 && question.dataRiskLevel === "D4") {
       sensitiveItems.push(text);

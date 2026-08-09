@@ -3,6 +3,11 @@ import type { NormalizedForm } from "@/lib/types/scan";
 import type { ObligationItem } from "@/lib/types/analyzer";
 import { formWideNoticeCorpus } from "@/lib/analyzer/formContext";
 import {
+  CORE_NOTICE_FACT_BY_OBLIGATION,
+  noticeFactMap,
+  type NoticeCertainty,
+} from "@/lib/analyzer/noticeFacts";
+import {
   hasDirectIdentifier,
   hasPersonalData,
   isQuasiIdentifierOnly,
@@ -106,7 +111,17 @@ const FIELD_MAP: Partial<
   }),
   consent_refusal_right: (f) => ({
     text: fieldOrCorpus(f, f.notices?.refusalRight),
-    keywords: ["동의 거부", "거부권", "거부할 권리", "거부 시", "거부", "거절"],
+    keywords: [
+      "동의 거부",
+      "거부권",
+      "거부할 권리",
+      "거부 시",
+      "거부",
+      "거절",
+      "동의하지 않을",
+      "동의하지 않으실",
+      "미동의",
+    ],
   }),
   refusal_disadvantage: (f) => ({
     text: fieldOrCorpus(f, f.notices?.refusalDisadvantage),
@@ -250,6 +265,7 @@ export function evaluateNoticeCompliance(
   obligations: ObligationItem[],
 ): ComplianceGap[] {
   const gaps: ComplianceGap[] = [];
+  const facts = noticeFactMap(form);
 
   const consentOnly =
     hasMeaningfulText(form.notices?.consentText, 2) &&
@@ -271,11 +287,32 @@ export function evaluateNoticeCompliance(
       }
     }
 
+    // PASS-2: global noticeFacts can confirm or soften narrow keyword misses.
+    const factKey = CORE_NOTICE_FACT_BY_OBLIGATION[obligation.key];
+    const fact = factKey ? facts[factKey] : undefined;
+    if (fact) {
+      const certainty: NoticeCertainty = fact.certainty;
+      if (certainty === "FOUND_CONFIRMED" && status !== "present") {
+        status = "present";
+        detail = `${obligation.label} 관련 안내가 설문 전체 문맥에서 확인됩니다.`;
+      } else if (
+        certainty === "FOUND_POSSIBLE" &&
+        (status === "missing" || status === "unclear")
+      ) {
+        status = "unclear";
+        detail = `${obligation.label} 관련 표현이 설문 문맥에서 보이지만 확정이 어려워 확인이 필요합니다.`;
+      } else if (certainty === "NEEDS_REVIEW" && status === "missing") {
+        status = "unclear";
+        detail = `${obligation.label}은(는) 공개 화면만으로 확정하기 어려워 추가 확인이 필요합니다.`;
+      }
+    }
+
     if (
       consentOnly &&
       ["collection_purpose", "collection_items", "retention_period"].includes(
         obligation.key,
-      )
+      ) &&
+      !(fact && (fact.certainty === "FOUND_CONFIRMED" || fact.certainty === "FOUND_POSSIBLE"))
     ) {
       status = "missing";
       detail =

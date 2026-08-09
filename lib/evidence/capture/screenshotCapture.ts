@@ -110,16 +110,19 @@ async function expandScrollRegions(
 
 async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
   const quality = CAPTURE_SERVERLESS_JPEG_QUALITY;
+  // Evidence-first: viewport JPEG first (usable proof), then optional fullPage.
+  // Blind fullPage-first often closes Chromium on long SPA shells before any
+  // bytes land — prefer partial success over empty timeout.
   const attempts: Array<{
     fullPage: boolean;
     captureBeyondViewport: boolean;
   }> = [
-    // Prefer full page without beyond-viewport (less memory on single-process).
-    { fullPage: true, captureBeyondViewport: false },
     { fullPage: false, captureBeyondViewport: false },
+    { fullPage: true, captureBeyondViewport: false },
   ];
 
   let lastError: unknown;
+  let viewportBuffer: Buffer | null = null;
   for (const opts of attempts) {
     try {
       const raw = await page.screenshot({
@@ -128,17 +131,24 @@ async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
         fullPage: opts.fullPage,
         captureBeyondViewport: opts.captureBeyondViewport,
       });
-      return Buffer.from(raw);
-    } catch (error) {
-      lastError = error;
-      if (!isTargetClosedError(error)) {
-        // Non-fatal protocol quirks: try next strategy.
+      const buffer = Buffer.from(raw);
+      if (!opts.fullPage) {
+        viewportBuffer = buffer;
+        // Keep going for fullPage when cheap; if it fails we still have proof.
         continue;
       }
-      // Target closed — page is dead; further attempts on same page will fail.
-      throw error;
+      return buffer;
+    } catch (error) {
+      lastError = error;
+      if (isTargetClosedError(error)) {
+        if (viewportBuffer) return viewportBuffer;
+        throw error;
+      }
+      // Non-fatal protocol quirks: try next strategy.
+      continue;
     }
   }
+  if (viewportBuffer) return viewportBuffer;
   throw lastError instanceof Error
     ? lastError
     : new Error(String(lastError ?? "screenshot failed"));

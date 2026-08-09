@@ -15,7 +15,7 @@ export function scopesForCheckDomain(domain: string | null | undefined): RuleOrg
   if (/csap|cloud|public|공공|보안인증|security.?cert/.test(d)) {
     return ["PUBLIC"];
   }
-  if (/university|대학|연구/.test(d)) {
+  if (/university|대학|연구|school/.test(d)) {
     return ["UNIVERSITY_OFFICIAL", "COMMON"];
   }
   if (/private|company|기업|위탁|국외|outsourcing|transfer/.test(d)) {
@@ -35,7 +35,7 @@ export function reportEmphasisForSubject(
   const pp = (publicPrivateType || "").toLowerCase();
   if (
     pp === "public" ||
-    /public|공공|지자체|공사|공단/.test(subject)
+    /public|공공|지자체|공사|공단|agency|school_local/.test(subject)
   ) {
     return {
       scope: "PUBLIC",
@@ -46,7 +46,7 @@ export function reportEmphasisForSubject(
       ],
     };
   }
-  if (/university|대학/.test(subject)) {
+  if (/university|대학|연구|school/.test(subject)) {
     return {
       scope: "UNIVERSITY_OFFICIAL",
       sectionTitles: [
@@ -64,4 +64,33 @@ export function reportEmphasisForSubject(
       "즉시 확인사항",
     ],
   };
+}
+
+/** Finding axes emphasized per org scope (reporting framing only). */
+export function findingDimensionsForScope(scope: RuleOrgScope): string[] {
+  if (scope === "PUBLIC") {
+    return [
+      "개인정보 수집·고지",
+      "공공 외부도구/CSAP 적합성",
+      "위탁·국외보관 확인",
+      "운영주체·문의처",
+    ];
+  }
+  if (scope === "UNIVERSITY_OFFICIAL") {
+    return [
+      "연구/조사 개인정보",
+      "공식조직 책임 주체",
+      "동의·고지 명확성",
+      "문의·열람 경로",
+    ];
+  }
+  if (scope === "COMPANY") {
+    return [
+      "개인정보 수집·고지",
+      "외부 SaaS/위탁·이전",
+      "마케팅·경품 부가 수집",
+      "문의처·파기 안내",
+    ];
+  }
+  return ["개인정보 수집·고지", "운영주체·문의처", "즉시 확인사항"];
 }

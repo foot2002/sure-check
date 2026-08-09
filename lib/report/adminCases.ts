@@ -86,10 +86,22 @@ export interface AdminCaseListItem {
   hasHighRiskInfo: boolean;
   publicPrivateType: string;
   evidenceCount: number;
+  /** Latest capture job status for this survey, if any. */
+  captureStatus: string | null;
   reviewStatus: ReviewStatus;
   publishStatus: PublishStatus;
   publicationStatus: PublicationStatus;
   diagnosisStatus: string | null;
+}
+
+export interface AdminRecentCollectItem {
+  id: string;
+  title: string | null;
+  platform: string;
+  status: string;
+  discoveredAt: string | null;
+  diagnosisStatus: string | null;
+  url: string | null;
 }
 
 export interface AdminCaseListPayload {
@@ -99,6 +111,9 @@ export interface AdminCaseListPayload {
   kpi: AdminKpi;
   queue: AdminQueueSummary;
   cases: AdminCaseListItem[];
+  /** Newest collect + diagnosis snapshots for one-page ops view. */
+  recentCollect: AdminRecentCollectItem[];
+  recentDiagnosis: AdminCaseListItem[];
   generatedAt: string;
 }
 
@@ -382,6 +397,28 @@ export async function listAdminCases(
     });
   }
 
+  const captures = capturesRes.data || [];
+  const captureStatusBySurvey = new Map<string, string>();
+  for (const c of captures) {
+    const surveyId =
+      (c.survey_record_id as string | null) ||
+      (c.scan_job_id
+        ? surveyIdByScanJob.get(c.scan_job_id as string)
+        : null);
+    if (!surveyId) continue;
+    const status = (c.status as string) || "unknown";
+    const prev = captureStatusBySurvey.get(surveyId);
+    const rank = (s: string) =>
+      s === "success" || s === "partial"
+        ? 0
+        : s === "running" || s === "pending"
+          ? 1
+          : 2;
+    if (!prev || rank(status) < rank(prev)) {
+      captureStatusBySurvey.set(surveyId, status);
+    }
+  }
+
   let cases: AdminCaseListItem[] = rows.map((row) => {
     const report = row.scan_report_id
       ? reportMap.get(row.scan_report_id as string)
@@ -413,6 +450,7 @@ export async function listAdminCases(
       hasHighRiskInfo: Boolean(row.has_high_risk_info),
       publicPrivateType: (row.public_private_type as string) || "unknown",
       evidenceCount: evidenceCountMap.get(row.id as string) || 0,
+      captureStatus: captureStatusBySurvey.get(row.id as string) || null,
       reviewStatus: (row.review_status || "none") as ReviewStatus,
       publishStatus: (row.publish_status || "draft") as PublishStatus,
       publicationStatus,
@@ -438,7 +476,6 @@ export async function listAdminCases(
     return b.observedAt.localeCompare(a.observedAt);
   });
 
-  const captures = capturesRes.data || [];
   const evidenceCaptureCount = captures.filter(
     (c) =>
       c.status === "success" ||
@@ -548,6 +585,54 @@ export async function listAdminCases(
     console.warn("[admin] getQueueCounts failed:", err);
   }
 
+  let recentCollect: AdminRecentCollectItem[] = [];
+  try {
+    const { data: collectRows, error: collectErr } = await supabase
+      .from("survey_links")
+      .select(
+        "id, title, platform, status, first_discovered_at, last_discovered_at, canonical_url",
+      )
+      .order("last_discovered_at", { ascending: false })
+      .limit(8);
+    if (collectErr) {
+      console.warn("[admin] recentCollect:", collectErr.message);
+    } else {
+      const ids = (collectRows || []).map((r) => r.id as string);
+      const diagnosisByLink = new Map<string, string>();
+      if (ids.length > 0) {
+        const { data: diagRows } = await supabase
+          .from("survey_diagnosis_links")
+          .select("survey_link_id, status, updated_at")
+          .in("survey_link_id", ids)
+          .order("updated_at", { ascending: false });
+        for (const d of diagRows || []) {
+          const linkId = d.survey_link_id as string;
+          if (!diagnosisByLink.has(linkId)) {
+            diagnosisByLink.set(linkId, (d.status as string) || "unknown");
+          }
+        }
+      }
+      recentCollect = (collectRows || []).map((row) => ({
+        id: row.id as string,
+        title: (row.title as string | null) || null,
+        platform: (row.platform as string) || "unknown",
+        status: (row.status as string) || "unknown",
+        discoveredAt:
+          (row.last_discovered_at as string | null) ||
+          (row.first_discovered_at as string | null) ||
+          null,
+        diagnosisStatus: diagnosisByLink.get(row.id as string) || null,
+        url: (row.canonical_url as string | null) || null,
+      }));
+    }
+  } catch (err) {
+    console.warn("[admin] recentCollect failed:", err);
+  }
+
+  const recentDiagnosis = [...cases]
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
+    .slice(0, 8);
+
   return {
     range,
     from,
@@ -555,6 +640,8 @@ export async function listAdminCases(
     kpi,
     queue,
     cases,
+    recentCollect,
+    recentDiagnosis,
     generatedAt: new Date().toISOString(),
   };
 }

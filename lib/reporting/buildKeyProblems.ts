@@ -1,6 +1,7 @@
 /**
  * Hero "가장 심각한 문제 TOP 3" for audience + admin reports.
  * Strong headlines, conservative legal certainty (no unfounded "위반" claims).
+ * Empty TOP3 is valid for low-risk / well-noticed forms.
  */
 
 import type { CollectedDataSummary } from "@/lib/reporting/reportMessages";
@@ -15,6 +16,7 @@ import {
 import { getToolCsapProfile } from "@/lib/reporting/toolRegistry";
 import type { ScanReport } from "@/lib/types/scan";
 import { buildSurveyFormContext } from "@/lib/analyzer/formContext";
+import { reportEmphasisForSubject } from "@/lib/rules/ruleScope";
 
 export type KeyProblemSeverity = "critical" | "high" | "medium";
 
@@ -27,6 +29,8 @@ export type KeyProblem = {
   action: string;
   evidenceText: string | null;
   basisLabels: string[];
+  /** Org framing — does not invent new legal rules. */
+  orgScope?: "COMMON" | "PUBLIC" | "COMPANY" | "UNIVERSITY_OFFICIAL";
 };
 
 function platformLabel(report: ScanReport): string {
@@ -35,6 +39,12 @@ function platformLabel(report: ScanReport): string {
   if (p.includes("naver")) return "Naver Form";
   if (p.includes("moa")) return "Moaform";
   return report.platform || "외부 설문도구";
+}
+
+function isInternalFindingTitle(title: string): boolean {
+  return /최소등급\s*강제|override|내부\s*점수|스코어\s*보정|베타\s*진단\s*제한/i.test(
+    title,
+  );
 }
 
 export function buildKeyProblems(
@@ -50,6 +60,18 @@ export function buildKeyProblems(
   const tool = getToolCsapProfile(report.platform as never);
   const toolLabel = tool.platformLabel || platformLabel(report);
   const overseas = tool.toolCategory === "overseas_saas";
+  const emphasis = reportEmphasisForSubject(
+    subject,
+    publicLike ? "public" : "private",
+  );
+
+  // Never surface internal grade-override mechanics in TOP3.
+  const userFacingFindings = (report.findings || []).filter(
+    (f) =>
+      f.category !== "override" &&
+      !isInternalFindingTitle(f.title || "") &&
+      (f.severity === "critical" || f.severity === "high"),
+  );
 
   if (
     privacyType === "sensitive_or_high_risk" ||
@@ -71,9 +93,11 @@ export function buildKeyProblems(
       action: "수집 필요성을 재검토하고, 관련 고지·동의·보호조치가 화면에 명확한지 확인하세요.",
       evidenceText: items[0] || null,
       basisLabels: ["개인정보보호법 민감정보 규정"],
+      orgScope: "COMMON",
     });
   }
 
+  // Evidence gate: only confirmed core missing notices → strong headline.
   if (
     (privacyType === "direct_identifier" ||
       privacyType === "sensitive_or_high_risk" ||
@@ -90,6 +114,7 @@ export function buildKeyProblems(
       action: "응답 화면(상단·하단·별도 안내 포함)에서 누락된 고지를 보완하세요.",
       evidenceText: missing[0] || null,
       basisLabels: ["개인정보 수집·이용 고지"],
+      orgScope: "COMMON",
     });
   }
 
@@ -112,6 +137,44 @@ export function buildKeyProblems(
       basisLabels: overseas
         ? ["클라우드/CSAP 확인", "개인정보보호법"]
         : ["공공부문 외부도구 확인"],
+      orgScope: "PUBLIC",
+    });
+  }
+
+  if (
+    emphasis.scope === "COMPANY" &&
+    (privacyType === "direct_identifier" ||
+      privacyType === "sensitive_or_high_risk") &&
+    overseas
+  ) {
+    problems.push({
+      id: "company_overseas_tool",
+      severity: "medium",
+      headline: `기업·민간 설문에서 국외 SaaS 도구(${toolLabel}) 사용이 확인됩니다`,
+      fact: `${toolLabel} 경로로 개인정보가 처리될 수 있어 위탁·국외이전 안내 확인이 필요합니다.`,
+      why: "민간 사업자도 국외 이전·위탁 시 응답자에게 처리 경로를 안내하는 것이 좋습니다.",
+      action: "개인정보 처리방침·설문 고지에 위탁/국외 보관 여부를 명시하세요.",
+      evidenceText: toolLabel,
+      basisLabels: ["외부 SaaS/위탁·이전 확인"],
+      orgScope: "COMPANY",
+    });
+  }
+
+  if (
+    emphasis.scope === "UNIVERSITY_OFFICIAL" &&
+    (privacyType === "direct_identifier" ||
+      privacyType === "sensitive_or_high_risk")
+  ) {
+    problems.push({
+      id: "university_responsibility",
+      severity: "medium",
+      headline: "대학·연구 조사에서 개인정보 수집과 공식 책임 주체 확인이 필요합니다",
+      fact: "연구/조사 맥락에서 개인정보가 수집되며, 공식 조직·문의 창구 표기를 함께 확인해야 합니다.",
+      why: "연구 목적 수집이라도 응답자가 책임 주체와 문의 경로를 알 수 있어야 합니다.",
+      action: "주관 기관·연구책임자·문의처를 설문 화면에 명시하세요.",
+      evidenceText: formCtx.organizationCandidates[0]?.value || null,
+      basisLabels: ["연구/조사 개인정보", "공식조직 책임"],
+      orgScope: "UNIVERSITY_OFFICIAL",
     });
   }
 
@@ -129,6 +192,7 @@ export function buildKeyProblems(
       action: "조사기관명·담당부서·문의처를 설문 상단 또는 고지문에 명시하세요.",
       evidenceText: null,
       basisLabels: ["운영주체 확인"],
+      orgScope: emphasis.scope,
     });
   }
 
@@ -145,6 +209,7 @@ export function buildKeyProblems(
       action: "개인정보 문의 담당부서와 연락처를 고지문에 포함하세요.",
       evidenceText: null,
       basisLabels: ["문의처 안내"],
+      orgScope: "COMMON",
     });
   }
 
@@ -164,6 +229,30 @@ export function buildKeyProblems(
       action: "꼭 필요한 항목만 남기고, 고지·동의를 함께 확인하세요.",
       evidenceText: items[0] || null,
       basisLabels: ["최소수집"],
+      orgScope: "COMMON",
+    });
+  }
+
+  // Supplement from valid high-severity user findings if TOP3 still thin.
+  for (const finding of userFacingFindings) {
+    if (problems.length >= 3) break;
+    if (problems.some((p) => p.headline === finding.title)) continue;
+    const title = (finding.title || "").trim();
+    // Skip short/internal gap stubs ("이전 국가 누락") — they make weak TOP3.
+    if (title.length < 12 || /최소등급|강제 룰|베타 진단/.test(title)) continue;
+    if (/^(국외이전|이전 국가|수탁자|위탁업무)/.test(title) && title.length < 18) {
+      continue;
+    }
+    problems.push({
+      id: `finding_${finding.id || finding.title}`,
+      severity: finding.severity === "critical" ? "critical" : "high",
+      headline: title,
+      fact: finding.description || title,
+      why: "진단에서 확인된 고위험 항목입니다. 화면·고지와 교차 확인하세요.",
+      action: finding.recommendation || "관련 고지·수집 항목을 재검토하세요.",
+      evidenceText: finding.evidence?.[0] || null,
+      basisLabels: [finding.category || "finding"],
+      orgScope: "COMMON",
     });
   }
 
