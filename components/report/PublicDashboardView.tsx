@@ -484,7 +484,7 @@ function IssueList({ issues }: { issues: PublicDashboardIssueRow[] }) {
             label={issue.label}
             rate={issue.rateOfAllScans}
             barClassName={issueTone(issue.rateOfAllScans)}
-            meta={`영향 설문 ${issue.affectedSurveyCount.toLocaleString("ko-KR")}건 · 전체 진단 대비 ${formatRate(issue.rateOfAllScans)} · 발견 신호 ${issue.findingCount.toLocaleString("ko-KR")}건`}
+            meta={`영향 설문 ${issue.affectedSurveyCount.toLocaleString("ko-KR")}건 · 분석 완료 대비 ${formatRate(issue.rateOfAllScans)} · 발견 신호 ${issue.findingCount.toLocaleString("ko-KR")}건`}
           />
         </li>
       ))}
@@ -534,14 +534,10 @@ function OrgTypeGrid({ rows }: { rows: PublicDashboardOrgTypeRow[] }) {
 
 function DiagnosisQualityGrid({ stats }: { stats: PublicDiagnosisQualityStats }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       <KpiCard
-        label="진단 완료 건수"
+        label="분석 완료 건수"
         value={`${stats.completedDiagnosisCount.toLocaleString("ko-KR")}건`}
-      />
-      <KpiCard
-        label="문항 분석 제한 건수"
-        value={`${stats.limitedQuestionAnalysisCount.toLocaleString("ko-KR")}건`}
       />
       <KpiCard
         label="증빙 캡처 확보 건수"
@@ -641,7 +637,7 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <KpiCard
-            label="전체 진단 설문 수"
+            label="분석 완료 설문 수"
             value={`${data.summary.totalScans.toLocaleString("ko-KR")}건`}
             hint={`${data.from} ~ ${data.to}`}
           />
@@ -661,14 +657,9 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
             hint={`${data.summary.attentionNeededCount.toLocaleString("ko-KR")}건 · 거부·신고/안내확인/공식확인`}
           />
           <KpiCard
-            label="문항 분석 불가"
-            value={formatRate(data.summary.judgmentUnknownRate)}
-            hint={`${data.summary.judgmentUnknownCount.toLocaleString("ko-KR")}건 · 주의 필요와 별도`}
-          />
-          <KpiCard
             label="평균 개인정보 보호 점수"
             value={formatScore(data.summary.avgOverallScore)}
-            hint="자동진단 점수 평균"
+            hint="분석 완료 설문 기준"
           />
         </div>
       </section>

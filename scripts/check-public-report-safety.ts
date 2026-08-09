@@ -51,6 +51,7 @@ function mockSafePayload(): PublicDashboardPayload {
     generatedAt: new Date().toISOString(),
     hasData: true,
     isEarlyData: true,
+    rawTotalScans: 12,
     summary: {
       totalScans: 10,
       personalInfoCount: 4,
@@ -63,19 +64,19 @@ function mockSafePayload(): PublicDashboardPayload {
       highOrCriticalRate: 50,
       attentionNeededCount: 5,
       attentionNeededRate: 50,
-      judgmentUnknownCount: 2,
-      judgmentUnknownRate: 20,
+      judgmentUnknownCount: 0,
+      judgmentUnknownRate: 0,
       avgOverallScore: 62.5,
     },
     insights: {
       rangeLabel: "최근 7일",
       oneLineConclusion:
-        "최근 7일 진단된 온라인 설문 10건 중 4건이 개인정보를 수집했고, 5건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다. 문항 분석이 제한된 설문은 2건입니다.",
+        "최근 7일 분석 완료된 온라인 설문 10건 중 4건이 개인정보를 수집했고, 5건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.",
       keySignals: [
         {
           order: 1,
           headline: "개인정보 수집 설문이 확인되었습니다.",
-          detail: "최근 7일 진단 설문 10건 중 4건이 개인정보를 포함했습니다.",
+          detail: "최근 7일 분석 완료 설문 10건 중 4건이 개인정보를 포함했습니다.",
         },
         {
           order: 2,
@@ -95,7 +96,7 @@ function mockSafePayload(): PublicDashboardPayload {
           id: "personal_info",
           title: "개인정보 수집 현황",
           headline: "개인정보를 수집하는 설문이 확인되었습니다.",
-          detail: "진단 설문 10건 중 4건이 개인정보를 포함했습니다.",
+          detail: "분석 완료 설문 10건 중 4건이 개인정보를 포함했습니다.",
           available: true,
         },
         {
@@ -118,10 +119,10 @@ function mockSafePayload(): PublicDashboardPayload {
       platformInsight:
         "이번 기간에는 Google Forms에서 개인정보 포함 비율이 가장 높게 나타났습니다. 다만 표본이 적은 초기 통계이므로, 플랫폼 자체의 위험도를 단정하는 자료는 아닙니다.",
       pressShareSummary:
-        "최근 7일간 SURE Check가 자동진단한 공개 온라인 설문 10건 중 4건이 개인정보를 포함했고, 5건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다. 본 통계는 자동진단 기반 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.",
+        "최근 7일간 SURE Check가 분석 완료한 공개 온라인 설문 10건 중 4건이 개인정보를 포함했고, 5건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다. 본 통계는 자동진단 기반 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.",
       cautionDecisionCount: 5,
       attentionNeededCount: 5,
-      judgmentUnknownCount: 2,
+      judgmentUnknownCount: 0,
       reportLikeDecisionCount: 5,
       publicExternalToolCheckCount: 2,
     },
@@ -212,8 +213,8 @@ function mockSafePayload(): PublicDashboardPayload {
       },
     ],
     diagnosisQualityStats: {
-      completedDiagnosisCount: 8,
-      limitedQuestionAnalysisCount: 2,
+      completedDiagnosisCount: 10,
+      limitedQuestionAnalysisCount: 0,
       evidenceCaptureCount: 5,
       fullPathCaptureCount: 3,
       avgCapturedPageCount: 4.2,
@@ -296,6 +297,29 @@ async function main(): Promise<void> {
         live.summary.attentionNeededCount === live.summary.highOrCriticalCount,
         "legacy highOrCriticalCount should match attentionNeededCount",
       );
+      assert(
+        live.summary.judgmentUnknownCount === 0,
+        "general report must not count JUDGMENT_UNKNOWN",
+      );
+      assert(
+        !live.decisionStats.some((d) => d.decisionKey === "JUDGMENT_UNKNOWN"),
+        "general report must not expose 문항 분석 불가 decision row",
+      );
+      assert(
+        !/문항 분석 불가|문항 분석이 제한|extraction limited|JS questions/i.test(
+          live.insights.oneLineConclusion,
+        ),
+        "general report insights must not mention limited extraction",
+      );
+      const decisionSum = live.decisionStats.reduce((s, d) => s + d.count, 0);
+      assert(
+        decisionSum === live.summary.totalScans,
+        `decision sum (${decisionSum}) must equal analyzable total (${live.summary.totalScans})`,
+      );
+      assert(
+        live.rawTotalScans >= live.summary.totalScans,
+        "rawTotalScans must be >= analyzable totalScans",
+      );
       const attentionFromDecisions = live.decisionStats
         .filter((d) =>
           ["STOP_RESPONSE", "NOTICE_CHECK", "SECURITY_CHECK"].includes(
@@ -320,7 +344,7 @@ async function main(): Promise<void> {
         );
       }
       console.log(
-        `live dashboard: OK (hasData=${live.hasData}, totalScans=${live.summary.totalScans}, attention=${live.summary.attentionNeededCount}, unknown=${live.summary.judgmentUnknownCount}, issues=${live.issueStats.length})`,
+        `live dashboard: OK (hasData=${live.hasData}, raw=${live.rawTotalScans}, analyzable=${live.summary.totalScans}, attention=${live.summary.attentionNeededCount}, issues=${live.issueStats.length})`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

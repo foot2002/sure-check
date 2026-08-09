@@ -7,6 +7,10 @@ import {
   issueDisplayRank,
   toPublicIssueLabel,
 } from "@/lib/report/publicIssueLabels";
+import {
+  classifyLimitedOutcome,
+  isReportableAdminOutcome,
+} from "@/lib/report/limitedOutcomeBuckets";
 
 export type PublicDashboardRange = "today" | "7d" | "30d" | "custom";
 
@@ -171,6 +175,8 @@ export interface PublicDashboardPayload {
   generatedAt: string;
   hasData: boolean;
   isEarlyData: boolean;
+  /** Raw survey_records in range (ops/debug). Not used as public KPI denominator. */
+  rawTotalScans: number;
   summary: PublicDashboardSummary;
   insights: PublicDashboardInsights;
   privacyIndex: PublicPrivacyIndex;
@@ -235,12 +241,10 @@ const DECISION_ORDER: Array<{ key: string; label: string; aliases: string[] }> =
     label: "응답 거부·신고 검토",
     aliases: ["응답 거부·신고 검토", "STOP_RESPONSE"],
   },
-  {
-    key: "JUDGMENT_UNKNOWN",
-    label: "문항 분석 불가",
-    aliases: ["문항 분석 불가", "JUDGMENT_UNKNOWN"],
-  },
 ];
+
+/** Ops-only decision — never shown in general public reporting. */
+const LIMITED_DECISION_ALIASES = ["문항 분석 불가", "JUDGMENT_UNKNOWN", "LIMITED_DIAGNOSIS"];
 
 const DATA_CATEGORY_BUCKETS: Array<{
   key: string;
@@ -401,13 +405,11 @@ function buildInsights(input: {
     input.publicSectorToolStats.csapOrCloudReviewCount,
   );
 
+  void judgmentUnknownCount;
   const oneLineConclusion =
     total <= 0
       ? EMPTY_ONE_LINE
-      : [
-          `${label} 진단된 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 수집했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`,
-          `문항 분석이 제한된 설문은 ${judgmentUnknownCount.toLocaleString("ko-KR")}건입니다.`,
-        ].join(" ");
+      : `${label} 분석 완료된 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 수집했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`;
 
   const earlyNote = input.isEarlyData ? " (초기 누적 데이터 기준)" : "";
 
@@ -427,7 +429,7 @@ function buildInsights(input: {
               personal > total / 2
                 ? `개인정보 수집 설문이 많았습니다.${earlyNote}`
                 : `개인정보 수집 설문이 확인되었습니다.${earlyNote}`,
-            detail: `${label} 진단 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`,
+            detail: `${label} 분석 완료 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`,
           },
           {
             order: 2,
@@ -462,7 +464,7 @@ function buildInsights(input: {
             : "데이터 누적 필요",
       detail:
         total > 0
-          ? `진단 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`
+          ? `분석 완료 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했습니다.`
           : "진단 데이터가 쌓이면 개인정보 수집 현황을 보여줍니다.",
       available: total > 0,
     },
@@ -523,12 +525,9 @@ function buildInsights(input: {
     total <= 0
       ? "아직 충분한 진단 데이터가 없어 보도·공유용 요약을 작성할 수 없습니다."
       : [
-          `${label}간 SURE Check가 자동진단한 공개 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`,
+          `${label}간 SURE Check가 분석 완료한 공개 온라인 설문 ${total.toLocaleString("ko-KR")}건 중 ${personal.toLocaleString("ko-KR")}건이 개인정보를 포함했고, ${attentionNeededCount.toLocaleString("ko-KR")}건은 응답자 관점에서 주의가 필요한 설문으로 분류되었습니다.`,
           publicPersonal > 0
             ? `공공부문 개인정보 수집 설문 ${publicPersonal.toLocaleString("ko-KR")}건에서는 외부 설문도구 또는 공공부문 클라우드 보안 확인 필요 신호가 확인되었습니다.`
-            : null,
-          judgmentUnknownCount > 0
-            ? `문항 분석이 제한된 설문은 ${judgmentUnknownCount.toLocaleString("ko-KR")}건입니다.`
             : null,
           "본 통계는 자동진단 기반 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.",
         ]
@@ -664,6 +663,13 @@ function resolveDecision(
 ): { key: string; label: string } {
   const id = (safetyTypeId || "").trim();
   const label = (userDecisionLabel || "").trim();
+  if (
+    id === "JUDGMENT_UNKNOWN" ||
+    id === "LIMITED_DIAGNOSIS" ||
+    LIMITED_DECISION_ALIASES.includes(label)
+  ) {
+    return { key: "JUDGMENT_UNKNOWN", label: "문항 분석 불가" };
+  }
   for (const row of DECISION_ORDER) {
     if (id === row.key) return { key: row.key, label: row.label };
     if (row.aliases.includes(label)) return { key: row.key, label: row.label };
@@ -671,7 +677,25 @@ function resolveDecision(
   if (label) {
     return { key: "OTHER", label: "기타 판단" };
   }
-  return { key: "JUDGMENT_UNKNOWN", label: "문항 분석 불가" };
+  return { key: "OTHER", label: "기타 판단" };
+}
+
+/** General public reporting population: analyzable diagnoses only. */
+function isAnalyzablePublicSurvey(survey: {
+  overall_risk_level: string | null;
+  user_decision_label: string | null;
+  safety_type_id: string | null;
+}): boolean {
+  const decision = resolveDecision(
+    survey.safety_type_id,
+    survey.user_decision_label,
+  );
+  if (decision.key === "JUDGMENT_UNKNOWN") return false;
+  const bucket = classifyLimitedOutcome({
+    overallRiskLevel: survey.overall_risk_level,
+    userDecisionLabel: survey.user_decision_label,
+  });
+  return isReportableAdminOutcome(bucket);
 }
 
 function mapDataCategoryBucket(
@@ -725,28 +749,9 @@ function isGapStatus(status: string): boolean {
   );
 }
 
-interface DailyRow {
-  observed_date_kst: string;
-  survey_count: number;
-  personal_info_count: number;
-  sensitive_info_count: number;
-  high_risk_info_count: number;
-  high_or_critical_count: number;
-  avg_overall_score: number | null;
-}
-
-interface PlatformRow {
-  observed_date_kst: string;
-  platform: string;
-  survey_count: number;
-  personal_info_count: number;
-  sensitive_info_count: number;
-  high_risk_info_count: number;
-  avg_overall_score: number | null;
-}
-
 interface SurveyAggRow {
   id: string;
+  observed_date_kst: string | null;
   subject_type: string | null;
   public_private_type: string | null;
   platform: string | null;
@@ -769,12 +774,9 @@ interface FindingAggRow {
 }
 
 interface ComplianceAggRow {
+  survey_record_id: string;
   check_item: string;
   status: string;
-}
-
-interface ScanReportAggRow {
-  diagnosis_status: string | null;
 }
 
 interface CaptureAggRow {
@@ -787,6 +789,10 @@ interface CategoryAggRow {
   category_code: string;
   category_label: string;
   risk_category: string | null;
+  survey_questions?:
+    | { observed_date_kst?: string; survey_record_id?: string }
+    | Array<{ observed_date_kst?: string; survey_record_id?: string }>
+    | null;
 }
 
 function emptyQuestionStats(): PublicQuestionStats {
@@ -825,77 +831,44 @@ export async function buildPublicDashboard(
   const { range, from, to } = resolvePublicDashboardRange(query);
   const supabase = createSupabaseServerClient();
 
-  const [
-    dailyRes,
-    platformRes,
-    surveyRes,
-    findingRes,
-    complianceRes,
-    reportRes,
-    captureRes,
-    categoryRes,
-  ] = await Promise.all([
-    supabase
-      .from("v_dashboard_daily_overview")
-      .select(
-        "observed_date_kst, survey_count, personal_info_count, sensitive_info_count, high_risk_info_count, high_or_critical_count, avg_overall_score",
-      )
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to)
-      .order("observed_date_kst", { ascending: true }),
-    supabase
-      .from("v_dashboard_platform_stats")
-      .select(
-        "observed_date_kst, platform, survey_count, personal_info_count, sensitive_info_count, high_risk_info_count, avg_overall_score",
-      )
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("survey_records")
-      .select(
-        "id, subject_type, public_private_type, platform, has_personal_info, has_sensitive_info, has_high_risk_info, overall_risk_level, user_decision_label, safety_type_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
-      )
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("survey_findings")
-      .select("survey_record_id, finding_type, check_domain")
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("survey_compliance_checks")
-      .select("check_item, status")
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("scan_reports")
-      .select("diagnosis_status")
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("capture_jobs")
-      .select("completeness, captured_page_count, status")
-      .gte("observed_date_kst", from)
-      .lte("observed_date_kst", to),
-    supabase
-      .from("question_data_categories")
-      .select(
-        "category_code, category_label, risk_category, survey_questions!inner(observed_date_kst)",
-      )
-      .gte("survey_questions.observed_date_kst", from)
-      .lte("survey_questions.observed_date_kst", to),
-  ]);
+  const [surveyRes, findingRes, complianceRes, captureRes, categoryRes] =
+    await Promise.all([
+      supabase
+        .from("survey_records")
+        .select(
+          "id, observed_date_kst, subject_type, public_private_type, platform, has_personal_info, has_sensitive_info, has_high_risk_info, overall_risk_level, user_decision_label, safety_type_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
+        )
+        .gte("observed_date_kst", from)
+        .lte("observed_date_kst", to),
+      supabase
+        .from("survey_findings")
+        .select("survey_record_id, finding_type, check_domain")
+        .gte("observed_date_kst", from)
+        .lte("observed_date_kst", to),
+      supabase
+        .from("survey_compliance_checks")
+        .select("survey_record_id, check_item, status")
+        .gte("observed_date_kst", from)
+        .lte("observed_date_kst", to),
+      supabase
+        .from("capture_jobs")
+        .select("completeness, captured_page_count, status")
+        .gte("observed_date_kst", from)
+        .lte("observed_date_kst", to),
+      supabase
+        .from("question_data_categories")
+        .select(
+          "category_code, category_label, risk_category, survey_questions!inner(observed_date_kst, survey_record_id)",
+        )
+        .gte("survey_questions.observed_date_kst", from)
+        .lte("survey_questions.observed_date_kst", to),
+    ]);
 
-  if (dailyRes.error) throw new Error(`daily overview: ${dailyRes.error.message}`);
-  if (platformRes.error) {
-    throw new Error(`platform stats: ${platformRes.error.message}`);
-  }
   if (surveyRes.error) throw new Error(`survey records: ${surveyRes.error.message}`);
   if (findingRes.error) throw new Error(`survey findings: ${findingRes.error.message}`);
   if (complianceRes.error) {
     throw new Error(`compliance checks: ${complianceRes.error.message}`);
   }
-  if (reportRes.error) throw new Error(`scan reports: ${reportRes.error.message}`);
   if (captureRes.error) throw new Error(`capture jobs: ${captureRes.error.message}`);
   // Category join may fail on older schemas — fall back to empty rather than hard-fail.
   const categoryError = categoryRes.error;
@@ -903,75 +876,77 @@ export async function buildPublicDashboard(
     console.warn("[public-dashboard] data categories:", categoryError.message);
   }
 
-  const daily = (dailyRes.data || []) as DailyRow[];
-  const platforms = (platformRes.data || []) as PlatformRow[];
-  const surveys = (surveyRes.data || []) as SurveyAggRow[];
-  const findings = (findingRes.data || []) as FindingAggRow[];
-  const complianceRows = (complianceRes.data || []) as ComplianceAggRow[];
-  const scanReports = (reportRes.data || []) as ScanReportAggRow[];
-  const captures = (captureRes.data || []) as CaptureAggRow[];
-  const categories = (categoryError ? [] : categoryRes.data || []) as CategoryAggRow[];
-
-  const summaryTotals = daily.reduce(
-    (acc, row) => {
-      acc.totalScans += row.survey_count || 0;
-      acc.personalInfoCount += row.personal_info_count || 0;
-      acc.sensitiveInfoCount += row.sensitive_info_count || 0;
-      acc.highRiskInfoCount += row.high_risk_info_count || 0;
-      acc.highOrCriticalCount += row.high_or_critical_count || 0;
-      if (row.avg_overall_score != null) {
-        acc.scores.push(Number(row.avg_overall_score));
-      }
-      return acc;
-    },
-    {
-      totalScans: 0,
-      personalInfoCount: 0,
-      sensitiveInfoCount: 0,
-      highRiskInfoCount: 0,
-      highOrCriticalCount: 0,
-      scores: [] as number[],
-    },
+  const rawSurveys = (surveyRes.data || []) as SurveyAggRow[];
+  const rawTotalScans = rawSurveys.length;
+  const surveys = rawSurveys.filter(isAnalyzablePublicSurvey);
+  const eligibleIds = new Set(surveys.map((s) => s.id));
+  const findings = ((findingRes.data || []) as FindingAggRow[]).filter((f) =>
+    eligibleIds.has(f.survey_record_id),
   );
+  const complianceRows = (
+    (complianceRes.data || []) as ComplianceAggRow[]
+  ).filter((row) => eligibleIds.has(row.survey_record_id));
+  const captures = (captureRes.data || []) as CaptureAggRow[];
+  const categories = (
+    (categoryError ? [] : categoryRes.data || []) as CategoryAggRow[]
+  ).filter((row) => {
+    const q = Array.isArray(row.survey_questions)
+      ? row.survey_questions[0]
+      : row.survey_questions;
+    const sid = q?.survey_record_id;
+    return typeof sid === "string" && eligibleIds.has(sid);
+  });
 
-  // Prefer survey_records count when available (more precise for related joins).
-  const totalScans =
-    surveys.length > 0 ? surveys.length : summaryTotals.totalScans;
+  let scoreBySurveyId = new Map<string, number>();
+  if (eligibleIds.size > 0) {
+    const scoreRes = await supabase
+      .from("survey_index_scores")
+      .select("survey_record_id, overall_score")
+      .in("survey_record_id", [...eligibleIds]);
+    if (scoreRes.error) {
+      console.warn("[public-dashboard] index scores:", scoreRes.error.message);
+    } else {
+      scoreBySurveyId = new Map(
+        ((scoreRes.data || []) as Array<{
+          survey_record_id: string;
+          overall_score: number | null;
+        }>)
+          .filter(
+            (row) =>
+              typeof row.overall_score === "number" &&
+              !Number.isNaN(row.overall_score),
+          )
+          .map((row) => [row.survey_record_id, Number(row.overall_score)]),
+      );
+    }
+  }
+
+  const totalScans = surveys.length;
+  const avgOverallScore = avg([...scoreBySurveyId.values()]);
 
   const summary: PublicDashboardSummary =
     totalScans === 0
       ? emptySummary()
       : {
           totalScans,
-          personalInfoCount:
-            surveys.length > 0
-              ? surveys.filter((s) => s.has_personal_info).length
-              : summaryTotals.personalInfoCount,
+          personalInfoCount: surveys.filter((s) => s.has_personal_info).length,
           personalInfoRate: 0,
-          sensitiveInfoCount:
-            surveys.length > 0
-              ? surveys.filter((s) => s.has_sensitive_info).length
-              : summaryTotals.sensitiveInfoCount,
+          sensitiveInfoCount: surveys.filter((s) => s.has_sensitive_info).length,
           sensitiveInfoRate: 0,
-          highRiskInfoCount:
-            surveys.length > 0
-              ? surveys.filter((s) => s.has_high_risk_info).length
-              : summaryTotals.highRiskInfoCount,
+          highRiskInfoCount: surveys.filter((s) => s.has_high_risk_info).length,
           highRiskInfoRate: 0,
-          highOrCriticalCount:
-            surveys.length > 0
-              ? surveys.filter(
-                  (s) =>
-                    s.overall_risk_level === "high" ||
-                    s.overall_risk_level === "critical",
-                ).length
-              : summaryTotals.highOrCriticalCount,
+          highOrCriticalCount: surveys.filter(
+            (s) =>
+              s.overall_risk_level === "high" ||
+              s.overall_risk_level === "critical",
+          ).length,
           highOrCriticalRate: 0,
           attentionNeededCount: 0,
           attentionNeededRate: 0,
+          // Ops-only metric — always 0 in general reporting population.
           judgmentUnknownCount: 0,
           judgmentUnknownRate: 0,
-          avgOverallScore: avg(summaryTotals.scores),
+          avgOverallScore,
         };
 
   if (totalScans > 0) {
@@ -989,18 +964,46 @@ export async function buildPublicDashboard(
     disclaimer: PRIVACY_INDEX_DISCLAIMER,
   };
 
-  const trends: PublicDashboardTrendRow[] = daily.map((row) => {
-    const count = row.survey_count || 0;
-    return {
-      date: row.observed_date_kst,
-      surveyCount: count,
-      personalInfoRate: rate(row.personal_info_count || 0, count),
-      sensitiveInfoRate: rate(row.sensitive_info_count || 0, count),
-      highRiskInfoRate: rate(row.high_risk_info_count || 0, count),
-      avgOverallScore:
-        row.avg_overall_score == null ? null : Number(row.avg_overall_score),
-    };
-  });
+  const trendMap = new Map<
+    string,
+    {
+      surveyCount: number;
+      personalInfoCount: number;
+      sensitiveInfoCount: number;
+      highRiskInfoCount: number;
+      scores: number[];
+    }
+  >();
+  for (const survey of surveys) {
+    const date = survey.observed_date_kst || from;
+    let bucket = trendMap.get(date);
+    if (!bucket) {
+      bucket = {
+        surveyCount: 0,
+        personalInfoCount: 0,
+        sensitiveInfoCount: 0,
+        highRiskInfoCount: 0,
+        scores: [],
+      };
+      trendMap.set(date, bucket);
+    }
+    bucket.surveyCount += 1;
+    if (survey.has_personal_info) bucket.personalInfoCount += 1;
+    if (survey.has_sensitive_info) bucket.sensitiveInfoCount += 1;
+    if (survey.has_high_risk_info) bucket.highRiskInfoCount += 1;
+    const score = scoreBySurveyId.get(survey.id);
+    if (score != null) bucket.scores.push(score);
+  }
+  const trends: PublicDashboardTrendRow[] = [...trendMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, bucket]) => ({
+      date,
+      surveyCount: bucket.surveyCount,
+      personalInfoRate: rate(bucket.personalInfoCount, bucket.surveyCount),
+      sensitiveInfoRate: rate(bucket.sensitiveInfoCount, bucket.surveyCount),
+      highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
+      avgOverallScore: avg(bucket.scores),
+    }));
 
   const platformMap = new Map<
     string,
@@ -1021,16 +1024,18 @@ export async function buildPublicDashboard(
       scores: [],
     });
   }
-  for (const row of platforms) {
-    const key = row.platform in PLATFORM_LABEL ? row.platform : "unknown";
+  for (const survey of surveys) {
+    const key =
+      survey.platform && survey.platform in PLATFORM_LABEL
+        ? survey.platform
+        : "unknown";
     const bucket = platformMap.get(key)!;
-    bucket.surveyCount += row.survey_count || 0;
-    bucket.personalInfoCount += row.personal_info_count || 0;
-    bucket.sensitiveInfoCount += row.sensitive_info_count || 0;
-    bucket.highRiskInfoCount += row.high_risk_info_count || 0;
-    if (row.avg_overall_score != null) {
-      bucket.scores.push(Number(row.avg_overall_score));
-    }
+    bucket.surveyCount += 1;
+    if (survey.has_personal_info) bucket.personalInfoCount += 1;
+    if (survey.has_sensitive_info) bucket.sensitiveInfoCount += 1;
+    if (survey.has_high_risk_info) bucket.highRiskInfoCount += 1;
+    const score = scoreBySurveyId.get(survey.id);
+    if (score != null) bucket.scores.push(score);
   }
   const platformStats: PublicDashboardPlatformRow[] = [...platformMap.entries()]
     .map(([platform, bucket]) => ({
@@ -1044,7 +1049,7 @@ export async function buildPublicDashboard(
     .filter((row) => row.surveyCount > 0 || totalScans === 0)
     .sort((a, b) => b.surveyCount - a.surveyCount);
 
-  // Decision distribution
+  // Decision distribution (analyzable only — no JUDGMENT_UNKNOWN)
   const decisionMap = new Map<string, PublicDecisionStatRow>();
   for (const row of DECISION_ORDER) {
     decisionMap.set(row.key, {
@@ -1059,6 +1064,7 @@ export async function buildPublicDashboard(
       survey.safety_type_id,
       survey.user_decision_label,
     );
+    if (resolved.key === "JUDGMENT_UNKNOWN") continue;
     const existing = decisionMap.get(resolved.key);
     if (existing) {
       existing.count += 1;
@@ -1076,7 +1082,11 @@ export async function buildPublicDashboard(
       ...row,
       rate: rate(row.count, totalScans),
     }))
-    .filter((row) => row.count > 0 || totalScans === 0)
+    .filter(
+      (row) =>
+        row.decisionKey !== "JUDGMENT_UNKNOWN" &&
+        (row.count > 0 || totalScans === 0),
+    )
     .sort((a, b) => {
       const ai = DECISION_ORDER.findIndex((d) => d.key === a.decisionKey);
       const bi = DECISION_ORDER.findIndex((d) => d.key === b.decisionKey);
@@ -1086,7 +1096,7 @@ export async function buildPublicDashboard(
       return b.count - a.count;
     });
 
-  // Question-level aggregates from survey_records
+  // Question-level aggregates from analyzable survey_records
   const questionStats: PublicQuestionStats =
     surveys.length === 0
       ? emptyQuestionStats()
@@ -1116,7 +1126,7 @@ export async function buildPublicDashboard(
           };
         })();
 
-  // Data category TOP (aggregate labels only)
+  // Data category TOP (aggregate labels only, analyzable surveys)
   const categoryCount = new Map<
     string,
     { label: string; riskCategory: string | null; count: number }
@@ -1261,6 +1271,7 @@ export async function buildPublicDashboard(
   >();
   for (const row of findings) {
     const label = toPublicIssueLabel(row.finding_type, row.check_domain);
+    if (label === "문항 분석 제한") continue;
     const existing = issueMap.get(label);
     if (existing) {
       existing.findingCount += 1;
@@ -1332,17 +1343,13 @@ export async function buildPublicDashboard(
     .filter((row) => row.surveyCount > 0)
     .sort((a, b) => b.surveyCount - a.surveyCount);
 
-  // Diagnosis quality
+  // Diagnosis quality — public surface never exposes limited/extraction counts.
   const diagnosisQualityStats: PublicDiagnosisQualityStats =
-    totalScans === 0 && scanReports.length === 0 && captures.length === 0
+    totalScans === 0 && captures.length === 0
       ? emptyDiagnosisQualityStats()
       : {
-          completedDiagnosisCount: scanReports.filter(
-            (r) => r.diagnosis_status === "completed",
-          ).length,
-          limitedQuestionAnalysisCount: scanReports.filter(
-            (r) => r.diagnosis_status === "limited",
-          ).length,
+          completedDiagnosisCount: totalScans,
+          limitedQuestionAnalysisCount: 0,
           evidenceCaptureCount: captures.filter(
             (c) =>
               c.status === "completed" ||
@@ -1382,17 +1389,14 @@ export async function buildPublicDashboard(
         }))
       : decisionStats;
 
-  // Unify "주의 필요" with citizen decision labels (exclude 문항 분석 불가).
+  // Unify "주의 필요" with citizen decision labels (analyzable population only).
   const attentionNeededCount = decisionCount(resolvedDecisionStats, [
     ...ATTENTION_NEEDED_KEYS,
   ]);
-  const judgmentUnknownCount = decisionCount(resolvedDecisionStats, [
-    "JUDGMENT_UNKNOWN",
-  ]);
   summary.attentionNeededCount = attentionNeededCount;
   summary.attentionNeededRate = rate(attentionNeededCount, totalScans);
-  summary.judgmentUnknownCount = judgmentUnknownCount;
-  summary.judgmentUnknownRate = rate(judgmentUnknownCount, totalScans);
+  summary.judgmentUnknownCount = 0;
+  summary.judgmentUnknownRate = 0;
   // Align legacy KPI field with the unified attention definition.
   summary.highOrCriticalCount = attentionNeededCount;
   summary.highOrCriticalRate = summary.attentionNeededRate;
@@ -1413,6 +1417,7 @@ export async function buildPublicDashboard(
     generatedAt: new Date().toISOString(),
     hasData: totalScans > 0,
     isEarlyData,
+    rawTotalScans,
     summary,
     insights,
     privacyIndex,
