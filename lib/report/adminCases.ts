@@ -1,6 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getQueueCounts } from "@/lib/jobs/scanJobQueue";
-import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
+import {
+  classifyLimitedOutcome,
+  isReportableAdminOutcome,
+  type LimitedOutcomeBucket,
+} from "@/lib/report/limitedOutcomeBuckets";
 import type {
   OverallRiskLevel,
   Platform,
@@ -27,21 +31,32 @@ export interface AdminCaseListQuery {
 }
 
 export interface AdminKpi {
+  /** Reportable diagnoses only (questions analyzable). */
   totalScans: number;
+  /** Raw survey_records in range before reporting filter. */
+  rawTotalScans: number;
   reviewPendingCount: number;
   highOrReportReviewCount: number;
   publicSectorReviewCount: number;
   evidenceCaptureCount: number;
-  /** @deprecated Prefer outcome buckets — kept for backward-compatible UI. */
+  /** Non-reportable limited outcomes (ops reference, not a primary KPI). */
   limitedAnalysisCount: number;
   publicationCandidateCount: number;
-  /** Outcome split so closed/login are not counted as extraction failure. */
+  /** Outcome split for ops — extraction_limited is not a primary card. */
   outcomeBuckets: {
     normalDiagnosis: number;
     surveyClosed: number;
     accessRestricted: number;
     extractionLimited: number;
     systemFailure: number;
+  };
+  /** Counts excluded from general reporting stats / case list. */
+  excludedFromReporting: {
+    extractionLimited: number;
+    surveyClosed: number;
+    accessRestricted: number;
+    systemFailure: number;
+    total: number;
   };
 }
 
@@ -440,6 +455,7 @@ export async function listAdminCases(
     extractionLimited: 0,
     systemFailure: 0,
   };
+  const bucketByCaseId = new Map<string, LimitedOutcomeBucket>();
   for (const row of rows) {
     const report = row.scan_report_id
       ? reportMap.get(row.scan_report_id as string)
@@ -454,6 +470,7 @@ export async function listAdminCases(
       limitedReason: report?.limited_reason || null,
       summary: report?.summary || null,
     });
+    bucketByCaseId.set(row.id as string, bucket);
     if (bucket === "normal_diagnosis") outcomeBuckets.normalDiagnosis += 1;
     else if (bucket === "survey_closed") outcomeBuckets.surveyClosed += 1;
     else if (bucket === "access_restricted") outcomeBuckets.accessRestricted += 1;
@@ -461,8 +478,35 @@ export async function listAdminCases(
     else outcomeBuckets.extractionLimited += 1;
   }
 
+  const showOpsLimited =
+    query.limitedOnly === "true" || query.limitedOnly === "1";
+  const rawCaseCount = cases.length;
+  // General reporting: only analyzable diagnoses. Ops filter can still list limited.
+  if (!showOpsLimited) {
+    cases = cases.filter((c) =>
+      isReportableAdminOutcome(
+        bucketByCaseId.get(c.id) || "extraction_limited",
+      ),
+    );
+  }
+
+  const excludedFromReporting = {
+    extractionLimited: outcomeBuckets.extractionLimited,
+    surveyClosed: outcomeBuckets.surveyClosed,
+    accessRestricted: outcomeBuckets.accessRestricted,
+    systemFailure: outcomeBuckets.systemFailure,
+    total:
+      outcomeBuckets.extractionLimited +
+      outcomeBuckets.surveyClosed +
+      outcomeBuckets.accessRestricted +
+      outcomeBuckets.systemFailure,
+  };
+
   const kpi: AdminKpi = {
-    totalScans: cases.length,
+    totalScans: showOpsLimited
+      ? rawCaseCount
+      : outcomeBuckets.normalDiagnosis,
+    rawTotalScans: rawCaseCount,
     reviewPendingCount: cases.filter(
       (c) => c.reviewStatus === "pending" || c.reviewStatus === "none",
     ).length,
@@ -479,11 +523,7 @@ export async function listAdminCases(
         c.platform !== "wiseon_csap",
     ).length,
     evidenceCaptureCount,
-    limitedAnalysisCount:
-      outcomeBuckets.surveyClosed +
-      outcomeBuckets.accessRestricted +
-      outcomeBuckets.extractionLimited +
-      outcomeBuckets.systemFailure,
+    limitedAnalysisCount: excludedFromReporting.total,
     publicationCandidateCount: cases.filter(
       (c) =>
         c.publicationStatus === "aggregate_only" ||
@@ -491,6 +531,7 @@ export async function listAdminCases(
         (c.reviewStatus === "resolved" && c.publicationStatus === "private"),
     ).length,
     outcomeBuckets,
+    excludedFromReporting,
   };
 
   let queue: AdminQueueSummary = {

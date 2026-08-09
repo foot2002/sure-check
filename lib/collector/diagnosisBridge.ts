@@ -17,6 +17,8 @@ import {
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
 import type { CollectorOrgQualityClass } from "@/lib/collector/orgQuality";
+import { validateSurveyPage } from "@/lib/collector/pageValidate";
+import { updateSurveyLinkStatus } from "@/lib/collector/repository";
 import type { CollectorPlatform } from "@/lib/collector/types";
 import {
   countInProgressScanJobs,
@@ -62,6 +64,8 @@ export type DispatchItemOutcome = {
     | "skipped_duplicate"
     | "skipped_not_eligible"
     | "skipped_backpressure"
+    | "skipped_precheck_closed"
+    | "skipped_precheck_restricted"
     | "failed";
   diagnosisJobId?: string | null;
   reportId?: string | null;
@@ -83,6 +87,8 @@ export type DispatchResult = {
     skippedNotEligible: number;
     skippedBackpressure: number;
     skippedDailyLimit: number;
+    skippedPrecheckClosed: number;
+    skippedPrecheckRestricted: number;
     failed: number;
   };
   organizationDistribution: Record<string, number>;
@@ -286,8 +292,41 @@ function emptyCounts() {
     skippedNotEligible: 0,
     skippedBackpressure: 0,
     skippedDailyLimit: 0,
+    skippedPrecheckClosed: 0,
+    skippedPrecheckRestricted: 0,
     failed: 0,
   };
+}
+
+/**
+ * Lightweight status re-check before enqueue (no browser / full diagnosis).
+ * Closed/restricted updates survey_links and does NOT consume daily quota.
+ */
+async function precheckBeforeDiagnosisEnqueue(input: {
+  surveyLinkId: string;
+  canonicalUrl: string;
+  platform: CollectorPlatform;
+  dryRun: boolean;
+}): Promise<"ok" | "closed" | "restricted"> {
+  const page = await validateSurveyPage(input.canonicalUrl, input.platform);
+  if (page.status === "closed") {
+    if (!input.dryRun) {
+      await updateSurveyLinkStatus(input.surveyLinkId, "closed", page.pageTitle);
+    }
+    return "closed";
+  }
+  if (page.status === "restricted") {
+    if (!input.dryRun) {
+      await updateSurveyLinkStatus(
+        input.surveyLinkId,
+        "restricted",
+        page.pageTitle,
+      );
+    }
+    return "restricted";
+  }
+  // unreachable / discovered / invalid → do not force closed; leave for revalidate
+  return "ok";
 }
 
 export async function dispatchCollectorDiagnoses(input?: {
@@ -399,6 +438,32 @@ export async function dispatchCollectorDiagnoses(input?: {
         skipReason: `linkage_${existing.status}`,
       });
       counts.skippedDuplicate += 1;
+      continue;
+    }
+
+    // Safety pre-check: closed/restricted skip enqueue (no quota / no linkage row).
+    const precheck = await precheckBeforeDiagnosisEnqueue({
+      surveyLinkId: c.surveyLinkId,
+      canonicalUrl: c.canonicalUrl,
+      platform: c.platform,
+      dryRun,
+    });
+    if (precheck === "closed") {
+      outcomes.push({
+        ...base,
+        outcome: "skipped_precheck_closed",
+        skipReason: "precheck_survey_closed",
+      });
+      counts.skippedPrecheckClosed += 1;
+      continue;
+    }
+    if (precheck === "restricted") {
+      outcomes.push({
+        ...base,
+        outcome: "skipped_precheck_restricted",
+        skipReason: "precheck_access_restricted",
+      });
+      counts.skippedPrecheckRestricted += 1;
       continue;
     }
 

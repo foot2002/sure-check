@@ -10,6 +10,18 @@ import {
 } from "@/lib/collector/config";
 import { validateSurveyResponseUrl } from "@/lib/collector/surveyUrlRules";
 import type { CollectorPlatform, CollectorSurveyStatus } from "@/lib/collector/types";
+import { fetchNaverFormAccessData } from "@/lib/extractors/naverFormsParser";
+import {
+  extractNaverSurveyId,
+  NAVER_CLOSED_STATUSES,
+} from "@/lib/extractors/naverFormsTypes";
+import { fetchMoaformSpaForm } from "@/lib/extractors/moaformSpaClient";
+import { extractMoaformId } from "@/lib/extractors/moaformTypes";
+import {
+  htmlLooksClosedSurvey,
+  htmlLooksLoginRequired,
+  isClosedSurveyUrl,
+} from "@/lib/scan/surveyStatusSignals";
 
 export const COLLECTOR_PAGE_VALIDATE_TIMEOUT_MS = 10_000;
 export const COLLECTOR_PAGE_VALIDATE_MAX_BYTES = 512_000;
@@ -47,31 +59,28 @@ function extractHtmlTitle(html: string): string | null {
     .slice(0, 300) || null;
 }
 
-function isClosedformUrl(url: string): boolean {
-  try {
-    return /\/closedform/i.test(new URL(url).pathname);
-  } catch {
-    return /\/closedform/i.test(url);
-  }
-}
-
 function looksLikeClosedSurvey(html: string, title: string | null, url: string): boolean {
-  if (isClosedformUrl(url)) return true;
-  const blob = `${title || ""}\n${html.slice(0, 30_000)}`.toLowerCase();
-  return (
-    /no longer accepting responses|응답을 더 이상 받지|응답 접수.?종료|설문.?종료|form has been closed|closedform/i.test(
-      blob,
-    )
-  );
+  return htmlLooksClosedSurvey(html, title, url);
 }
 
 function looksLikeLoginPage(html: string, title: string | null): boolean {
-  const blob = `${title || ""}\n${html.slice(0, 20_000)}`.toLowerCase();
-  return (
-    /sign[\s-]?in|log[\s-]?in|로그인|accounts\.google\.com\/v3\/signin/i.test(
-      blob,
-    ) && /password|비밀번호|signin/i.test(blob)
-  );
+  return htmlLooksLoginRequired(html, title);
+}
+
+/** Lightweight Naver /access status — same CLOSED set as Diagnosis parser. */
+async function precheckNaverAccessStatus(
+  finalUrl: string,
+): Promise<"closed" | "restricted" | null> {
+  const surveyId = extractNaverSurveyId(finalUrl);
+  if (!surveyId) return null;
+  const access = await fetchNaverFormAccessData(surveyId, finalUrl);
+  if (!access.ok) {
+    if (access.limitedReason?.includes("로그인")) return "restricted";
+    return null;
+  }
+  const status = String(access.data?.status || "").toUpperCase();
+  if (NAVER_CLOSED_STATUSES.has(status)) return "closed";
+  return null;
 }
 
 function looksLikeHelpCenter(html: string, title: string | null, url: string): boolean {
@@ -276,11 +285,11 @@ export async function validateSurveyPage(
       });
     }
 
-    if (isClosedformUrl(finalUrl)) {
+    if (isClosedSurveyUrl(finalUrl)) {
       return result({
         verdict: "closed_survey",
         status: "closed",
-        reason: "리디렉션 최종 URL이 closedform",
+        reason: "리디렉션 최종 URL이 종료(closed/closedform)",
         finalUrl,
         httpStatus: response.status,
         contentType: response.headers.get("content-type"),
@@ -441,6 +450,77 @@ export async function validateSurveyPage(
         pageTitle,
         platform: finalFormat.platform,
       });
+    }
+
+    // Platform-specific definitive signals (Diagnosis-aligned, no browser).
+    if (finalFormat.platform === "naver_form") {
+      const naver = await precheckNaverAccessStatus(finalUrl);
+      if (naver === "closed") {
+        return result({
+          verdict: "closed_survey",
+          status: "closed",
+          reason: "네이버폼 access API 종료/일시중지 상태",
+          finalUrl,
+          httpStatus: response.status,
+          contentType,
+          pageTitle,
+          platform: finalFormat.platform,
+        });
+      }
+      if (naver === "restricted") {
+        return result({
+          verdict: "restricted_survey",
+          status: "restricted",
+          reason: "네이버폼 access API 로그인/접근 제한",
+          finalUrl,
+          httpStatus: response.status,
+          contentType,
+          pageTitle,
+          platform: finalFormat.platform,
+        });
+      }
+    }
+
+    if (finalFormat.platform === "moaform") {
+      const formId = extractMoaformId(finalUrl) || extractMoaformId(url);
+      if (formId) {
+        const spa = await fetchMoaformSpaForm(formId);
+        if (spa.closed) {
+          return result({
+            verdict: "closed_survey",
+            status: "closed",
+            reason: spa.limitedReason || "모아폼 SPA 종료 상태",
+            finalUrl,
+            httpStatus: response.status,
+            contentType,
+            pageTitle,
+            platform: finalFormat.platform,
+          });
+        }
+        if (spa.ok) {
+          return result({
+            verdict: "confirmed_survey",
+            status: "active",
+            reason: "모아폼 SPA form2/next2 확인",
+            finalUrl,
+            httpStatus: response.status,
+            contentType,
+            pageTitle,
+            platform: finalFormat.platform,
+          });
+        }
+        // Uncertain SPA soft-fail — do not promote to active.
+        return result({
+          verdict: "unresolved",
+          status: "discovered",
+          reason: spa.limitedReason || "모아폼 SPA 상태 미확정",
+          finalUrl,
+          httpStatus: response.status,
+          contentType,
+          pageTitle,
+          platform: finalFormat.platform,
+        });
+      }
     }
 
     return result({

@@ -84,6 +84,13 @@ export function classifyLimitedOutcome(input: {
 }
 
 /** Clear closed/login signals safe for Collector status feedback. */
+/** Cases that belong in general admin reporting (questions were analyzable). */
+export function isReportableAdminOutcome(
+  bucket: LimitedOutcomeBucket,
+): boolean {
+  return bucket === "normal_diagnosis";
+}
+
 export function collectorFeedbackFromLimitedReason(
   limitedReason: string | null | undefined,
 ): "closed" | "restricted" | null {

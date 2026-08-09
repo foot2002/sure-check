@@ -24,6 +24,11 @@ import {
 import { readCapturedNetworkJsonFromHtml } from "@/lib/extractors/networkCaptureHtml";
 import { fetchMoaformSpaForm } from "@/lib/extractors/moaformSpaClient";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
+import {
+  htmlLooksClosedSurvey,
+  htmlLooksLoginRequired,
+  isClosedSurveyUrl,
+} from "@/lib/scan/surveyStatusSignals";
 
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -133,16 +138,14 @@ function detectFormFlags(
 } {
   const lower = html.toLowerCase();
   const statusUpper = (status ?? "").toUpperCase();
-  const urlLower = finalUrl.toLowerCase();
-  const closedByUrl =
-    /\/closed(?:\/|$|\?|#)/i.test(urlLower) ||
-    /[?&]status=closed\b/i.test(urlLower) ||
-    /answer\.moaform\.com\/answers\/[^/]+\/closed/i.test(urlLower);
   return {
-    loginRequired: LOGIN_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
+    loginRequired:
+      htmlLooksLoginRequired(html, null) ||
+      LOGIN_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
     closedForm:
-      closedByUrl ||
+      isClosedSurveyUrl(finalUrl) ||
       statusUpper === "CLOSED" ||
+      htmlLooksClosedSurvey(html, null, finalUrl) ||
       CLOSED_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
     notFound:
       lower.includes("errorpage") ||
@@ -1139,6 +1142,39 @@ export async function parseMoaformDocument(
   let answerJsonSoftFail = false;
   if (formId) {
     const spa = await fetchMoaformSpaForm(formId);
+    if (spa.closed) {
+      const failureReason: MoaformFailureReason = "MOAFORM_CLOSED_OR_PRIVATE";
+      return {
+        title: htmlMeta.title || htmlMeta.headings[0] || "모아폼 설문",
+        description: htmlMeta.description,
+        questions: [],
+        noticeTexts: collectNoticeTexts(
+          htmlMeta.title,
+          htmlMeta.description,
+          ...htmlMeta.headings,
+        ),
+        privacyPolicyUrls: [],
+        loginRequired: false,
+        closedForm: true,
+        branchDetected: false,
+        emailCollectionPossible: false,
+        privacyConsentPossible: false,
+        extractionMethod: "none",
+        partialScan: true,
+        isLimited: true,
+        limitedReason: "모아폼 응답이 종료되었습니다.",
+        failureReason,
+        warnings: [
+          ...trace,
+          spa.limitedReason || "SPA closed",
+          `Final limitation reason: ${failureReason}`,
+        ],
+        formId,
+        pageMeta: htmlMeta,
+        operatorHint: htmlMeta.operatorHint,
+        operatorCandidates: htmlMeta.operatorCandidates,
+      };
+    }
     if (spa.ok && spa.data) {
       trace.push(
         `SPA session success/fail: success (pages=${spa.pageCount ?? 0}, blocks=${spa.blockCount ?? 0})`,

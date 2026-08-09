@@ -211,14 +211,16 @@ export function CollectorConsoleView({
       {summary ? (
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {[
-            ["전체 링크(전체 상태)", summary.totalLinksAll],
-            ["오늘 신규", summary.todayNew],
-            ["검증 완료", summary.verification.verificationCompleted],
-            ["미검증(discovered)", summary.verification.unverifiedDiscovered],
-            ["재시도(unreachable)", summary.verification.retryUnreachable],
+            ["전체 발견 링크", summary.monitoring?.totalDiscovered ?? summary.totalLinksAll],
+            ["유효 수집(active)", summary.monitoring?.validActive ?? summary.byStatus?.active ?? 0],
+            ["미검증", summary.monitoring?.unverified ?? summary.verification.unverifiedDiscovered],
+            ["종료(closed)", summary.monitoring?.closed ?? summary.byStatus?.closed ?? 0],
+            ["접근 제한", summary.monitoring?.restricted ?? summary.byStatus?.restricted ?? 0],
             [
-              "검증 완료율",
-              `${(summary.verification.verificationCompletionRate * 100).toFixed(1)}%`,
+              "자동진단 대상",
+              summary.monitoring?.diagnosisEligibleActive ??
+                summary.byStatus?.active ??
+                0,
             ],
           ].map(([label, value]) => (
             <div
@@ -236,6 +238,13 @@ export function CollectorConsoleView({
             </div>
           ))}
         </section>
+      ) : null}
+      {summary ? (
+        <p className="mb-4 text-[11px] text-slate-500">
+          종료·접근제한 링크는 DB에 보존되며 유효 수집/자동진단 대상에서 제외됩니다.
+          unreachable {summary.monitoring?.unreachable ?? 0} · invalid{" "}
+          {summary.monitoring?.invalid ?? 0} · 오늘 신규 {summary.todayNew}
+        </p>
       ) : null}
 
       {summary?.diagnosis ? (

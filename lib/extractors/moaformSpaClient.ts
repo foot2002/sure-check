@@ -17,6 +17,8 @@ export type MoaformSpaFetchResult = {
   ok: boolean;
   data?: Record<string, unknown>;
   softFail?: boolean;
+  /** Definitive closed response window (Collector + Diagnosis share this). */
+  closed?: boolean;
   limitedReason?: string;
   pageCount?: number;
   blockCount?: number;
@@ -51,7 +53,7 @@ async function spaRequest(
   formId: string,
   path: string,
   init: RequestInit & { token?: string } = {},
-): Promise<{ status: number; text: string }> {
+): Promise<{ status: number; text: string; location: string | null }> {
   const { token, ...rest } = init;
   const url = path.startsWith("http") ? path : `${ANSWER_ORIGIN}${path}`;
   const headers: Record<string, string> = {
@@ -81,10 +83,44 @@ async function spaRequest(
     if (text.length > MAX_BYTES) {
       throw new Error("SPA response too large");
     }
-    return { status: response.status, text };
+    return {
+      status: response.status,
+      text,
+      location: response.headers.get("location"),
+    };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function looksClosedRedirect(location: string | null, text: string): boolean {
+  const blob = `${location || ""}\n${text.slice(0, 4000)}`;
+  if (/\/closed(?:\/|$|\?|#)/i.test(blob)) return true;
+  if (/"status"\s*:\s*"closed"/i.test(text)) return true;
+  // Gateway JSON for ended surveys, e.g. conflict + redirect …/closed
+  if (
+    /설문이\s*마감|더\s*이상\s*답변|응답이\s*종료|no longer accepting/i.test(text) &&
+    (/\/closed/i.test(text) || /"code"\s*:\s*"conflict"/i.test(text))
+  ) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(text) as {
+      error?: { redirect?: string; message?: string; code?: string };
+    };
+    if (parsed?.error?.redirect && /\/closed/i.test(parsed.error.redirect)) {
+      return true;
+    }
+    if (
+      parsed?.error?.code === "conflict" &&
+      /마감|종료|더\s*이상/i.test(String(parsed.error.message || ""))
+    ) {
+      return true;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return false;
 }
 
 function extractGatewayToken(html: string): string | null {
@@ -114,20 +150,62 @@ export async function fetchMoaformSpaForm(
   const base = `/answers/${formId}`;
 
   try {
-    await spaRequest(jar, formId, base);
+    const shell = await spaRequest(jar, formId, base);
+    if (looksClosedRedirect(shell.location, shell.text)) {
+      return {
+        ok: false,
+        closed: true,
+        limitedReason: "모아폼 응답이 종료되었습니다.",
+      };
+    }
 
     const start = await spaRequest(jar, formId, `${base}/start`);
+    if (looksClosedRedirect(start.location, start.text)) {
+      return {
+        ok: false,
+        closed: true,
+        limitedReason: "모아폼 응답이 종료되었습니다.",
+      };
+    }
     let gatewayPath = `${base}/gateway`;
     try {
       const startJson = JSON.parse(start.text) as { redirect_url?: string };
-      if (startJson.redirect_url) gatewayPath = startJson.redirect_url;
+      if (startJson.redirect_url) {
+        if (/\/closed(?:\/|$|\?|#)/i.test(startJson.redirect_url)) {
+          return {
+            ok: false,
+            closed: true,
+            limitedReason: "모아폼 응답이 종료되었습니다.",
+          };
+        }
+        gatewayPath = startJson.redirect_url;
+      }
     } catch {
       // start may already be HTML in some edge cases
     }
 
     const gateway = await spaRequest(jar, formId, gatewayPath);
+    if (looksClosedRedirect(gateway.location, gateway.text)) {
+      return {
+        ok: false,
+        closed: true,
+        limitedReason: "모아폼 응답이 종료되었습니다.",
+      };
+    }
     const token = extractGatewayToken(gateway.text);
     if (!token) {
+      // Closed surveys often serve gateway HTML without a session token.
+      if (
+        /\/closed|응답이\s*종료|설문이\s*종료|더\s*이상\s*응답|no longer accepting/i.test(
+          `${gateway.location || ""}\n${gateway.text}`,
+        )
+      ) {
+        return {
+          ok: false,
+          closed: true,
+          limitedReason: "모아폼 응답이 종료되었습니다.",
+        };
+      }
       return {
         ok: false,
         softFail: true,

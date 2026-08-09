@@ -54,6 +54,16 @@ export type NaverFormsExtractorInput = ExtractorInput;
 
 export const NAVER_FORMS_API_BASE = "https://survey-api.naver.com/api/form";
 
+/** Access API statuses that mean the response window is not open. */
+export const NAVER_CLOSED_STATUSES = new Set([
+  "CLOSED",
+  "ENDED",
+  "FINISHED",
+  "STOPPED",
+  "EXPIRED",
+  "PAUSED",
+]);
+
 export function isNaverFormsUrl(url: string): boolean {
   try {
     const parsed = new URL(url);

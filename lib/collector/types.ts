@@ -169,6 +169,23 @@ export interface CollectorVerificationMetrics {
   accuracySampleNote: string;
 }
 
+/** Monitoring-oriented split so closed links don't inflate "valid collection". */
+export interface CollectorMonitoringBreakdown {
+  /** All discovered/stored links (including closed/restricted). */
+  totalDiscovered: number;
+  /** status=active — live response candidates. */
+  validActive: number;
+  /** status=discovered — not yet verified. */
+  unverified: number;
+  closed: number;
+  restricted: number;
+  unreachable: number;
+  invalid: number;
+  ignored: number;
+  /** Active links eligible for auto diagnosis selection. */
+  diagnosisEligibleActive: number;
+}
+
 export interface CollectorSummary {
   totalSurveys: number;
   /** All survey_links rows including invalid/ignored (for consistency checks). */
@@ -182,6 +199,7 @@ export interface CollectorSummary {
   /** Confirmed surveys only (active+closed+restricted). Unreachable excluded. */
   verifiedSurveys: number;
   unreachableSurveys: number;
+  monitoring: CollectorMonitoringBreakdown;
   verification: CollectorVerificationMetrics;
   lastRun: CollectionRunRow | null;
   lastRunApiCalls: number;

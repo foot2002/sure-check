@@ -13,9 +13,14 @@ import type {
 } from "@/lib/extractors/naverFormsTypes";
 import {
   extractNaverSurveyId,
+  NAVER_CLOSED_STATUSES,
   NAVER_FORMS_API_BASE,
   unwrapNestedNaverSurveyUrl,
 } from "@/lib/extractors/naverFormsTypes";
+import {
+  htmlLooksClosedSurvey,
+  htmlLooksLoginRequired,
+} from "@/lib/scan/surveyStatusSignals";
 import { readCapturedNetworkJsonFromHtml } from "@/lib/extractors/networkCaptureHtml";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 
@@ -36,15 +41,6 @@ const CLOSED_MARKERS = [
   "더 이상 응답",
   "응답 기간이 종료",
 ];
-
-const CLOSED_STATUSES = new Set([
-  "CLOSED",
-  "ENDED",
-  "FINISHED",
-  "STOPPED",
-  "EXPIRED",
-  "PAUSED",
-]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -81,8 +77,12 @@ function detectFormFlags(html: string): {
 } {
   const lower = html.toLowerCase();
   return {
-    loginRequired: LOGIN_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
-    closedForm: CLOSED_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
+    loginRequired:
+      htmlLooksLoginRequired(html, null) ||
+      LOGIN_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
+    closedForm:
+      htmlLooksClosedSurvey(html, null) ||
+      CLOSED_MARKERS.some((marker) => lower.includes(marker.toLowerCase())),
   };
 }
 
@@ -173,7 +173,7 @@ function parseSurveyPayload(
     asString(payload.description) ||
     htmlMeta.description;
   const status = asString(payload.status).toUpperCase();
-  const closedForm = htmlFlags.closedForm || CLOSED_STATUSES.has(status);
+  const closedForm = htmlFlags.closedForm || NAVER_CLOSED_STATUSES.has(status);
 
   const questions: NaverFormsParsedQuestion[] = [];
   let branchDetected = false;

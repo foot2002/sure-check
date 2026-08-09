@@ -264,6 +264,18 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     /* migration 007/008 may not be applied yet */
   }
 
+  const monitoring = {
+    totalDiscovered: totalLinksAll,
+    validActive: active,
+    unverified: discovered,
+    closed,
+    restricted,
+    unreachable,
+    invalid,
+    ignored,
+    diagnosisEligibleActive: active,
+  };
+
   return {
     totalSurveys,
     totalLinksAll,
@@ -274,6 +286,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     byStatus,
     verifiedSurveys,
     unreachableSurveys,
+    monitoring,
     verification: {
       totalLinks: totalLinksAll,
       verificationCompleted,
@@ -284,7 +297,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
       confirmedSurveyRate,
       invalidRate,
       accuracySampleNote:
-        "플랫폼·상태 정확도는 discovered·unreachable을 제외한 검증 완료 표본(active/closed/restricted/invalid)에서만 산출합니다.",
+        "플랫폼·상태 정확도는 discovered·unreachable을 제외한 검증 완료 표본(active/closed/restricted/invalid)에서만 산출합니다. 유효 수집(monitoring.validActive)은 active만 포함합니다.",
     },
     lastRun,
     lastRunApiCalls: lastRunQueryStats.length,
