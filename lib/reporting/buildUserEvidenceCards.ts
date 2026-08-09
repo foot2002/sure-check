@@ -109,7 +109,7 @@ function buildPublicExternalToolCard(
 ): UserEvidenceCard {
   return {
     id: "public_external_tool",
-    title: "공공기관 개인정보 설문에 부적절한 외부도구 사용",
+    title: "공공기관 업무에 외부 설문도구가 사용되고 있습니다",
     fact: `이 설문은 공공기관이 개인정보를 수집하면서 ${toolLabel} 등 외부 설문도구를 사용하고 있습니다.`,
     whyProblem: isOverseas
       ? "공공기관이 개인정보를 클라우드 기반 도구로 수집할 때는 도구의 보안성, 접근권한, 국외 보관 가능성, 보유·파기, 위탁 관리가 확인되어야 합니다."
@@ -192,7 +192,7 @@ export function buildUserEvidenceCards(
     ]).slice(0, 6);
     candidates.push({
       id: "sensitive_high_risk",
-      title: "민감정보 또는 고위험 개인정보 수집",
+      title: "응답자의 민감정보까지 요구하는 문항이 확인됩니다",
       fact:
         items.length > 0
           ? `이 설문에는 ${items.join(", ")} 등 민감하거나 위험도가 높은 정보가 포함될 수 있습니다.`
@@ -241,7 +241,7 @@ export function buildUserEvidenceCards(
   if ((hasDirect || hasSensitiveOrHigh) && hasRetentionGap(report)) {
     candidates.push({
       id: "retention_destruction",
-      title: "보유기간·파기 기준 미확인",
+      title: "개인정보 수집 전 반드시 확인돼야 할 보유·파기 안내가 화면에서 확인되지 않습니다",
       fact: "개인정보를 언제까지 보관하고 언제 삭제하는지 안내가 충분히 확인되지 않았습니다.",
       whyProblem:
         "개인정보는 수집 목적이 끝나면 지체 없이 파기되어야 하며, 응답자는 보관기간과 파기 기준을 알 수 있어야 합니다.",

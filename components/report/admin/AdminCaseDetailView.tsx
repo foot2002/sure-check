@@ -5,17 +5,17 @@ import { useState, type ReactNode } from "react";
 import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import type { PublicationStatus, ReviewOutcome, ReviewStatus } from "@/lib/db/types";
 
-const TABS = [
-  "요약",
-  "문제 판단",
-  "문항 분석",
-  "증빙자료",
-  "원본 진단 JSON",
-  "검토 처리",
-  "공개 처리",
-] as const;
+const TABS = ["요약", "증거", "검토·공개"] as const;
 
 type Tab = (typeof TABS)[number];
+
+function severityRank(severity: string): number {
+  const s = severity.toLowerCase();
+  if (s === "critical") return 0;
+  if (s === "high") return 1;
+  if (s === "medium") return 2;
+  return 3;
+}
 
 function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -38,6 +38,8 @@ export function AdminCaseDetailView({
   const [tab, setTab] = useState<Tab>("요약");
   const [message, setMessage] = useState<string | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [techOpen, setTechOpen] = useState(false);
+  const [questionsOpen, setQuestionsOpen] = useState(false);
   const [namedWarningOpen, setNamedWarningOpen] = useState(false);
 
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>(
@@ -196,94 +198,83 @@ export function AdminCaseDetailView({
       </div>
 
       {tab === "요약" ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Meta label="설문 제목" value={s.surveyTitle} />
-          <Meta
-            label="설문 URL"
-            value={
-              s.surveyUrl ? (
-                <a href={s.surveyUrl} target="_blank" rel="noreferrer" className="text-teal-300">
-                  {s.surveyUrl}
-                </a>
-              ) : (
-                "—"
-              )
-            }
-          />
-          <Meta label="최종 URL" value={s.finalUrl} />
-          <Meta label="플랫폼" value={s.platform} />
-          <Meta label="운영주체" value={s.operatorName} />
-          <Meta label="기관 유형" value={s.subjectType} />
-          <Meta label="공공/민간" value={s.publicPrivateType} />
-          <Meta label="위험도" value={s.overallRiskLevel} />
-          <Meta label="점수" value={s.score == null ? "—" : s.score.toFixed(1)} />
-          <Meta label="응답 판단" value={s.userDecisionLabel} />
-          <Meta label="진단 상태" value={s.diagnosisStatus} />
-          <Meta label="진단 신뢰도" value={s.confidence} />
-          <Meta label="문항 수" value={s.questionCount} />
-          <Meta label="개인정보 문항 수" value={s.personalInfoQuestionCount} />
-          <Meta label="민감정보 문항 수" value={s.sensitiveQuestionCount} />
-          <Meta label="고위험정보 문항 수" value={s.highRiskQuestionCount} />
-          <Meta label="캡처 상태" value={s.captureStatus} />
-          <Meta label="캡처 완료 여부" value={s.captureCompleteness} />
-          <Meta label="증거 파일 수" value={s.evidenceCount} />
-        </div>
-      ) : null}
-
-      {tab === "요약" && detail.performance ? (
-        <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-          <h3 className="text-sm font-semibold text-white">추출·성능 정보</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Meta
-              label="extractionMode"
-              value={detail.performance.extractionMode}
-            />
-            <Meta
-              label="browserUsed"
-              value={detail.performance.browserUsed ? "true" : "false"}
-            />
-            <Meta
-              label="browserReason"
-              value={detail.performance.browserReason}
-            />
-            <Meta
-              label="fastExtractorConfidence"
-              value={detail.performance.fastExtractorConfidence}
-            />
-            <Meta
-              label="fallbackTriggered"
-              value={detail.performance.fallbackTriggered ? "true" : "false"}
-            />
-            <Meta
-              label="fallbackReason"
-              value={detail.performance.fallbackReason}
-            />
-            <Meta
-              label="totalDurationMs"
-              value={detail.performance.totalDurationMs}
-            />
-            <Meta
-              label="extractDurationMs"
-              value={detail.performance.extractDurationMs}
-            />
-            <Meta
-              label="analysisDurationMs"
-              value={detail.performance.analysisDurationMs}
-            />
-            <Meta
-              label="saveDurationMs"
-              value={detail.performance.saveDurationMs}
-            />
+        <div className="space-y-5">
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold tracking-wide text-slate-400">
+                  {s.operatorName || "운영주체 미확인"} · {s.platform} ·{" "}
+                  {s.publicPrivateType}
+                </p>
+                <p className="mt-1 text-2xl font-bold text-white">
+                  점수 {s.score == null ? "—" : s.score.toFixed(1)} ·{" "}
+                  <span
+                    className={
+                      s.overallRiskLevel === "critical"
+                        ? "text-rose-300"
+                        : s.overallRiskLevel === "high"
+                          ? "text-orange-300"
+                          : "text-amber-200"
+                    }
+                  >
+                    {String(s.overallRiskLevel).toUpperCase()}
+                  </span>
+                </p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {s.userDecisionLabel || "—"} · 상태 {s.diagnosisStatus || "—"}
+                </p>
+              </div>
+              <div className="text-right text-sm text-slate-300">
+                <p>
+                  P/S/H {s.personalInfoQuestionCount}/{s.sensitiveQuestionCount}/
+                  {s.highRiskQuestionCount}
+                </p>
+                <p className="text-xs text-slate-500">
+                  캡처 {s.captureStatus || "—"} · 증거 {s.evidenceCount}
+                </p>
+              </div>
+            </div>
+            {s.surveyUrl ? (
+              <a
+                href={s.surveyUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block break-all text-sm text-teal-300 hover:underline"
+              >
+                {s.surveyUrl}
+              </a>
+            ) : null}
           </div>
-        </div>
-      ) : null}
 
-      {tab === "문제 판단" ? (
-        <div className="space-y-6">
-          <p className="text-sm text-slate-400">
-            자동진단 항목입니다. 위반 확정이 아니라 위반 소지·미흡·확인 필요·개선
-            권고로 해석하세요.
-          </p>
+          <section className="rounded-xl border border-slate-700 bg-slate-950/40 p-4">
+            <h3 className="text-sm font-semibold text-white">핵심 문제 TOP 3</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              위반 확정이 아니라 위반 소지·미흡·확인 필요로 해석하세요.
+            </p>
+            <ol className="mt-3 space-y-2">
+              {[...detail.findings]
+                .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+                .slice(0, 3)
+                .map((f, index) => (
+                  <li
+                    key={f.id}
+                    className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2"
+                  >
+                    <p className="text-xs font-semibold text-slate-400">
+                      {index + 1}. {f.severity.toUpperCase()}
+                    </p>
+                    <p className="mt-0.5 font-medium text-slate-100">{f.title}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {f.evidenceNote || f.description || "—"}
+                    </p>
+                  </li>
+                ))}
+              {detail.findings.length === 0 ? (
+                <li className="text-sm text-slate-500">핵심 finding이 없습니다.</li>
+              ) : null}
+            </ol>
+          </section>
+
           {detail.indexScores ? (
             <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {[
@@ -301,136 +292,146 @@ export function AdminCaseDetailView({
               ))}
             </div>
           ) : null}
-          <div className="overflow-x-auto rounded-xl border border-slate-700">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-700 text-xs text-slate-400">
-                <tr>
-                  {["판단 항목", "상태/심각도", "근거 메모", "권고", "법/정책 코드"].map(
-                    (h) => (
-                      <th key={h} className="px-3 py-2 text-left">
-                        {h}
-                      </th>
-                    ),
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {detail.findings.map((f) => (
-                  <tr key={f.id} className="border-b border-slate-800">
-                    <td className="px-3 py-2 text-slate-100">
-                      <p className="font-medium">{f.title}</p>
-                      <p className="text-xs text-slate-500">
-                        {f.findingType} · {f.checkDomain || "—"}
-                      </p>
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">
-                      {f.status} / {f.severity}
-                    </td>
-                    <td className="max-w-xs px-3 py-2 text-slate-300">
-                      {f.evidenceNote || f.description || "—"}
-                    </td>
-                    <td className="max-w-xs px-3 py-2 text-slate-300">
-                      {f.recommendation || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {f.legalBasisCodes.join(", ") || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="overflow-x-auto rounded-xl border border-slate-700">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-700 text-xs text-slate-400">
-                <tr>
-                  {["고지 항목", "도메인", "상태", "라벨", "근거", "법코드"].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {detail.complianceChecks.map((c) => (
-                  <tr key={c.id} className="border-b border-slate-800">
-                    <td className="px-3 py-2 text-slate-100">{c.checkItem}</td>
-                    <td className="px-3 py-2 text-slate-400">{c.checkDomain}</td>
-                    <td className="px-3 py-2 text-slate-300">{c.status}</td>
-                    <td className="px-3 py-2 text-slate-300">{c.statusLabel}</td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {c.evidenceNote || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-500">
-                      {c.legalBasisCode || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
 
-      {tab === "문항 분석" ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-700">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-700 text-xs text-slate-400">
-              <tr>
-                {[
-                  "번호",
-                  "페이지",
-                  "문항 원문",
-                  "유형",
-                  "필수",
-                  "등급",
-                  "P/S/H",
-                  "탐지 유형",
-                  "키워드",
-                ].map((h) => (
-                  <th key={h} className="px-3 py-2 text-left">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {detail.questions.map((q) => (
-                <tr key={q.id} className="border-b border-slate-800 align-top">
-                  <td className="px-3 py-2 text-slate-300">{q.questionNumber || "—"}</td>
-                  <td className="px-3 py-2 text-slate-300">{q.pageNumber ?? "—"}</td>
-                  <td className="max-w-md px-3 py-2 text-slate-100">
+          <section className="rounded-xl border border-slate-700 p-4">
+            <h3 className="text-sm font-semibold text-white">
+              개인정보·민감정보 문항
+            </h3>
+            <ul className="mt-2 space-y-1.5 text-sm text-slate-300">
+              {detail.questions
+                .filter(
+                  (q) =>
+                    q.hasPersonalInfo || q.hasSensitiveInfo || q.hasHighRiskInfo,
+                )
+                .slice(0, 8)
+                .map((q) => (
+                  <li key={q.id} className="rounded border border-slate-800 px-2 py-1.5">
+                    <span className="text-xs text-slate-500">
+                      {q.hasPersonalInfo ? "P" : "-"}/
+                      {q.hasSensitiveInfo ? "S" : "-"}/
+                      {q.hasHighRiskInfo ? "H" : "-"}
+                    </span>{" "}
                     {q.questionLabel}
-                  </td>
-                  <td className="px-3 py-2 text-slate-400">{q.questionType || "—"}</td>
-                  <td className="px-3 py-2 text-slate-400">
-                    {q.isRequired == null ? "—" : q.isRequired ? "Y" : "N"}
-                  </td>
-                  <td className="px-3 py-2 text-slate-300">
-                    {q.dataRiskLevel || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-slate-300">
-                    {q.hasPersonalInfo ? "P" : "-"}/
-                    {q.hasSensitiveInfo ? "S" : "-"}/
-                    {q.hasHighRiskInfo ? "H" : "-"}
-                  </td>
-                  <td className="px-3 py-2 text-slate-300">
-                    {q.categories.map((c) => c.categoryLabel).join(", ") || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-slate-500">
-                    {q.categories
-                      .map((c) => c.matchedKeyword)
-                      .filter(Boolean)
-                      .join(", ") || "—"}
-                  </td>
-                </tr>
+                  </li>
+                ))}
+              {detail.questions.every(
+                (q) =>
+                  !q.hasPersonalInfo && !q.hasSensitiveInfo && !q.hasHighRiskInfo,
+              ) ? (
+                <li className="text-slate-500">탐지된 P/S/H 문항이 없습니다.</li>
+              ) : null}
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-slate-700 p-4">
+            <h3 className="text-sm font-semibold text-white">고지/기관/연락처 상태</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {detail.complianceChecks.slice(0, 8).map((c) => (
+                <div
+                  key={c.id}
+                  className="rounded-lg border border-slate-800 px-3 py-2 text-sm"
+                >
+                  <p className="text-slate-200">{c.checkItem}</p>
+                  <p className="text-xs text-slate-500">
+                    {c.statusLabel || c.status}
+                    {c.evidenceNote ? ` · ${c.evidenceNote}` : ""}
+                  </p>
+                </div>
               ))}
-            </tbody>
-          </table>
+              {detail.complianceChecks.length === 0 ? (
+                <p className="text-sm text-slate-500">고지 점검 항목이 없습니다.</p>
+              ) : null}
+            </div>
+          </section>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setQuestionsOpen((v) => !v)}
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+            >
+              {questionsOpen ? "문항 전체 접기" : "문항 전체 펼치기"}
+            </button>
+            {questionsOpen ? (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-700">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-slate-700 text-xs text-slate-400">
+                    <tr>
+                      {["번호", "문항", "P/S/H", "등급"].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.questions.map((q) => (
+                      <tr key={q.id} className="border-b border-slate-800">
+                        <td className="px-3 py-2 text-slate-400">
+                          {q.questionNumber || "—"}
+                        </td>
+                        <td className="max-w-md px-3 py-2 text-slate-100">
+                          {q.questionLabel}
+                        </td>
+                        <td className="px-3 py-2 text-slate-300">
+                          {q.hasPersonalInfo ? "P" : "-"}/
+                          {q.hasSensitiveInfo ? "S" : "-"}/
+                          {q.hasHighRiskInfo ? "H" : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-400">
+                          {q.dataRiskLevel || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+
+          {detail.performance ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+              <button
+                type="button"
+                onClick={() => setTechOpen((v) => !v)}
+                className="text-sm font-semibold text-white"
+              >
+                기술정보 {techOpen ? "▾" : "▸"}
+              </button>
+              {techOpen ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Meta
+                    label="extractionMode"
+                    value={detail.performance.extractionMode}
+                  />
+                  <Meta
+                    label="browserUsed"
+                    value={detail.performance.browserUsed ? "true" : "false"}
+                  />
+                  <Meta
+                    label="totalDurationMs"
+                    value={detail.performance.totalDurationMs}
+                  />
+                  <Meta
+                    label="extractDurationMs"
+                    value={detail.performance.extractDurationMs}
+                  />
+                  <Meta
+                    label="analysisDurationMs"
+                    value={detail.performance.analysisDurationMs}
+                  />
+                  <Meta
+                    label="saveDurationMs"
+                    value={detail.performance.saveDurationMs}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {tab === "증빙자료" ? (
+      {tab === "증거" ? (
         <div className="space-y-5">
           {detail.captureJobs.length > 0 ? (
             detail.captureJobs.map((job) => (
@@ -559,148 +560,149 @@ export function AdminCaseDetailView({
         </div>
       ) : null}
 
-      {tab === "원본 진단 JSON" ? (
-        <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setJsonOpen((v) => !v)}
-              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
-            >
-              {jsonOpen ? "접기" : "펼치기"}
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                await navigator.clipboard.writeText(reportJsonText);
-                setMessage("report_json을 복사했습니다.");
-              }}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-white"
-            >
-              복사
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            관리자·개발 검수용입니다. 공개 API에는 포함되지 않습니다.
-          </p>
-          {jsonOpen ? (
-            <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-black/40 p-3 text-xs text-slate-300">
-              {reportJsonText || "(report_json 없음)"}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
-
-      {tab === "검토 처리" ? (
-        <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-          <p className="text-sm text-slate-400">
-            법률 확정 표현을 피하고, 위반 소지 / 개선 권고 / 추가 확인 필요로
-            기록하세요.
-          </p>
-          <label className="block text-sm text-slate-300">
-            검토 상태
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
-              value={reviewStatus}
-              onChange={(e) => setReviewStatus(e.target.value as ReviewStatus)}
-            >
-              {["none", "pending", "in_review", "resolved", "dismissed"].map(
-                (v) => (
+      {tab === "검토·공개" ? (
+        <div className="space-y-6">
+          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
+            <h3 className="text-sm font-semibold text-white">검토 처리</h3>
+            <p className="text-sm text-slate-400">
+              법률 확정 표현을 피하고, 위반 소지 / 개선 권고 / 추가 확인 필요로
+              기록하세요.
+            </p>
+            <label className="block text-sm text-slate-300">
+              검토 상태
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                value={reviewStatus}
+                onChange={(e) => setReviewStatus(e.target.value as ReviewStatus)}
+              >
+                {["none", "pending", "in_review", "resolved", "dismissed"].map(
+                  (v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label className="block text-sm text-slate-300">
+              조치 결과 (outcome)
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                value={outcome}
+                onChange={(e) =>
+                  setOutcome((e.target.value || "") as ReviewOutcome | "")
+                }
+              >
+                <option value="">(선택 안 함)</option>
+                {[
+                  "needs_more_info",
+                  "improvement_recommended",
+                  "deficiency_suspected",
+                  "violation_risk",
+                  "no_action",
+                  "dismissed",
+                ].map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
-                ),
-              )}
-            </select>
-          </label>
-          <label className="block text-sm text-slate-300">
-            조치 결과 (outcome)
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
-              value={outcome}
-              onChange={(e) =>
-                setOutcome((e.target.value || "") as ReviewOutcome | "")
-              }
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm text-slate-300">
+              검토 메모
+              <textarea
+                className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                value={reviewerNote}
+                onChange={(e) => setReviewerNote(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm text-slate-300">
+              해결 메모
+              <textarea
+                className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                value={resolutionNote}
+                onChange={(e) => setResolutionNote(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={saveReview}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
             >
-              <option value="">(선택 안 함)</option>
-              {[
-                "needs_more_info",
-                "improvement_recommended",
-                "deficiency_suspected",
-                "violation_risk",
-                "no_action",
-                "dismissed",
-              ].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm text-slate-300">
-            검토 메모
-            <textarea
-              className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
-              value={reviewerNote}
-              onChange={(e) => setReviewerNote(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm text-slate-300">
-            해결 메모
-            <textarea
-              className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
-              value={resolutionNote}
-              onChange={(e) => setResolutionNote(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={saveReview}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
-          >
-            검토 상태 저장
-          </button>
-        </div>
-      ) : null}
+              검토 상태 저장
+            </button>
+          </div>
 
-      {tab === "공개 처리" ? (
-        <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-          <ul className="space-y-1 text-sm text-slate-400">
-            <li>private: 내부 전용</li>
-            <li>aggregate_only: 공개 통계에만 포함</li>
-            <li>public_anonymized: 익명 사례로 공개 가능</li>
-            <li>public_named: 기관명 포함 공개 가능 (검토 완료 후)</li>
-            <li>archived: 보관/제외</li>
-          </ul>
-          <label className="block text-sm text-slate-300">
-            공개 상태
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
-              value={publicationStatus}
-              onChange={(e) =>
-                setPublicationStatus(e.target.value as PublicationStatus)
-              }
+          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
+            <h3 className="text-sm font-semibold text-white">공개 처리</h3>
+            <ul className="space-y-1 text-sm text-slate-400">
+              <li>private: 내부 전용</li>
+              <li>aggregate_only: 공개 통계에만 포함</li>
+              <li>public_anonymized: 익명 사례로 공개 가능</li>
+              <li>public_named: 기관명 포함 공개 가능 (검토 완료 후)</li>
+              <li>archived: 보관/제외</li>
+            </ul>
+            <label className="block text-sm text-slate-300">
+              공개 상태
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                value={publicationStatus}
+                onChange={(e) =>
+                  setPublicationStatus(e.target.value as PublicationStatus)
+                }
+              >
+                {[
+                  "private",
+                  "aggregate_only",
+                  "public_anonymized",
+                  "public_named",
+                  "archived",
+                ].map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => savePublication(false)}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
             >
-              {[
-                "private",
-                "aggregate_only",
-                "public_anonymized",
-                "public_named",
-                "archived",
-              ].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => savePublication(false)}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
-          >
-            공개 상태 저장
-          </button>
+              공개 상태 저장
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4">
+            <h3 className="text-sm font-semibold text-white">원본 진단 JSON</h3>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setJsonOpen((v) => !v)}
+                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+              >
+                {jsonOpen ? "접기" : "펼치기"}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(reportJsonText);
+                  setMessage("report_json을 복사했습니다.");
+                }}
+                className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-white"
+              >
+                복사
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              관리자·개발 검수용입니다. 공개 API에는 포함되지 않습니다.
+            </p>
+            {jsonOpen ? (
+              <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-black/40 p-3 text-xs text-slate-300">
+                {reportJsonText || "(report_json 없음)"}
+              </pre>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

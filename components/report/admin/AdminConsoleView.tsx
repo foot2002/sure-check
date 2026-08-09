@@ -181,9 +181,49 @@ export function AdminConsoleView({
         </section>
       ) : null}
 
+      {data?.cases?.length ? (
+        <section className="mb-5 rounded-xl border border-rose-500/30 bg-rose-950/20 p-4">
+          <h2 className="text-sm font-semibold text-rose-100">오늘 꼭 볼 설문</h2>
+          <p className="mt-1 text-xs text-rose-100/70">
+            Critical/High · 민감정보 · 공공부문 확인 필요 건을 개인정보 위험
+            기준으로 우선 표시합니다. (시스템 이상과 분리)
+          </p>
+          <ul className="mt-3 space-y-2">
+            {data.cases
+              .filter((row) => {
+                const risk = (row.overallRiskLevel || "").toLowerCase();
+                const isRisk = risk === "critical" || risk === "high";
+                const sensitive = row.hasSensitiveInfo || row.hasHighRiskInfo;
+                const publicNeed =
+                  row.publicPrivateType === "public" && isRisk;
+                return isRisk || sensitive || publicNeed;
+              })
+              .slice(0, 8)
+              .map((row) => (
+                <li key={`priority-${row.id}`}>
+                  <Link
+                    href={`/report/admin/cases/${row.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-500/20 bg-slate-950/50 px-3 py-2 text-sm hover:bg-slate-900"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-slate-100">
+                      {row.operatorName || "기관 미확인"} ·{" "}
+                      {row.surveyTitle || "(제목 없음)"}
+                    </span>
+                    <span
+                      className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
+                    >
+                      {row.overallRiskLevel}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
+
       <form
         onSubmit={applyFilters}
-        className="mb-5 grid gap-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4 md:grid-cols-3 lg:grid-cols-4"
+        className="sticky top-0 z-10 mb-5 grid gap-3 rounded-xl border border-slate-700 bg-slate-950/95 p-4 backdrop-blur md:grid-cols-3 lg:grid-cols-4"
       >
         {[
           {
@@ -362,14 +402,26 @@ export function AdminConsoleView({
             </tr>
           </thead>
           <tbody>
-            {(data?.cases || []).map((row) => (
-              <tr key={row.id} className="border-b border-slate-800/80">
+            {(data?.cases || []).map((row) => {
+              const risk = (row.overallRiskLevel || "").toLowerCase();
+              const accent =
+                risk === "critical"
+                  ? "border-l-4 border-l-rose-500"
+                  : risk === "high"
+                    ? "border-l-4 border-l-orange-500"
+                    : "border-l-4 border-l-transparent";
+              return (
+              <tr
+                key={row.id}
+                className={`cursor-pointer border-b border-slate-800/80 hover:bg-slate-800/40 ${accent}`}
+                onClick={() => router.push(`/report/admin/cases/${row.id}`)}
+              >
                 <td className="whitespace-nowrap px-3 py-2.5 text-slate-300">
                   {row.observedDateKst}
                 </td>
                 <td className="px-3 py-2.5">
                   <span
-                    className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
+                    className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${riskBadge(row.overallRiskLevel)}`}
                   >
                     {row.overallRiskLevel}
                   </span>
@@ -416,13 +468,15 @@ export function AdminConsoleView({
                 <td className="px-3 py-2.5">
                   <Link
                     href={`/report/admin/cases/${row.id}`}
+                    onClick={(e) => e.stopPropagation()}
                     className="rounded bg-teal-700/80 px-2 py-1 text-xs font-semibold text-white hover:bg-teal-600"
                   >
                     상세보기
                   </Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {data && data.cases.length === 0 ? (
               <tr>
                 <td colSpan={14} className="px-3 py-8 text-center text-slate-400">

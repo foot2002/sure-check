@@ -32,6 +32,7 @@ import {
   buildUserEvidenceCards,
   evidenceCardsToPrimaryReasons,
 } from "@/lib/reporting/buildUserEvidenceCards";
+import { buildKeyProblems } from "@/lib/reporting/buildKeyProblems";
 import {
   ENDED_SURVEY_HEADLINE,
   isEndedSurveyReport,
@@ -997,6 +998,7 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
     safetyType,
     operatorImprovement,
     userEvidenceCards,
+    keyProblems: ended ? [] : buildKeyProblems(report, emptySummary),
   };
 }
 
@@ -1106,5 +1108,6 @@ export function composeAudienceReport(report: ScanReport): AudienceReport {
     safetyType,
     operatorImprovement,
     userEvidenceCards,
+    keyProblems: buildKeyProblems(report, collectedDataSummary),
   };
 }

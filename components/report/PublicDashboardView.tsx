@@ -50,18 +50,42 @@ function KpiCard({
   label,
   value,
   hint,
+  interpretation,
 }: {
   label: string;
   value: string;
   hint?: string;
+  interpretation?: string;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
       <p className="text-xs font-semibold tracking-wide text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
       {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+      {interpretation ? (
+        <p className="mt-2 text-sm leading-snug text-slate-700">{interpretation}</p>
+      ) : null}
     </div>
   );
+}
+
+function interpretShare(rate: number | null | undefined, kind: string): string | undefined {
+  if (rate == null || Number.isNaN(rate)) return undefined;
+  const per10 = Math.max(0, Math.min(10, Math.round(rate / 10)));
+  if (kind === "pii") {
+    return rate >= 70
+      ? `분석 대상 대부분에서 개인정보 입력이 요구되고 있습니다. (분석 설문 10건 중 약 ${per10}건)`
+      : `분석된 설문 10건 중 약 ${per10}건에서 개인정보 입력이 요구되고 있습니다.`;
+  }
+  if (kind === "sensitive") {
+    return rate >= 40
+      ? "민감정보가 포함된 설문이 상당수 확인됩니다. 응답·운영 모두 추가 확인이 필요합니다."
+      : `분석된 설문 10건 중 약 ${per10}건에서 민감정보 관련 신호가 탐지되었습니다.`;
+  }
+  if (kind === "attention") {
+    return `분석된 설문 10건 중 약 ${per10}건에서 추가 확인이 필요한 개인정보 보호 이슈가 탐지되었습니다.`;
+  }
+  return undefined;
 }
 
 function noticeTone(rate: number | null): {
@@ -662,16 +686,25 @@ export function PublicDashboardView({ data }: { data: PublicDashboardPayload }) 
             label="개인정보 포함 비율"
             value={formatRate(data.summary.personalInfoRate)}
             hint={`${data.summary.personalInfoCount.toLocaleString("ko-KR")}건`}
+            interpretation={interpretShare(data.summary.personalInfoRate, "pii")}
           />
           <KpiCard
             label="민감정보 포함 비율"
             value={formatRate(data.summary.sensitiveInfoRate)}
             hint={`${data.summary.sensitiveInfoCount.toLocaleString("ko-KR")}건`}
+            interpretation={interpretShare(
+              data.summary.sensitiveInfoRate,
+              "sensitive",
+            )}
           />
           <KpiCard
             label="주의 필요 설문 비율"
             value={formatRate(data.summary.attentionNeededRate)}
             hint={`${data.summary.attentionNeededCount.toLocaleString("ko-KR")}건 · 거부·신고/안내확인/공식확인`}
+            interpretation={interpretShare(
+              data.summary.attentionNeededRate,
+              "attention",
+            )}
           />
           <KpiCard
             label="평균 개인정보 보호 점수"

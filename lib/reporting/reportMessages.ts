@@ -12,6 +12,7 @@ import {
 import type { SafetyTypeProfile } from "@/lib/reporting/safetyType";
 import type { OperatorImprovementReport } from "@/lib/reporting/buildOperatorImprovementReport";
 import type { UserEvidenceCard } from "@/lib/reporting/buildUserEvidenceCards";
+import type { KeyProblem } from "@/lib/reporting/buildKeyProblems";
 
 export type {
   DecisionSummary,
@@ -195,6 +196,8 @@ export interface AudienceReport {
   operatorImprovement: OperatorImprovementReport;
   /** 사용자용 판단 핵심 근거 카드 (최대 4개) */
   userEvidenceCards: UserEvidenceCard[];
+  /** 리포트 최상단 핵심 문제 TOP 3 */
+  keyProblems: KeyProblem[];
 }
 
 export const RESPONDENT_DECISION_LABELS = VERDICT_LABELS;

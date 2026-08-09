@@ -42,14 +42,27 @@ function platformLabel(platform: string): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "active") return "응답가능";
-  if (status === "discovered") return "미확인";
-  if (status === "closed") return "응답종료";
-  if (status === "restricted") return "권한필요";
-  if (status === "unreachable") return "접속실패";
-  if (status === "invalid") return "비설문";
-  if (status === "ignored") return "제외";
-  return status;
+  if (status === "active") return "ACTIVE";
+  if (status === "discovered") return "DISCOVERED";
+  if (status === "closed") return "CLOSED";
+  if (status === "restricted") return "RESTRICTED";
+  if (status === "limited") return "LIMITED";
+  if (status === "completed") return "COMPLETED";
+  if (status === "unreachable") return "UNREACHABLE";
+  if (status === "invalid") return "INVALID";
+  if (status === "ignored") return "IGNORED";
+  return status.toUpperCase();
+}
+
+function statusBadgeClass(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "active") return "border-emerald-500/40 bg-emerald-500/15 text-emerald-100";
+  if (s === "closed") return "border-slate-500/40 bg-slate-500/20 text-slate-200";
+  if (s === "restricted" || s === "limited")
+    return "border-amber-500/40 bg-amber-500/15 text-amber-100";
+  if (s === "unreachable" || s === "invalid")
+    return "border-rose-500/40 bg-rose-500/15 text-rose-100";
+  return "border-slate-600 bg-slate-800 text-slate-200";
 }
 
 export function CollectorConsoleView({
@@ -891,19 +904,7 @@ export function CollectorConsoleView({
                         </Link>
                       ) : null}
                       <span
-                        className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${
-                          item.status === "active"
-                            ? "border-teal-500/40 text-teal-200"
-                            : item.status === "closed"
-                              ? "border-slate-500/50 text-slate-200"
-                              : item.status === "restricted"
-                                ? "border-amber-500/40 text-amber-100"
-                                : item.status === "unreachable"
-                                  ? "border-orange-500/40 text-orange-100"
-                                  : item.status === "invalid"
-                                    ? "border-rose-500/40 text-rose-200"
-                                    : "border-amber-500/40 text-amber-100"
-                        }`}
+                        className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(item.status)}`}
                       >
                         {statusLabel(item.status)}
                       </span>
