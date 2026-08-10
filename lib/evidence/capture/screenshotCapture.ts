@@ -39,11 +39,16 @@ export function captureLabelFor(
   };
 }
 
-function isTargetClosedError(error: unknown): boolean {
+/** Recoverable CDP failures during screenshot (page/target gone mid-capture). */
+export function isRecoverableCdpError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /Target closed|Session closed|Protocol error.*[Ss]creenshot/i.test(
+  return /Target closed|Session closed|Execution context was destroyed|frame was detached|Protocol error.*[Ss]creenshot|Most likely the page has been closed/i.test(
     message,
   );
+}
+
+function isMoaformCaptureUrl(url: string): boolean {
+  return /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(url);
 }
 
 async function expandScrollRegions(
@@ -108,7 +113,10 @@ async function expandScrollRegions(
     .catch(() => undefined);
 }
 
-async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
+async function takeServerlessScreenshot(
+  page: Page,
+  options?: { evidenceOnly?: boolean },
+): Promise<Buffer> {
   const quality = CAPTURE_SERVERLESS_JPEG_QUALITY;
   // Evidence-first: viewport JPEG first (usable proof), then optional fullPage.
   // Blind fullPage-first often closes Chromium on long SPA shells before any
@@ -116,15 +124,22 @@ async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
   const attempts: Array<{
     fullPage: boolean;
     captureBeyondViewport: boolean;
-  }> = [
-    { fullPage: false, captureBeyondViewport: false },
-    { fullPage: true, captureBeyondViewport: false },
-  ];
+  }> = options?.evidenceOnly
+    ? [{ fullPage: false, captureBeyondViewport: false }]
+    : [
+        { fullPage: false, captureBeyondViewport: false },
+        { fullPage: true, captureBeyondViewport: false },
+      ];
 
   let lastError: unknown;
   let viewportBuffer: Buffer | null = null;
   for (const opts of attempts) {
     try {
+      if (page.isClosed()) {
+        throw new Error(
+          "Protocol error (Page.captureScreenshot): Session closed. Most likely the page has been closed.",
+        );
+      }
       const raw = await page.screenshot({
         type: "jpeg",
         quality,
@@ -140,7 +155,7 @@ async function takeServerlessScreenshot(page: Page): Promise<Buffer> {
       return buffer;
     } catch (error) {
       lastError = error;
-      if (isTargetClosedError(error)) {
+      if (isRecoverableCdpError(error)) {
         if (viewportBuffer) return viewportBuffer;
         throw error;
       }
@@ -158,18 +173,28 @@ export async function captureFullPage(
   page: Page,
   pageNo: number,
   mode: CaptureMode = "safe_public_only",
+  options?: { evidenceOnly?: boolean },
 ): Promise<CaptureScreenshot> {
   const serverless = isServerlessCaptureRuntime();
   const ext = serverless ? "jpg" : "png";
   const { label, fileName } = captureLabelFor(pageNo, mode, ext);
   const capturedAt = new Date();
+  const earlyUrl = page.isClosed() ? "" : page.url();
+  const moaform = isMoaformCaptureUrl(earlyUrl);
 
   // Hangul glyphs are missing on serverless Chromium unless we inject fonts.
-  // Skip the global !important font override until after Google Forms nav is
-  // resolved — capture still needs glyphs, but avoid collapsing Material buttons
-  // before the orchestrator has re-checked Next.
-  await applyKoreanFontsToPage(page);
-  await expandScrollRegions(page, serverless);
+  // Moaform already receives fonts in gotoSurveyPage; re-injecting + expanding
+  // scroll shells on answer.moaform.com SPAs can close @sparticuz/chromium
+  // before the first viewport JPEG lands.
+  if (!(serverless && moaform)) {
+    await applyKoreanFontsToPage(page);
+  }
+  if (!(serverless && moaform)) {
+    await expandScrollRegions(page, serverless);
+  } else {
+    // Keep top-of-form evidence stable: scroll to origin only.
+    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
+  }
   // Brief settle after expand so layout/lazy nodes finish painting.
   await page
     .evaluate(
@@ -183,7 +208,9 @@ export async function captureFullPage(
     .catch(() => undefined);
 
   const buffer = serverless
-    ? await takeServerlessScreenshot(page)
+    ? await takeServerlessScreenshot(page, {
+        evidenceOnly: options?.evidenceOnly || moaform,
+      })
     : Buffer.from(
         await page.screenshot({
           type: "png",

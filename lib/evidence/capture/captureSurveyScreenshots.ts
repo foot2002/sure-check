@@ -45,7 +45,10 @@ import {
   gotoSurveyPage,
   prepareCapturePage,
 } from "@/lib/evidence/capture/pageReadiness";
-import { captureFullPage } from "@/lib/evidence/capture/screenshotCapture";
+import {
+  captureFullPage,
+  isRecoverableCdpError,
+} from "@/lib/evidence/capture/screenshotCapture";
 import {
   assertCaptureUrlSafe,
   isCaptureUrlSafeAfterNavigation,
@@ -220,17 +223,52 @@ async function runSafePublicCapture(input: {
       );
     }
 
+    let activePage = page;
+    let sessionRecovered = false;
+
+    const captureShotWithRecovery = async (
+      pageNo: number,
+    ): Promise<CaptureScreenshot> => {
+      try {
+        return await captureFullPage(activePage, pageNo, mode);
+      } catch (error) {
+        if (!isRecoverableCdpError(error) || sessionRecovered) {
+          throw error;
+        }
+        sessionRecovered = true;
+        partial.limitations.push(
+          "브라우저 세션이 끊겨 공개 화면을 1회 재접속한 뒤 증거 캡처를 재시도했습니다.",
+        );
+        if (!browser) throw error;
+        await activePage.close().catch(() => undefined);
+        activePage = await browser.newPage();
+        await activePage.setViewport(CAPTURE_VIEWPORT);
+        await prepareCapturePage(activePage);
+        const reloaded = await gotoSurveyPage(
+          activePage,
+          safety.normalizedUrl!,
+        );
+        if (!reloaded.ok) {
+          throw error;
+        }
+        // Evidence-only viewport shot — avoid fullPage on a just-recovered SPA.
+        return await captureFullPage(activePage, pageNo, mode, {
+          evidenceOnly: true,
+        });
+      }
+    };
+
     for (let pageNo = 1; pageNo <= CAPTURE_MAX_PAGES; pageNo += 1) {
-      const shot = await captureFullPage(page, pageNo, mode);
+      const shot = await captureShotWithRecovery(pageNo);
       partial.screenshots.push(shot);
 
-      const submitVisible = await detectSubmitButtonVisible(page);
-      const nextAvailable = await markSafeNextButton(page);
+      const submitVisible = await detectSubmitButtonVisible(activePage);
+      const nextAvailable = await markSafeNextButton(activePage);
 
       if (submitVisible && !nextAvailable) {
         partial.pageMetas.push(
           await buildPageMeta(
-            page,
+            activePage,
             pageNo,
             shot,
             { used: false, types: [] },
@@ -243,7 +281,7 @@ async function runSafePublicCapture(input: {
 
       partial.pageMetas.push(
         await buildPageMeta(
-          page,
+          activePage,
           pageNo,
           shot,
           { used: false, types: [] },
@@ -251,7 +289,7 @@ async function runSafePublicCapture(input: {
         ),
       );
 
-      const nav = await clickSafeNext(page);
+      const nav = await clickSafeNext(activePage);
       if (nav === "none" || nav === "blocked") {
         if (nav === "blocked") {
           partial.limitations.push(
@@ -266,7 +304,7 @@ async function runSafePublicCapture(input: {
         break;
       }
 
-      const navOk = await isCaptureUrlSafeAfterNavigation(page.url());
+      const navOk = await isCaptureUrlSafeAfterNavigation(activePage.url());
       if (!navOk) {
         partial.limitations.push(
           "다음 페이지 이동 후 URL 보안 검사를 통과하지 못해 추가 캡처를 중단했습니다.",
