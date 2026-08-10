@@ -110,7 +110,11 @@
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/internal/jobs/run-next",
+      "schedule": "30 22 * * *"
     }
   ]
 }
