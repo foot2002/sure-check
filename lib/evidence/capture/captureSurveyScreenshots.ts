@@ -47,6 +47,7 @@ import {
 } from "@/lib/evidence/capture/pageReadiness";
 import {
   captureFullPage,
+  captureMoaformServerlessFirstPaint,
   isRecoverableCdpError,
 } from "@/lib/evidence/capture/screenshotCapture";
 import {
@@ -229,6 +230,77 @@ async function runSafePublicCapture(input: {
       return true;
     };
 
+    const isMoaformTarget = /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(
+      safety.normalizedUrl,
+    );
+
+    // Moaform SPA remounts kill CDP during readiness/evaluate on serverless.
+    // First-paint viewport JPEG on answers navigation — then stop (safe_public).
+    if (isMoaformTarget && isServerlessCaptureRuntime()) {
+      const pushMoaformEvidence = (shot: CaptureScreenshot) => {
+        partial.screenshots.push(shot);
+        partial.pageMetas.push({
+          pageNumber: 1,
+          pageTitle: shot.pageTitle,
+          capturedUrl: shot.capturedUrl,
+          capturedAt: shot.capturedAt,
+          screenshotFileName: shot.fileName,
+          detectedQuestions: [],
+          visibleQuestions: [],
+          personalInfoQuestions: [],
+          sensitiveInfoQuestions: [],
+          highRiskQuestions: [],
+          temporaryAnswersUsed: false,
+          temporaryAnswersUsedAfterCapture: false,
+          temporaryAnswerTypes: [],
+          finalSubmitDetected: false,
+          finalSubmitClicked: false,
+        });
+        partial.limitations.push(
+          limitationNoMorePages(partial.screenshots.length),
+        );
+      };
+
+      try {
+        const shot = await captureMoaformServerlessFirstPaint(
+          activePage,
+          safety.normalizedUrl,
+          1,
+          mode,
+        );
+        pushMoaformEvidence(shot);
+        return finalize(mode, "partial", partial, startedAt);
+      } catch (firstErr) {
+        if (!isRecoverableCdpError(firstErr)) {
+          throw firstErr;
+        }
+        sessionRecovered = true;
+        partial.limitations.push(
+          "브라우저 세션이 끊겨 공개 화면을 1회 재접속한 뒤 증거 캡처를 재시도했습니다.",
+        );
+        await activePage.close().catch(() => undefined);
+        if (!browserStillUp()) {
+          await activeBrowser.close().catch(() => undefined);
+          activeBrowser = await launchCaptureBrowser();
+          browser = activeBrowser;
+          partial.limitations.push(
+            "브라우저 프로세스가 종료되어 캡처 브라우저를 1회 재기동했습니다.",
+          );
+        }
+        activePage = await activeBrowser.newPage();
+        await activePage.setViewport(CAPTURE_VIEWPORT);
+        await prepareCapturePage(activePage);
+        const shot = await captureMoaformServerlessFirstPaint(
+          activePage,
+          safety.normalizedUrl,
+          1,
+          mode,
+        );
+        pushMoaformEvidence(shot);
+        return finalize(mode, "partial", partial, startedAt);
+      }
+    }
+
     const reopenFreshPage = async (): Promise<void> => {
       await activePage.close().catch(() => undefined);
       if (!browserStillUp()) {
@@ -248,7 +320,9 @@ async function runSafePublicCapture(input: {
       pageNo: number,
     ): Promise<CaptureScreenshot> => {
       try {
-        return await captureFullPage(activePage, pageNo, mode);
+        return await captureFullPage(activePage, pageNo, mode, {
+          surveyUrl: safety.normalizedUrl!,
+        });
       } catch (error) {
         if (!isRecoverableCdpError(error) || sessionRecovered) {
           throw error;
@@ -283,6 +357,7 @@ async function runSafePublicCapture(input: {
         }
         return await captureFullPage(activePage, pageNo, mode, {
           evidenceOnly: true,
+          surveyUrl: safety.normalizedUrl!,
         });
       }
     };

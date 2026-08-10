@@ -189,20 +189,29 @@ export async function captureFullPage(
   page: Page,
   pageNo: number,
   mode: CaptureMode = "safe_public_only",
-  options?: { evidenceOnly?: boolean },
+  options?: { evidenceOnly?: boolean; surveyUrl?: string },
 ): Promise<CaptureScreenshot> {
   const serverless = isServerlessCaptureRuntime();
   const ext = serverless ? "jpg" : "png";
   const { label, fileName } = captureLabelFor(pageNo, mode, ext);
   const capturedAt = new Date();
-  const earlyUrl = page.isClosed() ? "" : page.url();
-  const moaform = isMoaformCaptureUrl(earlyUrl);
+  let earlyUrl = "";
+  try {
+    earlyUrl = page.isClosed() ? "" : page.url();
+  } catch {
+    earlyUrl = "";
+  }
+  const moaform =
+    isMoaformCaptureUrl(earlyUrl) ||
+    isMoaformCaptureUrl(options?.surveyUrl || "");
+  const skipEvaluatePrep =
+    serverless && (moaform || Boolean(options?.evidenceOnly));
 
   // Hangul glyphs are missing on serverless Chromium unless we inject fonts.
   // Moaform answer.moaform.com remounts frames on serverless — any evaluate
   // (fonts / scroll expand / rAF settle) before the first JPEG can detach the
   // CDP session. Skip all of that and shoot the viewport immediately.
-  if (!(serverless && moaform)) {
+  if (!skipEvaluatePrep) {
     await applyKoreanFontsToPage(page);
     await expandScrollRegions(page, serverless);
     // Brief settle after expand so layout/lazy nodes finish painting.
@@ -235,9 +244,9 @@ export async function captureFullPage(
   // good Page.captureScreenshot — treat that as empty title, keep the JPEG.
   let pageUrl = "";
   try {
-    pageUrl = page.isClosed() ? earlyUrl : page.url();
+    pageUrl = page.isClosed() ? earlyUrl || options?.surveyUrl || "" : page.url();
   } catch {
-    pageUrl = earlyUrl;
+    pageUrl = earlyUrl || options?.surveyUrl || "";
   }
   const platform = /docs\.google\.com\/forms|forms\.gle/i.test(pageUrl)
     ? ("google_forms" as const)
@@ -273,5 +282,115 @@ export async function captureFullPage(
     mode,
     sectionType: pageNo === 1 ? "survey_top" : "page_body",
     platform,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Moaform on @sparticuz/chromium: start→gateway→answers remounts the main
+ * frame and kills evaluate/screenshot if we wait for full readiness.
+ * Shoot a viewport JPEG on the first answers navigation (and once after
+ * goto) without any page.evaluate.
+ */
+export async function captureMoaformServerlessFirstPaint(
+  page: Page,
+  surveyUrl: string,
+  pageNo: number,
+  mode: CaptureMode = "safe_public_only",
+): Promise<CaptureScreenshot> {
+  const quality = CAPTURE_SERVERLESS_JPEG_QUALITY;
+  const { label, fileName } = captureLabelFor(pageNo, mode, "jpg");
+  const capturedAt = new Date();
+  const state: { buffer: Buffer | null; capturedUrl: string } = {
+    buffer: null,
+    capturedUrl: surveyUrl,
+  };
+
+  const tryShot = async (): Promise<void> => {
+    if (state.buffer || page.isClosed()) return;
+    try {
+      const viewport = page.viewport() || CAPTURE_SERVERLESS_VIEWPORT;
+      const raw = await page.screenshot({
+        type: "jpeg",
+        quality,
+        clip: {
+          x: 0,
+          y: 0,
+          width: Math.max(1, viewport.width),
+          height: Math.max(1, viewport.height),
+        },
+        captureBeyondViewport: false,
+      });
+      state.buffer = Buffer.from(raw);
+      try {
+        if (!page.isClosed()) {
+          state.capturedUrl = page.url() || state.capturedUrl;
+        }
+      } catch {
+        // keep surveyUrl
+      }
+    } catch {
+      // remount race — caller may retry
+    }
+  };
+
+  const onNavigated = (frame: {
+    url: () => string;
+    parentFrame: () => unknown;
+  }) => {
+    if (frame.parentFrame()) return;
+    const u = frame.url();
+    if (
+      /answer\.moaform\.com\/answers\//i.test(u) ||
+      /answer\.moaform\.com\/.*\/(start|gateway)/i.test(u)
+    ) {
+      void sleep(280).then(() => tryShot());
+    }
+  };
+
+  page.on("framenavigated", onNavigated as never);
+  try {
+    await page.goto(surveyUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 12_000,
+    });
+    await sleep(500);
+    await tryShot();
+    if (!state.buffer) {
+      await sleep(900);
+      await tryShot();
+    }
+  } finally {
+    page.off("framenavigated", onNavigated as never);
+  }
+
+  const evidence = state.buffer;
+  if (!evidence || evidence.byteLength < 64) {
+    throw new Error(
+      "Protocol error (Page.captureScreenshot): Session closed. Most likely the page has been closed.",
+    );
+  }
+
+  return {
+    id: `auto_screenshot_${String(pageNo).padStart(2, "0")}`,
+    label,
+    fileName,
+    mimeType: "image/jpeg",
+    buffer: evidence,
+    capturedAt: capturedAt.toISOString(),
+    capturedAtKst: formatKstDateTime(capturedAt),
+    capturedUrl: state.capturedUrl,
+    finalUrl: state.capturedUrl,
+    pageTitle: "Moaform",
+    viewport: { ...CAPTURE_SERVERLESS_VIEWPORT },
+    source: "auto_browser_capture",
+    size: evidence.byteLength,
+    pageNumber: pageNo,
+    mode,
+    sectionType: pageNo === 1 ? "survey_top" : "page_body",
+    platform: "moaform",
   };
 }
