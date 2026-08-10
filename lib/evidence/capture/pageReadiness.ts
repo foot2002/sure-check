@@ -189,11 +189,26 @@ export async function gotoSurveyPage(
         .catch(() => undefined);
     }
 
-    await scrollForLazyRender(page);
+    if (!(isMoaform && isServerlessCaptureRuntime())) {
+      await scrollForLazyRender(page);
+    } else {
+      await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
+    }
     await sleep(CAPTURE_SETTLE_MS);
 
     return { ok: true, status };
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      /Execution context|detached frame|Session closed|Target closed|Connection closed/i.test(
+        message,
+      )
+    ) {
+      return {
+        ok: false,
+        limitation: `상세: ${message.slice(0, 240)}`,
+      };
+    }
     return {
       ok: false,
       limitation: "설문 페이지 로딩 시간이 초과되었습니다.",

@@ -211,18 +211,6 @@ async function runSafePublicCapture(input: {
     await page.setViewport(CAPTURE_VIEWPORT);
     await prepareCapturePage(page);
 
-    const loaded = await gotoSurveyPage(page, safety.normalizedUrl);
-    if (!loaded.ok) {
-      if (loaded.limitation) partial.limitations.push(loaded.limitation);
-      return finalize(
-        mode,
-        "failed",
-        partial,
-        startedAt,
-        limitationCaptureFailed(loaded.limitation),
-      );
-    }
-
     let activePage = page;
     let activeBrowser = browser;
     let sessionRecovered = false;
@@ -241,6 +229,21 @@ async function runSafePublicCapture(input: {
       return true;
     };
 
+    const reopenFreshPage = async (): Promise<void> => {
+      await activePage.close().catch(() => undefined);
+      if (!browserStillUp()) {
+        await activeBrowser.close().catch(() => undefined);
+        activeBrowser = await launchCaptureBrowser();
+        browser = activeBrowser;
+        partial.limitations.push(
+          "브라우저 프로세스가 종료되어 캡처 브라우저를 1회 재기동했습니다.",
+        );
+      }
+      activePage = await activeBrowser.newPage();
+      await activePage.setViewport(CAPTURE_VIEWPORT);
+      await prepareCapturePage(activePage);
+    };
+
     const captureShotWithRecovery = async (
       pageNo: number,
     ): Promise<CaptureScreenshot> => {
@@ -254,18 +257,7 @@ async function runSafePublicCapture(input: {
         partial.limitations.push(
           "브라우저 세션이 끊겨 공개 화면을 1회 재접속한 뒤 증거 캡처를 재시도했습니다.",
         );
-        await activePage.close().catch(() => undefined);
-        if (!browserStillUp()) {
-          await activeBrowser.close().catch(() => undefined);
-          activeBrowser = await launchCaptureBrowser();
-          browser = activeBrowser;
-          partial.limitations.push(
-            "브라우저 프로세스가 종료되어 캡처 브라우저를 1회 재기동했습니다.",
-          );
-        }
-        activePage = await activeBrowser.newPage();
-        await activePage.setViewport(CAPTURE_VIEWPORT);
-        await prepareCapturePage(activePage);
+        await reopenFreshPage();
         const reloaded = await gotoSurveyPage(
           activePage,
           safety.normalizedUrl!,
@@ -273,12 +265,41 @@ async function runSafePublicCapture(input: {
         if (!reloaded.ok) {
           throw error;
         }
-        // Evidence-only viewport shot — avoid fullPage on a just-recovered SPA.
         return await captureFullPage(activePage, pageNo, mode, {
           evidenceOnly: true,
         });
       }
     };
+
+    // Initial goto may fail with detached-frame CDP errors on Moaform SPA
+    // remounts — recover once with a fresh browser/page before failing.
+    let loaded = await gotoSurveyPage(activePage, safety.normalizedUrl);
+    if (!loaded.ok) {
+      const gotoMsg = loaded.limitation || "";
+      if (
+        !sessionRecovered &&
+        /상세:.*(Execution context|detached frame|Session closed|Target closed|Connection closed)/i.test(
+          gotoMsg,
+        )
+      ) {
+        sessionRecovered = true;
+        partial.limitations.push(
+          "페이지 로딩 중 세션이 끊겨 공개 화면을 1회 재접속한 뒤 증거 캡처를 재시도했습니다.",
+        );
+        await reopenFreshPage();
+        loaded = await gotoSurveyPage(activePage, safety.normalizedUrl!);
+      }
+    }
+    if (!loaded.ok) {
+      if (loaded.limitation) partial.limitations.push(loaded.limitation);
+      return finalize(
+        mode,
+        "failed",
+        partial,
+        startedAt,
+        limitationCaptureFailed(loaded.limitation),
+      );
+    }
 
     for (let pageNo = 1; pageNo <= CAPTURE_MAX_PAGES; pageNo += 1) {
       const shot = await captureShotWithRecovery(pageNo);

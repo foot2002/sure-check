@@ -42,7 +42,7 @@ export function captureLabelFor(
 /** Recoverable CDP failures during screenshot (page/target gone mid-capture). */
 export function isRecoverableCdpError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /Target closed|Session closed|Connection closed|Browser\.(disconnected|close)|Execution context was destroyed|frame was detached|Protocol error.*[Ss]creenshot|Most likely the page has been closed|Navigating frame was detached/i.test(
+  return /Target closed|Session closed|Connection closed|Browser\.(disconnected|close)|Execution context was destroyed|Execution context is not available|frame was detached|detached frame|Protocol error.*[Ss]creenshot|Most likely the page has been closed|Navigating frame was detached/i.test(
     message,
   );
 }
