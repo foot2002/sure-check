@@ -77,6 +77,34 @@ async function columnExists(
   return true;
 }
 
+async function releaseSchemaCheckClaim(
+  table: "scan_jobs" | "capture_jobs",
+  row: { id?: string; attempt_count?: number | null } | null | undefined,
+): Promise<void> {
+  if (!row?.id) return;
+  const supabase = createSupabaseServerClient();
+  const attempt = Math.max(0, Number(row.attempt_count ?? 1) - 1);
+  await supabase
+    .from(table)
+    .update({
+      status: "pending",
+      locked_at: null,
+      locked_by: null,
+      last_heartbeat_at: null,
+      started_at: null,
+      attempt_count: attempt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id)
+    .eq("locked_by", "__schema_check__")
+    .eq("status", "running");
+}
+
+/**
+ * Probe RPC existence. claim_next_* actually claims a real queued row, so any
+ * accidental claim by the schema probe must be released immediately — otherwise
+ * captureConcurrency=1 blocks the entire capture drain.
+ */
 async function rpcExists(name: string): Promise<boolean> {
   const supabase = createSupabaseServerClient();
   if (name === "claim_scan_job_by_external_id") {
@@ -96,12 +124,22 @@ async function rpcExists(name: string): Promise<boolean> {
     );
   }
   if (name === "claim_next_scan_job" || name === "claim_next_capture_job") {
-    const { error } = await supabase.rpc(name, {
+    const { data, error } = await supabase.rpc(name, {
       p_worker_id: "__schema_check__",
       p_max_running: 1,
       p_stale_seconds: 30,
     });
-    if (!error) return true;
+    if (!error) {
+      const row = (Array.isArray(data) ? data[0] : data) as
+        | { id?: string; attempt_count?: number | null }
+        | null
+        | undefined;
+      await releaseSchemaCheckClaim(
+        name === "claim_next_capture_job" ? "capture_jobs" : "scan_jobs",
+        row,
+      );
+      return true;
+    }
     const msg = (error.message || "").toLowerCase();
     return !(
       msg.includes("could not find the function") ||

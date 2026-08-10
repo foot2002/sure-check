@@ -326,6 +326,9 @@ export async function recoverStaleCaptureJobs(
   ).toISOString();
   const supabase = createSupabaseServerClient();
   const now = new Date().toISOString();
+  // Only reclaim stuck *running* workers. Pending queue wait time must not be
+  // treated as timeout — with captureConcurrency=1 a backlog would otherwise
+  // self-destruct before workers can drain it.
   const { data, error } = await supabase
     .from("capture_jobs")
     .update({
@@ -337,7 +340,7 @@ export async function recoverStaleCaptureJobs(
       updated_at: now,
       final_submit_clicked: false,
     })
-    .in("status", ["pending", "running"])
+    .eq("status", "running")
     .lt("updated_at", cutoff)
     .select("id");
   if (error) {
