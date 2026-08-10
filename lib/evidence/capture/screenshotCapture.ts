@@ -140,12 +140,28 @@ async function takeServerlessScreenshot(
           "Protocol error (Page.captureScreenshot): Session closed. Most likely the page has been closed.",
         );
       }
-      const raw = await page.screenshot({
-        type: "jpeg",
-        quality,
-        fullPage: opts.fullPage,
-        captureBeyondViewport: opts.captureBeyondViewport,
-      });
+      const viewport = page.viewport();
+      const raw =
+        !opts.fullPage && viewport
+          ? await page.screenshot({
+              type: "jpeg",
+              quality,
+              // Explicit clip avoids some @sparticuz/chromium Session closed
+              // crashes on Moaform SPA shells during default viewport shots.
+              clip: {
+                x: 0,
+                y: 0,
+                width: Math.max(1, viewport.width),
+                height: Math.max(1, viewport.height),
+              },
+              captureBeyondViewport: false,
+            })
+          : await page.screenshot({
+              type: "jpeg",
+              quality,
+              fullPage: opts.fullPage,
+              captureBeyondViewport: opts.captureBeyondViewport,
+            });
       const buffer = Buffer.from(raw);
       if (!opts.fullPage) {
         viewportBuffer = buffer;

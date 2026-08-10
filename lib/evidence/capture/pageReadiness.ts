@@ -138,13 +138,21 @@ export async function gotoSurveyPage(
           : CAPTURE_SETTLE_MS,
     );
     // Defer Hangul injection for heavy SPAs — ~0.7MB CSS before paint can
-    // destabilize @sparticuz/chromium (esp. Naver Form #content shell).
+    // destabilize @sparticuz/chromium (esp. Naver Form #content shell and
+    // Moaform answer.moaform.com redirects on serverless).
     const isNaverForm = /form\.naver\.com/i.test(url);
-    if (!isGoogleForms && !isNaverForm) {
+    const isMoaform = /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(
+      url,
+    );
+    if (
+      !isGoogleForms &&
+      !isNaverForm &&
+      !(isMoaform && isServerlessCaptureRuntime())
+    ) {
       await applyKoreanFontsToPage(page);
     }
 
-    if (/moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(url)) {
+    if (isMoaform) {
       await page
         .waitForSelector("button.AnswerButton, form, [class*='question']", {
           timeout: 5_000,
