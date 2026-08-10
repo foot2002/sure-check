@@ -224,7 +224,22 @@ async function runSafePublicCapture(input: {
     }
 
     let activePage = page;
+    let activeBrowser = browser;
     let sessionRecovered = false;
+
+    const browserStillUp = () => {
+      const anyBrowser = activeBrowser as unknown as {
+        connected?: boolean;
+        isConnected?: () => boolean;
+      };
+      if (typeof anyBrowser.isConnected === "function") {
+        return anyBrowser.isConnected();
+      }
+      if (typeof anyBrowser.connected === "boolean") {
+        return anyBrowser.connected;
+      }
+      return true;
+    };
 
     const captureShotWithRecovery = async (
       pageNo: number,
@@ -239,9 +254,16 @@ async function runSafePublicCapture(input: {
         partial.limitations.push(
           "브라우저 세션이 끊겨 공개 화면을 1회 재접속한 뒤 증거 캡처를 재시도했습니다.",
         );
-        if (!browser) throw error;
         await activePage.close().catch(() => undefined);
-        activePage = await browser.newPage();
+        if (!browserStillUp()) {
+          await activeBrowser.close().catch(() => undefined);
+          activeBrowser = await launchCaptureBrowser();
+          browser = activeBrowser;
+          partial.limitations.push(
+            "브라우저 프로세스가 종료되어 캡처 브라우저를 1회 재기동했습니다.",
+          );
+        }
+        activePage = await activeBrowser.newPage();
         await activePage.setViewport(CAPTURE_VIEWPORT);
         await prepareCapturePage(activePage);
         const reloaded = await gotoSurveyPage(

@@ -144,11 +144,22 @@ export async function gotoSurveyPage(
       await applyKoreanFontsToPage(page);
     }
 
-    if (/moaform\.com|surveyl\.ink/i.test(url)) {
+    if (/moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(url)) {
       await page
-        .waitForSelector("button.AnswerButton", { timeout: 5_000 })
+        .waitForSelector("button.AnswerButton, form, [class*='question']", {
+          timeout: 5_000,
+        })
         .catch(() => undefined);
       await sleep(300);
+      // Moaform redirects start → gateway → answer SPA; a second idle wait
+      // reduces Session/Connection closed on the first serverless screenshot.
+      await page
+        .waitForNetworkIdle({
+          idleTime: 400,
+          timeout: isServerlessCaptureRuntime() ? 4_000 : 2_500,
+        })
+        .catch(() => undefined);
+      await sleep(isServerlessCaptureRuntime() ? 600 : 250);
     }
 
     if (isNaverForm) {
