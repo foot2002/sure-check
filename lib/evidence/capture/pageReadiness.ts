@@ -153,21 +153,31 @@ export async function gotoSurveyPage(
     }
 
     if (isMoaform) {
-      await page
-        .waitForSelector("button.AnswerButton, form, [class*='question']", {
-          timeout: 5_000,
-        })
-        .catch(() => undefined);
-      await sleep(300);
-      // Moaform redirects start → gateway → answer SPA; a second idle wait
-      // reduces Session/Connection closed on the first serverless screenshot.
-      await page
-        .waitForNetworkIdle({
-          idleTime: 400,
-          timeout: isServerlessCaptureRuntime() ? 4_000 : 2_500,
-        })
-        .catch(() => undefined);
-      await sleep(isServerlessCaptureRuntime() ? 600 : 250);
+      if (isServerlessCaptureRuntime()) {
+        // start → gateway → answers remounts frames. Prefer a short wall-clock
+        // settle over evaluate/network-idle, which often throw detached-frame
+        // on @sparticuz/chromium even when the answer page is still usable.
+        await page
+          .waitForSelector("button.AnswerButton, form, [class*='question']", {
+            timeout: 4_000,
+          })
+          .catch(() => undefined);
+        await sleep(900);
+      } else {
+        await page
+          .waitForSelector("button.AnswerButton, form, [class*='question']", {
+            timeout: 5_000,
+          })
+          .catch(() => undefined);
+        await sleep(300);
+        await page
+          .waitForNetworkIdle({
+            idleTime: 400,
+            timeout: 2_500,
+          })
+          .catch(() => undefined);
+        await sleep(250);
+      }
     }
 
     if (isNaverForm) {
@@ -191,8 +201,6 @@ export async function gotoSurveyPage(
 
     if (!(isMoaform && isServerlessCaptureRuntime())) {
       await scrollForLazyRender(page);
-    } else {
-      await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
     }
     await sleep(CAPTURE_SETTLE_MS);
 
@@ -204,6 +212,21 @@ export async function gotoSurveyPage(
         message,
       )
     ) {
+      // Moaform SPA remount: CDP may report detached frame during settle while
+      // the answer page is still open — allow screenshot to try once.
+      try {
+        if (
+          !page.isClosed() &&
+          /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(page.url())
+        ) {
+          await sleep(400);
+          if (!page.isClosed()) {
+            return { ok: true };
+          }
+        }
+      } catch {
+        // fall through to failure
+      }
       return {
         ok: false,
         limitation: `상세: ${message.slice(0, 240)}`,

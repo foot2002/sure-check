@@ -262,8 +262,24 @@ async function runSafePublicCapture(input: {
           activePage,
           safety.normalizedUrl!,
         );
+        // Even if readiness reported CDP detach, a live Moaform answer page
+        // can still yield a usable viewport JPEG — try evidence-only once.
         if (!reloaded.ok) {
-          throw error;
+          const stillOpen =
+            !activePage.isClosed() &&
+            browserStillUp() &&
+            /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(
+              (() => {
+                try {
+                  return activePage.url();
+                } catch {
+                  return "";
+                }
+              })(),
+            );
+          if (!stillOpen) {
+            throw error;
+          }
         }
         return await captureFullPage(activePage, pageNo, mode, {
           evidenceOnly: true,
@@ -291,14 +307,34 @@ async function runSafePublicCapture(input: {
       }
     }
     if (!loaded.ok) {
-      if (loaded.limitation) partial.limitations.push(loaded.limitation);
-      return finalize(
-        mode,
-        "failed",
-        partial,
-        startedAt,
-        limitationCaptureFailed(loaded.limitation),
-      );
+      // Soft-open: Moaform answer page may still be screenshot-ready.
+      const softOpen =
+        !activePage.isClosed() &&
+        browserStillUp() &&
+        /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(
+          (() => {
+            try {
+              return activePage.url();
+            } catch {
+              return "";
+            }
+          })(),
+        );
+      if (!softOpen) {
+        if (loaded.limitation) partial.limitations.push(loaded.limitation);
+        return finalize(
+          mode,
+          "failed",
+          partial,
+          startedAt,
+          limitationCaptureFailed(loaded.limitation),
+        );
+      }
+      if (loaded.limitation) {
+        partial.limitations.push(
+          "로딩 경고가 있었지만 공개 화면이 남아 증거 캡처를 시도합니다.",
+        );
+      }
     }
 
     for (let pageNo = 1; pageNo <= CAPTURE_MAX_PAGES; pageNo += 1) {

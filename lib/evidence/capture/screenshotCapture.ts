@@ -199,29 +199,24 @@ export async function captureFullPage(
   const moaform = isMoaformCaptureUrl(earlyUrl);
 
   // Hangul glyphs are missing on serverless Chromium unless we inject fonts.
-  // Moaform already receives fonts in gotoSurveyPage; re-injecting + expanding
-  // scroll shells on answer.moaform.com SPAs can close @sparticuz/chromium
-  // before the first viewport JPEG lands.
+  // Moaform answer.moaform.com remounts frames on serverless — any evaluate
+  // (fonts / scroll expand / rAF settle) before the first JPEG can detach the
+  // CDP session. Skip all of that and shoot the viewport immediately.
   if (!(serverless && moaform)) {
     await applyKoreanFontsToPage(page);
-  }
-  if (!(serverless && moaform)) {
     await expandScrollRegions(page, serverless);
-  } else {
-    // Keep top-of-form evidence stable: scroll to origin only.
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
+    // Brief settle after expand so layout/lazy nodes finish painting.
+    await page
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+              setTimeout(resolve, 120);
+            });
+          }),
+      )
+      .catch(() => undefined);
   }
-  // Brief settle after expand so layout/lazy nodes finish painting.
-  await page
-    .evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            setTimeout(resolve, 120);
-          });
-        }),
-    )
-    .catch(() => undefined);
 
   const buffer = serverless
     ? await takeServerlessScreenshot(page, {
@@ -235,14 +230,25 @@ export async function captureFullPage(
         }),
       );
 
-  const pageUrl = page.url();
+  // Metadata must never discard a successful screenshot buffer. Moaform SPA
+  // remounts often make page.title() throw "detached frame" right after a
+  // good Page.captureScreenshot — treat that as empty title, keep the JPEG.
+  let pageUrl = "";
+  try {
+    pageUrl = page.isClosed() ? earlyUrl : page.url();
+  } catch {
+    pageUrl = earlyUrl;
+  }
   const platform = /docs\.google\.com\/forms|forms\.gle/i.test(pageUrl)
     ? ("google_forms" as const)
     : /form\.naver\.com/i.test(pageUrl)
       ? ("naver_form" as const)
-      : /moaform\.com|surveyl\.ink/i.test(pageUrl)
+      : /moaform\.com|surveyl\.ink|answer\.moaform\.com/i.test(pageUrl)
         ? ("moaform" as const)
         : ("unknown" as const);
+  const pageTitle = await page
+    .title()
+    .catch(() => (moaform ? "Moaform" : ""));
 
   return {
     id:
@@ -257,7 +263,7 @@ export async function captureFullPage(
     capturedAtKst: formatKstDateTime(capturedAt),
     capturedUrl: pageUrl,
     finalUrl: pageUrl,
-    pageTitle: await page.title(),
+    pageTitle,
     viewport: {
       ...(serverless ? CAPTURE_SERVERLESS_VIEWPORT : CAPTURE_VIEWPORT),
     },
