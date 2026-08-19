@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import type { PublicationStatus, ReviewOutcome, ReviewStatus } from "@/lib/db/types";
+import { AdminOutreachSections } from "@/components/report/admin/AdminOutreachSections";
+import { AdminEvidenceDownloads } from "@/components/report/admin/AdminEvidenceDownloads";
+import {
+  formatDataCollectionSummary,
+  publicPrivateKo,
+  reviewStatusKo,
+  riskLabelKo,
+} from "@/lib/report/adminOutreach";
 
 const TABS = ["요약", "증거", "검토·공개"] as const;
 
@@ -17,13 +25,24 @@ function severityRank(severity: string): number {
   return 3;
 }
 
+function questionKindLabel(q: {
+  hasPersonalInfo: boolean;
+  hasSensitiveInfo: boolean;
+  hasHighRiskInfo: boolean;
+}): string {
+  if (q.hasHighRiskInfo) return "고위험정보";
+  if (q.hasSensitiveInfo) return "민감정보";
+  if (q.hasPersonalInfo) return "개인정보";
+  return "일반";
+}
+
 function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
-      <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="text-[11px] font-semibold tracking-wide text-slate-500">
         {label}
       </p>
-      <p className="mt-1 break-all text-sm text-slate-100">{value ?? "—"}</p>
+      <p className="mt-1 break-all text-sm text-slate-900">{value ?? "—"}</p>
     </div>
   );
 }
@@ -41,6 +60,12 @@ export function AdminCaseDetailView({
   const [techOpen, setTechOpen] = useState(false);
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const [namedWarningOpen, setNamedWarningOpen] = useState(false);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>(
     detail?.summary.reviewStatus || "pending",
@@ -139,12 +164,12 @@ export function AdminCaseDetailView({
   if (error || !detail) {
     return (
       <div className="mx-auto max-w-3xl px-5 py-16 text-center">
-        <p className="text-lg font-semibold text-white">
+        <p className="text-lg font-semibold text-slate-900">
           {error || "케이스를 찾을 수 없습니다."}
         </p>
         <Link
           href="/report/admin"
-          className="mt-4 inline-block text-sm text-teal-300 hover:underline"
+          className="mt-4 inline-block text-sm text-teal-800 hover:underline"
         >
           목록으로
         </Link>
@@ -158,24 +183,24 @@ export function AdminCaseDetailView({
     <div className="mx-auto max-w-[90rem] px-4 py-6 md:px-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/report/admin" className="text-sm text-teal-300 hover:underline">
+          <Link href="/report/admin" className="text-sm text-teal-800 hover:underline">
             ← 검토 큐
           </Link>
-          <h1 className="mt-2 text-2xl font-bold text-white">
+          <h1 className="mt-2 text-2xl font-bold text-slate-900">
             {s.surveyTitle || "(제목 없음)"}
           </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            {s.operatorName || "운영주체 미확인"} · {s.platform} · {s.overallRiskLevel}
+          <p className="mt-1 text-sm text-slate-600">
+            {s.operatorName || "운영주체 미확인"} · {publicPrivateKo(s.publicPrivateType)} · {riskLabelKo(s.overallRiskLevel)}
           </p>
         </div>
-        <div className="text-right text-xs text-slate-400">
-          <p>검토: {s.reviewStatus}</p>
+        <div className="text-right text-xs text-slate-500">
+          <p>검토: {reviewStatusKo(s.reviewStatus)}</p>
           <p>공개: {s.publicationStatus}</p>
         </div>
       </div>
 
       {message ? (
-        <div className="mb-4 rounded-lg border border-teal-500/30 bg-teal-950/40 px-3 py-2 text-sm text-teal-100">
+        <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900">
           {message}
         </div>
       ) : null}
@@ -188,8 +213,8 @@ export function AdminCaseDetailView({
             onClick={() => setTab(name)}
             className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
               tab === name
-                ? "bg-teal-600 text-white"
-                : "border border-slate-600 text-slate-300 hover:bg-slate-800"
+                ? "bg-teal-700 text-white"
+                : "border border-slate-200 text-slate-700 hover:bg-slate-50"
             }`}
           >
             {name}
@@ -199,35 +224,43 @@ export function AdminCaseDetailView({
 
       {tab === "요약" ? (
         <div className="space-y-5">
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+          <AdminOutreachSections detail={detail} onMessage={setMessage} />
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold tracking-wide text-slate-400">
+                <p className="text-xs font-semibold tracking-wide text-slate-500">
                   {s.operatorName || "운영주체 미확인"} · {s.platform} ·{" "}
-                  {s.publicPrivateType}
+                  {publicPrivateKo(s.publicPrivateType)}
                 </p>
-                <p className="mt-1 text-2xl font-bold text-white">
+                <p className="mt-1 text-2xl font-bold text-slate-900">
                   점수 {s.score == null ? "—" : s.score.toFixed(1)} ·{" "}
                   <span
                     className={
                       s.overallRiskLevel === "critical"
-                        ? "text-rose-300"
+                        ? "text-rose-700"
                         : s.overallRiskLevel === "high"
-                          ? "text-orange-300"
-                          : "text-amber-200"
+                          ? "text-orange-600"
+                          : "text-amber-600"
                     }
                   >
-                    {String(s.overallRiskLevel).toUpperCase()}
+                    {riskLabelKo(s.overallRiskLevel)}
                   </span>
                 </p>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-500">
                   {s.userDecisionLabel || "—"} · 상태 {s.diagnosisStatus || "—"}
                 </p>
               </div>
-              <div className="text-right text-sm text-slate-300">
-                <p>
-                  P/S/H {s.personalInfoQuestionCount}/{s.sensitiveQuestionCount}/
-                  {s.highRiskQuestionCount}
+              <div className="text-right text-sm text-slate-700">
+                <p className="whitespace-pre-line">
+                  {formatDataCollectionSummary({
+                    personalCount: s.personalInfoQuestionCount,
+                    sensitiveCount: s.sensitiveQuestionCount,
+                    highRiskCount: s.highRiskQuestionCount,
+                    hasPersonalInfo: s.hasPersonalInfo,
+                    hasSensitiveInfo: s.hasSensitiveInfo,
+                    hasHighRiskInfo: s.hasHighRiskInfo,
+                  })}
                 </p>
                 <p className="text-xs text-slate-500">
                   캡처 {s.captureStatus || "—"} · 증거 {s.evidenceCount}
@@ -239,17 +272,18 @@ export function AdminCaseDetailView({
                 href={s.surveyUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-3 inline-block break-all text-sm text-teal-300 hover:underline"
+                className="mt-3 inline-block break-all text-sm text-teal-800 hover:underline"
               >
                 {s.surveyUrl}
               </a>
             ) : null}
           </div>
 
-          <section className="rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-            <h3 className="text-sm font-semibold text-white">핵심 문제 TOP 3</h3>
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">핵심 문제 TOP 3</h3>
             <p className="mt-1 text-xs text-slate-500">
-              위반 확정이 아니라 위반 소지·미흡·확인 필요로 해석하세요.
+              자동진단 결과이며 위법 여부를 단정하지 않습니다. 위반 소지·미흡·확인
+              필요로 해석하세요.
             </p>
             <ol className="mt-3 space-y-2">
               {[...detail.findings]
@@ -258,13 +292,13 @@ export function AdminCaseDetailView({
                 .map((f, index) => (
                   <li
                     key={f.id}
-                    className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
                   >
-                    <p className="text-xs font-semibold text-slate-400">
+                    <p className="text-xs font-semibold text-slate-500">
                       {index + 1}. {f.severity.toUpperCase()}
                     </p>
-                    <p className="mt-0.5 font-medium text-slate-100">{f.title}</p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-0.5 font-medium text-slate-900">{f.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
                       {f.evidenceNote || f.description || "—"}
                     </p>
                   </li>
@@ -293,11 +327,11 @@ export function AdminCaseDetailView({
             </div>
           ) : null}
 
-          <section className="rounded-xl border border-slate-700 p-4">
-            <h3 className="text-sm font-semibold text-white">
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">
               개인정보·민감정보 문항
             </h3>
-            <ul className="mt-2 space-y-1.5 text-sm text-slate-300">
+            <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
               {detail.questions
                 .filter(
                   (q) =>
@@ -305,11 +339,9 @@ export function AdminCaseDetailView({
                 )
                 .slice(0, 8)
                 .map((q) => (
-                  <li key={q.id} className="rounded border border-slate-800 px-2 py-1.5">
+                  <li key={q.id} className="rounded border border-slate-100 px-2 py-1.5">
                     <span className="text-xs text-slate-500">
-                      {q.hasPersonalInfo ? "P" : "-"}/
-                      {q.hasSensitiveInfo ? "S" : "-"}/
-                      {q.hasHighRiskInfo ? "H" : "-"}
+                      {questionKindLabel(q)}
                     </span>{" "}
                     {q.questionLabel}
                   </li>
@@ -318,20 +350,20 @@ export function AdminCaseDetailView({
                 (q) =>
                   !q.hasPersonalInfo && !q.hasSensitiveInfo && !q.hasHighRiskInfo,
               ) ? (
-                <li className="text-slate-500">탐지된 P/S/H 문항이 없습니다.</li>
+                <li className="text-slate-500">탐지된 개인정보 문항이 없습니다.</li>
               ) : null}
             </ul>
           </section>
 
-          <section className="rounded-xl border border-slate-700 p-4">
-            <h3 className="text-sm font-semibold text-white">고지/기관/연락처 상태</h3>
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">고지/기관/연락처 상태</h3>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {detail.complianceChecks.slice(0, 8).map((c) => (
                 <div
                   key={c.id}
-                  className="rounded-lg border border-slate-800 px-3 py-2 text-sm"
+                  className="rounded-lg border border-slate-100 px-3 py-2 text-sm"
                 >
-                  <p className="text-slate-200">{c.checkItem}</p>
+                  <p className="text-slate-800">{c.checkItem}</p>
                   <p className="text-xs text-slate-500">
                     {c.statusLabel || c.status}
                     {c.evidenceNote ? ` · ${c.evidenceNote}` : ""}
@@ -348,16 +380,16 @@ export function AdminCaseDetailView({
             <button
               type="button"
               onClick={() => setQuestionsOpen((v) => !v)}
-              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-800"
             >
               {questionsOpen ? "문항 전체 접기" : "문항 전체 펼치기"}
             </button>
             {questionsOpen ? (
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-700">
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-full text-sm">
-                  <thead className="border-b border-slate-700 text-xs text-slate-400">
+                  <thead className="border-b border-slate-200 text-xs text-slate-500">
                     <tr>
-                      {["번호", "문항", "P/S/H", "등급"].map((h) => (
+                      {["번호", "문항", "수집 유형", "등급"].map((h) => (
                         <th key={h} className="px-3 py-2 text-left">
                           {h}
                         </th>
@@ -366,19 +398,17 @@ export function AdminCaseDetailView({
                   </thead>
                   <tbody>
                     {detail.questions.map((q) => (
-                      <tr key={q.id} className="border-b border-slate-800">
-                        <td className="px-3 py-2 text-slate-400">
+                      <tr key={q.id} className="border-b border-slate-100">
+                        <td className="px-3 py-2 text-slate-500">
                           {q.questionNumber || "—"}
                         </td>
-                        <td className="max-w-md px-3 py-2 text-slate-100">
+                        <td className="max-w-md px-3 py-2 text-slate-900">
                           {q.questionLabel}
                         </td>
-                        <td className="px-3 py-2 text-slate-300">
-                          {q.hasPersonalInfo ? "P" : "-"}/
-                          {q.hasSensitiveInfo ? "S" : "-"}/
-                          {q.hasHighRiskInfo ? "H" : "-"}
+                        <td className="px-3 py-2 text-slate-700">
+                          {questionKindLabel(q)}
                         </td>
-                        <td className="px-3 py-2 text-slate-400">
+                        <td className="px-3 py-2 text-slate-500">
                           {q.dataRiskLevel || "—"}
                         </td>
                       </tr>
@@ -390,11 +420,11 @@ export function AdminCaseDetailView({
           </div>
 
           {detail.performance ? (
-            <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <button
                 type="button"
                 onClick={() => setTechOpen((v) => !v)}
-                className="text-sm font-semibold text-white"
+                className="text-sm font-semibold text-slate-900"
               >
                 기술정보 {techOpen ? "▾" : "▸"}
               </button>
@@ -433,13 +463,14 @@ export function AdminCaseDetailView({
 
       {tab === "증거" ? (
         <div className="space-y-5">
+          <AdminEvidenceDownloads detail={detail} onMessage={setMessage} />
           {detail.captureJobs.length > 0 ? (
             detail.captureJobs.map((job) => (
               <div
                 key={job.id}
-                className="rounded-xl border border-slate-700 bg-slate-950/40 p-4"
+                className="rounded-xl border border-slate-200 bg-white p-4"
               >
-                <p className="mb-3 text-sm font-semibold text-slate-200">
+                <p className="mb-3 text-sm font-semibold text-slate-800">
                   캡처 작업 요약
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -459,7 +490,7 @@ export function AdminCaseDetailView({
                   <Meta label="중단 사유" value={job.stopReason || "—"} />
                 </div>
                 {job.finalSubmitClicked ? (
-                  <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
+                  <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                     주의: 이 캡처 작업에서 최종 제출 클릭 기록이 있습니다.
                     정상적인 증빙 캡처에서는 final_submit_clicked가 false여야
                     합니다.
@@ -468,24 +499,24 @@ export function AdminCaseDetailView({
               </div>
             ))
           ) : (
-            <div className="rounded-xl border border-slate-700 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
               연결된 캡처 작업(capture_jobs)이 없습니다.
             </div>
           )}
 
           {detail.evidenceFiles.length === 0 ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-4">
-              <p className="font-semibold text-amber-100">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+              <p className="font-semibold text-amber-900">
                 {detail.evidenceEmptyState.title}
               </p>
-              <p className="mt-2 text-sm text-amber-100/80">
+              <p className="mt-2 text-sm text-amber-800">
                 {detail.evidenceEmptyState.detail}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-700">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-700 text-xs text-slate-400">
+                <thead className="border-b border-slate-200 text-xs text-slate-500">
                   <tr>
                     {[
                       "유형",
@@ -505,25 +536,25 @@ export function AdminCaseDetailView({
                 </thead>
                 <tbody>
                   {detail.evidenceFiles.map((file) => (
-                    <tr key={file.id} className="border-b border-slate-800">
-                      <td className="px-3 py-2 text-slate-100">
+                    <tr key={file.id} className="border-b border-slate-100">
+                      <td className="px-3 py-2 text-slate-900">
                         {file.evidenceTypeLabel}
                       </td>
-                      <td className="max-w-[12rem] truncate px-3 py-2 text-slate-300">
+                      <td className="max-w-[12rem] truncate px-3 py-2 text-slate-700">
                         {file.label || "—"}
                       </td>
-                      <td className="px-3 py-2 text-slate-400">
+                      <td className="px-3 py-2 text-slate-500">
                         {file.pageNumber ?? "—"}
                       </td>
-                      <td className="px-3 py-2 text-slate-400">
+                      <td className="px-3 py-2 text-slate-500">
                         {file.retentionLevel}
                       </td>
-                      <td className="px-3 py-2 text-slate-400">
+                      <td className="px-3 py-2 text-slate-500">
                         {file.expiresAt
                           ? new Date(file.expiresAt).toLocaleString("ko-KR")
                           : "—"}
                       </td>
-                      <td className="px-3 py-2 text-slate-400">
+                      <td className="px-3 py-2 text-slate-500">
                         {file.byteSize == null
                           ? "—"
                           : `${Math.round(file.byteSize / 1024)} KB`}
@@ -545,7 +576,7 @@ export function AdminCaseDetailView({
                           <button
                             type="button"
                             onClick={() => copyHash(file.sha256)}
-                            className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-300"
+                            className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
                           >
                             해시 복사
                           </button>
@@ -562,16 +593,16 @@ export function AdminCaseDetailView({
 
       {tab === "검토·공개" ? (
         <div className="space-y-6">
-          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-            <h3 className="text-sm font-semibold text-white">검토 처리</h3>
-            <p className="text-sm text-slate-400">
+          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">검토 처리</h3>
+            <p className="text-sm text-slate-500">
               법률 확정 표현을 피하고, 위반 소지 / 개선 권고 / 추가 확인 필요로
               기록하세요.
             </p>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               검토 상태
               <select
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={reviewStatus}
                 onChange={(e) => setReviewStatus(e.target.value as ReviewStatus)}
               >
@@ -584,10 +615,10 @@ export function AdminCaseDetailView({
                 )}
               </select>
             </label>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               조치 결과 (outcome)
               <select
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={outcome}
                 onChange={(e) =>
                   setOutcome((e.target.value || "") as ReviewOutcome | "")
@@ -608,18 +639,18 @@ export function AdminCaseDetailView({
                 ))}
               </select>
             </label>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               검토 메모
               <textarea
-                className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={reviewerNote}
                 onChange={(e) => setReviewerNote(e.target.value)}
               />
             </label>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               해결 메모
               <textarea
-                className="mt-1 min-h-24 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={resolutionNote}
                 onChange={(e) => setResolutionNote(e.target.value)}
               />
@@ -627,25 +658,25 @@ export function AdminCaseDetailView({
             <button
               type="button"
               onClick={saveReview}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+              className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
             >
               검토 상태 저장
             </button>
           </div>
 
-          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-            <h3 className="text-sm font-semibold text-white">공개 처리</h3>
-            <ul className="space-y-1 text-sm text-slate-400">
+          <div className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">공개 처리</h3>
+            <ul className="space-y-1 text-sm text-slate-500">
               <li>private: 내부 전용</li>
               <li>aggregate_only: 공개 통계에만 포함</li>
               <li>public_anonymized: 익명 사례로 공개 가능</li>
               <li>public_named: 기관명 포함 공개 가능 (검토 완료 후)</li>
               <li>archived: 보관/제외</li>
             </ul>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               공개 상태
               <select
-                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={publicationStatus}
                 onChange={(e) =>
                   setPublicationStatus(e.target.value as PublicationStatus)
@@ -667,19 +698,19 @@ export function AdminCaseDetailView({
             <button
               type="button"
               onClick={() => savePublication(false)}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+              className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
             >
               공개 상태 저장
             </button>
           </div>
 
-          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4">
-            <h3 className="text-sm font-semibold text-white">원본 진단 JSON</h3>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-900">원본 진단 JSON</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setJsonOpen((v) => !v)}
-                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-800"
               >
                 {jsonOpen ? "접기" : "펼치기"}
               </button>
@@ -689,7 +720,7 @@ export function AdminCaseDetailView({
                   await navigator.clipboard.writeText(reportJsonText);
                   setMessage("report_json을 복사했습니다.");
                 }}
-                className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-white"
+                className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-900"
               >
                 복사
               </button>
@@ -698,7 +729,7 @@ export function AdminCaseDetailView({
               관리자·개발 검수용입니다. 공개 API에는 포함되지 않습니다.
             </p>
             {jsonOpen ? (
-              <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-black/40 p-3 text-xs text-slate-300">
+              <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-slate-100 p-3 text-xs text-slate-700">
                 {reportJsonText || "(report_json 없음)"}
               </pre>
             ) : null}
@@ -708,20 +739,20 @@ export function AdminCaseDetailView({
 
       {namedWarningOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-lg rounded-2xl border border-amber-500/40 bg-slate-900 p-5">
-            <h2 className="text-lg font-bold text-amber-100">
+          <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-5">
+            <h2 className="text-lg font-bold text-amber-900">
               기관·기업명 공개 경고
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-slate-300">
+            <p className="mt-3 text-sm leading-relaxed text-slate-700">
               기관·기업명 공개는 명예훼손, 사실오인, 법적 분쟁 가능성이 있으므로
-              검토 완료 후 신중하게 선택해야 합니다. 자동진단 결과만으로 위반을
-              확정하거나 단정적으로 표현해서는 안 됩니다.
+              검토 완료 후 신중하게 선택해야 합니다. 자동진단 결과만으로 위법
+              여부를 단정하거나 단정적으로 표현해서는 안 됩니다.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setNamedWarningOpen(false)}
-                className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
               >
                 취소
               </button>

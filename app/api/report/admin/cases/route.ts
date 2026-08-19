@@ -25,6 +25,10 @@ export async function GET(request: Request) {
       hasHighRiskInfo: searchParams.get("hasHighRiskInfo"),
       hasEvidence: searchParams.get("hasEvidence"),
       limitedOnly: searchParams.get("limitedOnly"),
+      outreachOnly: searchParams.get("outreachOnly"),
+      priority: searchParams.get("priority"),
+      noticeGap: searchParams.get("noticeGap"),
+      reportReview: searchParams.get("reportReview"),
       q: searchParams.get("q"),
     });
     return NextResponse.json(payload, {

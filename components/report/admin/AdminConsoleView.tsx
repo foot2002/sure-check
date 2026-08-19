@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import type { AdminCaseListPayload } from "@/lib/report/adminCases";
+import type { AdminCaseListItem, AdminCaseListPayload } from "@/lib/report/adminCases";
+import { AdminCaseDrawer } from "@/components/report/admin/AdminCaseDrawer";
+import {
+  publicPrivateKo,
+  publicationStatusKo,
+  reviewStatusKo,
+  riskLabelKo,
+} from "@/lib/report/adminOutreach";
 
 type Filters = {
   range: string;
@@ -17,23 +24,29 @@ type Filters = {
   hasHighRiskInfo: string;
   hasEvidence: string;
   limitedOnly: string;
+  outreachOnly: string;
+  priority: string;
+  noticeGap: string;
+  reportReview: string;
   q: string;
 };
 
 function riskBadge(level: string) {
   const map: Record<string, string> = {
-    critical: "bg-rose-500/20 text-rose-200 border-rose-500/40",
-    high: "bg-orange-500/20 text-orange-200 border-orange-500/40",
-    limited: "bg-slate-500/20 text-slate-200 border-slate-500/40",
-    medium: "bg-amber-500/20 text-amber-100 border-amber-500/40",
-    low: "bg-emerald-500/20 text-emerald-100 border-emerald-500/40",
-    unknown: "bg-slate-600/30 text-slate-300 border-slate-500/30",
+    critical: "bg-rose-100 text-rose-800 border-rose-200",
+    high: "bg-orange-100 text-orange-800 border-orange-200",
+    limited: "bg-slate-100 text-slate-700 border-slate-200",
+    medium: "bg-amber-100 text-amber-800 border-amber-200",
+    low: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    unknown: "bg-slate-100 text-slate-600 border-slate-200",
   };
   return map[level] || map.unknown;
 }
 
-function statusBadgeClass() {
-  return "rounded border px-1.5 py-0.5 text-[11px] font-semibold";
+function priorityBadge(p: string) {
+  if (p === "A") return "bg-rose-600 text-white";
+  if (p === "B") return "bg-orange-500 text-white";
+  return "bg-slate-200 text-slate-700";
 }
 
 export function AdminConsoleView({
@@ -47,11 +60,25 @@ export function AdminConsoleView({
 }) {
   const router = useRouter();
   const [form, setForm] = useState(filters);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(form)) {
+      if (!value || value === "all") continue;
+      if (key === "range" && value === "7d") continue;
+      params.set(key, value);
+    }
+    const qs = params.toString();
+    router.push(qs ? `/report/admin?${qs}` : "/report/admin");
+  }
+
+  function setQuick(patch: Partial<Filters>) {
+    const next = { ...form, ...patch };
+    setForm(next);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(next)) {
       if (!value || value === "all") continue;
       if (key === "range" && value === "7d") continue;
       params.set(key, value);
@@ -70,34 +97,35 @@ export function AdminConsoleView({
     <div className="mx-auto max-w-[90rem] px-4 py-6 md:px-6">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold tracking-wide text-teal-300">
-            Admin Console
+          <p className="text-xs font-semibold tracking-wide text-teal-800">
+            개선안내 후보 검토
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">
+          <h1 className="mt-1 text-2xl font-bold text-slate-900 md:text-3xl">
             SURE Check 관리자 리포트
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            자동진단 결과를 검토하고, 증거자료와 공개 여부를 관리합니다. 위반을
-            확정하지 않으며 ‘위반 소지 / 미흡 / 확인 필요’로 해석합니다.
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+            기관·기업에 개선 공문을 보낼지 판단하는 화면입니다. 위법 여부를
+            단정하지 않으며 ‘위반 소지 / 개선 필요 / 확인 필요 / 개선안내
+            후보’로 해석합니다.
           </p>
         </div>
         <div className="flex gap-2">
           <Link
             href="/report/admin/collector"
-            className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-sm text-teal-100 hover:bg-teal-500/20"
+            className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
           >
             수집함
           </Link>
           <Link
             href="/report"
-            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             공개 /report
           </Link>
           <button
             type="button"
             onClick={logout}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             로그아웃
           </button>
@@ -105,186 +133,93 @@ export function AdminConsoleView({
       </header>
 
       {error ? (
-        <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-100">
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           {error}
         </div>
       ) : null}
 
       {data ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <>
+        <section className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {[
             ["분석 가능 진단", data.kpi.totalScans],
-            ["검토 대기 건수", data.kpi.reviewPendingCount],
+            ["검토 대기", data.kpi.reviewPendingCount],
             ["고위험/신고 검토", data.kpi.highOrReportReviewCount],
             ["공공부문 확인 필요", data.kpi.publicSectorReviewCount],
             ["증빙 캡처 확보", data.kpi.evidenceCaptureCount],
-            ["공개 후보 건수", data.kpi.publicationCandidateCount],
+            ["공개 후보", data.kpi.publicationCandidateCount],
           ].map(([label, value]) => (
             <div
               key={String(label)}
-              className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"
+              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
             >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
                 {label}
               </p>
-              <p className="mt-1 text-2xl font-bold text-white">
+              <p className="mt-1 text-2xl font-bold text-slate-900">
                 {Number(value).toLocaleString("ko-KR")}
               </p>
             </div>
           ))}
         </section>
-      ) : null}
-
-      {data?.kpi?.excludedFromReporting ? (
-        <p className="mb-6 text-xs text-slate-500">
-          분석 제외: 문항 추출 제한{" "}
-          {data.kpi.excludedFromReporting.extractionLimited.toLocaleString("ko-KR")}
-          건
-          {data.kpi.excludedFromReporting.surveyClosed ||
-          data.kpi.excludedFromReporting.accessRestricted ||
-          data.kpi.excludedFromReporting.systemFailure
-            ? ` · 응답 종료 ${data.kpi.excludedFromReporting.surveyClosed} · 접근 제한 ${data.kpi.excludedFromReporting.accessRestricted} · 시스템 ${data.kpi.excludedFromReporting.systemFailure}`
-            : ""}
-          {typeof data.kpi.rawTotalScans === "number"
-            ? ` (원본 기록 ${data.kpi.rawTotalScans.toLocaleString("ko-KR")}건 보존)`
-            : ""}
-          . Collector/운영 화면에서 제한 데이터를 계속 확인할 수 있습니다.
-        </p>
-      ) : null}
-
-      {data?.queue ? (
-        <section className="mb-6 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-          <h2 className="text-sm font-semibold text-white">작업 큐 상태</h2>
-          <p className="mt-1 text-xs text-slate-400">
-            대기/실행 중인 진단·캡처 작업 요약입니다.
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            {[
-              ["대기 중 진단", data.queue.scanPending],
-              ["실행 중 진단", data.queue.scanRunning],
-              ["실패 진단", data.queue.scanFailed],
-              ["제한 진단", data.queue.scanLimited],
-              ["대기 중 캡처", data.queue.capturePending],
-              ["실행 중 캡처", data.queue.captureRunning],
-            ].map(([label, value]) => (
-              <div
-                key={String(label)}
-                className="rounded-lg border border-slate-700/80 bg-slate-950/50 px-3 py-2"
-              >
-                <p className="text-[11px] text-slate-400">{label}</p>
-                <p className="mt-0.5 text-lg font-bold text-teal-200">
-                  {Number(value).toLocaleString("ko-KR")}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {(data?.recentCollect?.length || data?.recentDiagnosis?.length) ? (
-        <section className="mb-6 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-white">최근 수집</h2>
-              <Link
-                href="/report/admin/collector"
-                className="text-xs text-teal-300 hover:text-teal-200"
-              >
-                수집함 전체
-              </Link>
+        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["스캔 대기", data.queue.scanPending],
+            ["스캔 실행", data.queue.scanRunning],
+            ["스캔 실패", data.queue.scanFailed],
+            ["캡처 대기", data.queue.capturePending],
+            ["캡처 실행", data.queue.captureRunning],
+          ].map(([label, value]) => (
+            <div
+              key={String(label)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
+                {label}
+              </p>
+              <p className="mt-0.5 text-lg font-bold text-slate-900">
+                {Number(value).toLocaleString("ko-KR")}
+              </p>
             </div>
-            <ul className="mt-3 space-y-2">
-              {(data?.recentCollect || []).map((row) => (
-                <li
-                  key={`collect-${row.id}`}
-                  className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm"
-                >
-                  <p className="truncate text-slate-100">
-                    {row.title || row.url || "(제목 없음)"}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {row.platform} · {row.status}
-                    {row.diagnosisStatus ? ` · 진단 ${row.diagnosisStatus}` : ""}
-                  </p>
-                </li>
-              ))}
-              {!data?.recentCollect?.length ? (
-                <li className="text-xs text-slate-500">최근 수집 없음</li>
-              ) : null}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-            <h2 className="text-sm font-semibold text-white">최근 진단</h2>
-            <ul className="mt-3 space-y-2">
-              {(data?.recentDiagnosis || []).map((row) => (
-                <li key={`diag-${row.id}`}>
-                  <Link
-                    href={`/report/admin/cases/${row.id}`}
-                    className="block rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900"
-                  >
-                    <p className="truncate text-slate-100">
-                      {row.operatorName || "기관 미확인"} ·{" "}
-                      {row.surveyTitle || "(제목 없음)"}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      {row.overallRiskLevel}
-                      {row.captureStatus ? ` · 캡처 ${row.captureStatus}` : ""}
-                      {` · 증거 ${row.evidenceCount}`}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-              {!data?.recentDiagnosis?.length ? (
-                <li className="text-xs text-slate-500">최근 진단 없음</li>
-              ) : null}
-            </ul>
-          </div>
+          ))}
         </section>
+        </>
       ) : null}
 
-      {data?.cases?.length ? (
-        <section className="mb-5 rounded-xl border border-rose-500/30 bg-rose-950/20 p-4">
-          <h2 className="text-sm font-semibold text-rose-100">오늘 꼭 볼 설문</h2>
-          <p className="mt-1 text-xs text-rose-100/70">
-            Critical/High · 민감정보 · 공공부문 확인 필요 건을 개인정보 위험
-            기준으로 우선 표시합니다. (시스템 이상과 분리)
-          </p>
-          <ul className="mt-3 space-y-2">
-            {data.cases
-              .filter((row) => {
-                const risk = (row.overallRiskLevel || "").toLowerCase();
-                const isRisk = risk === "critical" || risk === "high";
-                const sensitive = row.hasSensitiveInfo || row.hasHighRiskInfo;
-                const publicNeed =
-                  row.publicPrivateType === "public" && isRisk;
-                return isRisk || sensitive || publicNeed;
-              })
-              .slice(0, 8)
-              .map((row) => (
-                <li key={`priority-${row.id}`}>
-                  <Link
-                    href={`/report/admin/cases/${row.id}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-500/20 bg-slate-950/50 px-3 py-2 text-sm hover:bg-slate-900"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-slate-100">
-                      {row.operatorName || "기관 미확인"} ·{" "}
-                      {row.surveyTitle || "(제목 없음)"}
-                    </span>
-                    <span
-                      className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
-                    >
-                      {row.overallRiskLevel}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-          </ul>
-        </section>
-      ) : null}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(
+          [
+            ["개선안내 후보", form.outreachOnly === "true", { outreachOnly: form.outreachOnly === "true" ? "all" : "true" }],
+            ["우선순위 A", form.priority === "A", { priority: form.priority === "A" ? "all" : "A" }],
+            ["증거 확보", form.hasEvidence === "true", { hasEvidence: form.hasEvidence === "true" ? "all" : "true" }],
+            ["증거 부족", form.hasEvidence === "false", { hasEvidence: form.hasEvidence === "false" ? "all" : "false" }],
+            ["미검토", form.reviewStatus === "none", { reviewStatus: form.reviewStatus === "none" ? "all" : "none" }],
+            ["공공기관", form.publicPrivate === "public", { publicPrivate: form.publicPrivate === "public" ? "all" : "public" }],
+            ["민간기업", form.publicPrivate === "private", { publicPrivate: form.publicPrivate === "private" ? "all" : "private" }],
+            ["개인정보 포함", form.hasPersonalInfo === "true", { hasPersonalInfo: form.hasPersonalInfo === "true" ? "all" : "true" }],
+            ["민감정보 포함", form.hasSensitiveInfo === "true", { hasSensitiveInfo: form.hasSensitiveInfo === "true" ? "all" : "true" }],
+            ["고지 미흡", form.noticeGap === "true", { noticeGap: form.noticeGap === "true" ? "all" : "true" }],
+            ["신고검토", form.reportReview === "true", { reportReview: form.reportReview === "true" ? "all" : "true" }],
+          ] as Array<[string, boolean, Partial<Filters>]>
+        ).map(([label, active, patch]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setQuick(patch)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              active
+                ? "border-teal-700 bg-teal-700 text-white"
+                : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:text-teal-800"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <form
         onSubmit={applyFilters}
-        className="sticky top-0 z-10 mb-5 grid gap-3 rounded-xl border border-slate-700 bg-slate-950/95 p-4 backdrop-blur md:grid-cols-3 lg:grid-cols-4"
+        className="sticky top-0 z-10 mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur md:grid-cols-3 lg:grid-cols-4"
       >
         {[
           {
@@ -295,6 +230,16 @@ export function AdminConsoleView({
               ["7d", "최근 7일"],
               ["30d", "최근 30일"],
               ["all", "전체"],
+            ],
+          },
+          {
+            key: "priority",
+            label: "우선순위",
+            options: [
+              ["all", "전체"],
+              ["A", "A 우선 후보"],
+              ["B", "B 추가 검토"],
+              ["C", "C 참고/보류"],
             ],
           },
           {
@@ -312,74 +257,11 @@ export function AdminConsoleView({
             label: "검토상태",
             options: [
               ["all", "전체"],
-              ["none", "none"],
-              ["pending", "pending"],
-              ["in_review", "in_review"],
-              ["resolved", "resolved"],
-              ["dismissed", "dismissed"],
-            ],
-          },
-          {
-            key: "publicationStatus",
-            label: "공개상태",
-            options: [
-              ["all", "전체"],
-              ["private", "private"],
-              ["aggregate_only", "aggregate_only"],
-              ["public_anonymized", "public_anonymized"],
-              ["public_named", "public_named"],
-              ["archived", "archived"],
-            ],
-          },
-          {
-            key: "platform",
-            label: "플랫폼",
-            options: [
-              ["all", "전체"],
-              ["google_forms", "Google Forms"],
-              ["naver_form", "Naver Form"],
-              ["moaform", "Moaform"],
-              ["generic", "Generic"],
-              ["wiseon_csap", "WiseON"],
-              ["unknown", "Unknown"],
-            ],
-          },
-          {
-            key: "publicPrivate",
-            label: "공공/민간",
-            options: [
-              ["all", "전체"],
-              ["public", "public"],
-              ["private", "private"],
-              ["mixed", "mixed"],
-              ["unknown", "unknown"],
-            ],
-          },
-          {
-            key: "hasPersonalInfo",
-            label: "개인정보",
-            options: [
-              ["all", "전체"],
-              ["true", "포함"],
-              ["false", "미포함"],
-            ],
-          },
-          {
-            key: "hasSensitiveInfo",
-            label: "민감정보",
-            options: [
-              ["all", "전체"],
-              ["true", "포함"],
-              ["false", "미포함"],
-            ],
-          },
-          {
-            key: "hasHighRiskInfo",
-            label: "고위험정보",
-            options: [
-              ["all", "전체"],
-              ["true", "포함"],
-              ["false", "미포함"],
+              ["none", "미검토"],
+              ["pending", "대기"],
+              ["in_review", "검토 중"],
+              ["resolved", "완료"],
+              ["dismissed", "보류"],
             ],
           },
           {
@@ -387,23 +269,24 @@ export function AdminConsoleView({
             label: "증거",
             options: [
               ["all", "전체"],
-              ["true", "있음"],
-              ["false", "없음"],
+              ["true", "확보"],
+              ["false", "부족"],
             ],
           },
           {
-            key: "limitedOnly",
-            label: "제한 진단(종료·접근·추출·시스템)",
+            key: "publicPrivate",
+            label: "공공/민간",
             options: [
               ["all", "전체"],
-              ["true", "제한만"],
+              ["public", "공공"],
+              ["private", "민간"],
             ],
           },
         ].map((field) => (
-          <label key={field.key} className="text-xs text-slate-400">
+          <label key={field.key} className="text-xs text-slate-500">
             {field.label}
             <select
-              className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900"
               value={form[field.key as keyof Filters]}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, [field.key]: e.target.value }))
@@ -417,10 +300,10 @@ export function AdminConsoleView({
             </select>
           </label>
         ))}
-        <label className="text-xs text-slate-400 md:col-span-2">
+        <label className="text-xs text-slate-500 md:col-span-2">
           검색어
           <input
-            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
             value={form.q}
             onChange={(e) => setForm((prev) => ({ ...prev, q: e.target.value }))}
             placeholder="기관명 / 제목 / URL / 판단"
@@ -429,123 +312,116 @@ export function AdminConsoleView({
         <div className="flex items-end">
           <button
             type="submit"
-            className="w-full rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+            className="w-full rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
             필터 적용
           </button>
         </div>
       </form>
 
-      <section className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/50">
+      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-700 text-xs uppercase tracking-wide text-slate-400">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
             <tr>
               {[
                 "진단일",
+                "우선순위",
                 "위험도",
-                "점수",
-                "응답 판단",
-                "플랫폼",
                 "기관/기업명",
-                "유형",
+                "공공/민간",
                 "설문 제목",
-                "개인/민감/고위험",
-                "공공",
-                "증거",
-                "검토",
-                "공개",
-                "상세",
+                "주요 문제",
+                "수집 정보",
+                "증거 상태",
+                "검토 상태",
+                "공개 상태",
+                "조치",
               ].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-2.5 font-semibold">
+                <th key={h} className="whitespace-nowrap px-3 py-2.5">
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {(data?.cases || []).map((row) => {
-              const risk = (row.overallRiskLevel || "").toLowerCase();
-              const accent =
-                risk === "critical"
-                  ? "border-l-4 border-l-rose-500"
-                  : risk === "high"
-                    ? "border-l-4 border-l-orange-500"
-                    : "border-l-4 border-l-transparent";
-              return (
+            {(data?.cases || []).map((row: AdminCaseListItem) => (
               <tr
                 key={row.id}
-                className={`cursor-pointer border-b border-slate-800/80 hover:bg-slate-800/40 ${accent}`}
-                onClick={() => router.push(`/report/admin/cases/${row.id}`)}
+                className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50/60 ${
+                  openId === row.id ? "bg-teal-50" : ""
+                }`}
+                onClick={() => setOpenId(row.id)}
               >
-                <td className="whitespace-nowrap px-3 py-2.5 text-slate-300">
+                <td className="whitespace-nowrap px-3 py-3 text-slate-600">
                   {row.observedDateKst}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-3 py-3">
                   <span
-                    className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${riskBadge(row.overallRiskLevel)}`}
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${priorityBadge(row.outreachPriority)}`}
                   >
-                    {row.overallRiskLevel}
+                    {row.outreachPriority}
                   </span>
                 </td>
-                <td className="px-3 py-2.5 tabular-nums text-slate-200">
-                  {row.score == null ? "—" : row.score.toFixed(1)}
+                <td className="px-3 py-3">
+                  <span
+                    className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
+                  >
+                    {riskLabelKo(row.overallRiskLevel)}
+                  </span>
                 </td>
-                <td className="max-w-[10rem] truncate px-3 py-2.5 text-slate-200">
-                  {row.userDecisionLabel || "—"}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-slate-300">
-                  {row.platform}
-                </td>
-                <td className="max-w-[9rem] truncate px-3 py-2.5 text-slate-200">
+                <td className="max-w-[9rem] truncate px-3 py-3 font-medium text-slate-900">
                   {row.operatorName || "—"}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-slate-400">
-                  {row.subjectType || "—"}
+                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
+                  {publicPrivateKo(row.publicPrivateType)}
                 </td>
-                <td className="max-w-[12rem] truncate px-3 py-2.5 text-slate-200">
+                <td className="max-w-[14rem] truncate px-3 py-3 text-slate-800">
                   {row.surveyTitle || "—"}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-slate-300">
-                  {row.hasPersonalInfo ? "P" : "-"}/
-                  {row.hasSensitiveInfo ? "S" : "-"}/
-                  {row.hasHighRiskInfo ? "H" : "-"}
+                <td className="px-3 py-3">
+                  <div className="flex max-w-[16rem] flex-wrap gap-1">
+                    {row.issueBadges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-900"
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                    {row.issueBadges.length === 0 ? (
+                      <span className="text-xs text-slate-400">—</span>
+                    ) : null}
+                  </div>
                 </td>
-                <td className="px-3 py-2.5 text-slate-300">
-                  {row.publicPrivateType}
+                <td className="max-w-[14rem] whitespace-pre-line px-3 py-3 text-xs text-slate-700">
+                  {row.dataSummary}
                 </td>
-                <td className="px-3 py-2.5 tabular-nums text-slate-200">
-                  <span className="block">{row.evidenceCount}</span>
-                  {row.captureStatus ? (
-                    <span className="mt-0.5 block text-[10px] text-slate-500">
-                      {row.captureStatus}
-                    </span>
-                  ) : null}
+                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
+                  {row.evidenceStatus}
                 </td>
-                <td className="px-3 py-2.5">
-                  <span className={`${statusBadgeClass()} border-slate-600 text-slate-200`}>
-                    {row.reviewStatus}
-                  </span>
+                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
+                  {reviewStatusKo(row.reviewStatus)}
                 </td>
-                <td className="px-3 py-2.5">
-                  <span className={`${statusBadgeClass()} border-slate-600 text-slate-200`}>
-                    {row.publicationStatus}
-                  </span>
+                <td className="whitespace-nowrap px-3 py-3 text-slate-500">
+                  {publicationStatusKo(row.publicationStatus)}
                 </td>
-                <td className="px-3 py-2.5">
-                  <Link
-                    href={`/report/admin/cases/${row.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="rounded bg-teal-700/80 px-2 py-1 text-xs font-semibold text-white hover:bg-teal-600"
+                <td className="px-3 py-3">
+                  <button
+                    type="button"
+                    className="rounded bg-teal-700 px-2 py-1 text-xs font-semibold text-white hover:bg-teal-800"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenId(row.id);
+                    }}
                   >
-                    상세보기
-                  </Link>
+                    검토
+                  </button>
                 </td>
               </tr>
-              );
-            })}
+            ))}
             {data && data.cases.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={12} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.
                 </td>
               </tr>
@@ -553,6 +429,8 @@ export function AdminConsoleView({
           </tbody>
         </table>
       </section>
+
+      <AdminCaseDrawer caseId={openId} onClose={() => setOpenId(null)} />
     </div>
   );
 }

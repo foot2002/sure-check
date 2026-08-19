@@ -29,8 +29,8 @@ export default async function AdminCollectorPage({
   if (!isAdminAuthConfigured()) {
     return (
       <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <h1 className="text-xl font-bold text-white">관리자 인증 미설정</h1>
-        <p className="mt-3 text-sm text-slate-400">
+        <h1 className="text-xl font-bold text-slate-900">관리자 인증 미설정</h1>
+        <p className="mt-3 text-sm text-slate-600">
           `.env.local`에 `REPORT_ADMIN_PASSWORD`와
           `REPORT_ADMIN_SESSION_SECRET`을 설정한 뒤 다시 시도하세요.
         </p>

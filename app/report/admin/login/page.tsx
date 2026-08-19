@@ -37,36 +37,36 @@ export default function AdminLoginPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-10">
-      <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-6 shadow-xl">
-        <p className="text-xs font-semibold tracking-wide text-teal-300">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-semibold tracking-wide text-teal-800">
           SURE Check Admin
         </p>
-        <h1 className="mt-2 text-2xl font-bold text-white">관리자 로그인</h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">관리자 로그인</h1>
+        <p className="mt-2 text-sm text-slate-600">
           검토 콘솔은 비밀번호로 보호됩니다. 공개 모니터링(`/report`)과는
           분리되어 있습니다.
         </p>
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <label className="block text-sm text-slate-300">
+          <label className="block text-sm text-slate-700">
             비밀번호
             <input
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-teal-400"
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-teal-600"
               required
             />
           </label>
           {error ? (
-            <p className="rounded-lg border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
               {error}
             </p>
           ) : null}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-60"
+            className="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
           >
             {loading ? "확인 중…" : "로그인"}
           </button>

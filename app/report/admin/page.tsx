@@ -17,8 +17,8 @@ export default async function AdminReportPage({
   if (!isAdminAuthConfigured()) {
     return (
       <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <h1 className="text-xl font-bold text-white">관리자 인증 미설정</h1>
-        <p className="mt-3 text-sm text-slate-400">
+        <h1 className="text-xl font-bold text-slate-900">관리자 인증 미설정</h1>
+        <p className="mt-3 text-sm text-slate-600">
           `.env.local`에 `REPORT_ADMIN_PASSWORD`와
           `REPORT_ADMIN_SESSION_SECRET`을 설정한 뒤 다시 시도하세요.
         </p>
@@ -51,6 +51,10 @@ export default async function AdminReportPage({
       hasHighRiskInfo: pick("hasHighRiskInfo"),
       hasEvidence: pick("hasEvidence"),
       limitedOnly: pick("limitedOnly"),
+      outreachOnly: pick("outreachOnly"),
+      priority: pick("priority"),
+      noticeGap: pick("noticeGap"),
+      reportReview: pick("reportReview"),
       q: pick("q"),
     });
   } catch (err) {
@@ -74,6 +78,10 @@ export default async function AdminReportPage({
         hasHighRiskInfo: pick("hasHighRiskInfo") || "all",
         hasEvidence: pick("hasEvidence") || "all",
         limitedOnly: pick("limitedOnly") || "all",
+        outreachOnly: pick("outreachOnly") || "all",
+        priority: pick("priority") || "all",
+        noticeGap: pick("noticeGap") || "all",
+        reportReview: pick("reportReview") || "all",
         q: pick("q") || "",
       }}
     />

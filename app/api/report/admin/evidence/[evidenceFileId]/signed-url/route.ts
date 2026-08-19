@@ -4,12 +4,13 @@ import {
   unauthorizedJson,
 } from "@/lib/report/adminAuth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { evidenceDownloadFilename } from "@/lib/report/adminOutreach";
 import { createSignedEvidenceUrl } from "@/lib/storage/evidenceStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SIGNED_URL_TTL_SECONDS = 60 * 10; // 10 minutes
+const SIGNED_URL_TTL_SECONDS = 120;
 
 export async function POST(
   _request: Request,
@@ -57,6 +58,11 @@ export async function POST(
         evidenceType: data.evidence_type,
         label: data.label,
         mimeType: data.mime_type,
+        downloadFilename: evidenceDownloadFilename({
+          caseId: data.id,
+          evidenceType: String(data.evidence_type || ""),
+          label: data.label,
+        }),
       },
       {
         headers: {

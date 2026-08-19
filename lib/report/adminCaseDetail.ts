@@ -48,6 +48,7 @@ export interface AdminCaseDetail {
     observedDateKst: string;
     scanReportId: string | null;
     scanJobId: string;
+    externalScanId: string | null;
   };
   performance: {
     extractionMode: string | null;
@@ -255,7 +256,7 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
     const { data: jobRow } = await supabase
       .from("scan_jobs")
       .select(
-        "extraction_mode, browser_used, browser_reason, fast_extractor_confidence, fallback_triggered, fallback_reason, total_duration_ms, extract_duration_ms, analysis_duration_ms, save_duration_ms",
+        "external_scan_id, extraction_mode, browser_used, browser_reason, fast_extractor_confidence, fallback_triggered, fallback_reason, total_duration_ms, extract_duration_ms, analysis_duration_ms, save_duration_ms",
       )
       .eq("id", survey.scan_job_id)
       .maybeSingle();
@@ -344,6 +345,8 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       observedDateKst: survey.observed_date_kst,
       scanReportId: survey.scan_report_id,
       scanJobId: survey.scan_job_id,
+      externalScanId:
+        (scanJobPerf?.external_scan_id as string | null) || null,
     },
     performance: {
       extractionMode:

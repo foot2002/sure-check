@@ -5,6 +5,16 @@ import {
   isReportableAdminOutcome,
   type LimitedOutcomeBucket,
 } from "@/lib/report/limitedOutcomeBuckets";
+import {
+  classifyEvidenceStatusKo,
+  classifyOutreachPriority,
+  formatDataCollectionSummary,
+  isOutreachCandidate,
+  isReportReviewDecision,
+  pickIssueBadges,
+  type EvidenceStatusKo,
+  type OutreachPriority,
+} from "@/lib/report/adminOutreach";
 import type {
   OverallRiskLevel,
   Platform,
@@ -28,6 +38,10 @@ export interface AdminCaseListQuery {
   hasEvidence?: string | null;
   limitedOnly?: string | null;
   q?: string | null;
+  outreachOnly?: string | null;
+  priority?: string | null;
+  noticeGap?: string | null;
+  reportReview?: string | null;
 }
 
 export interface AdminKpi {
@@ -92,6 +106,15 @@ export interface AdminCaseListItem {
   publishStatus: PublishStatus;
   publicationStatus: PublicationStatus;
   diagnosisStatus: string | null;
+  personalInfoQuestionCount: number;
+  sensitiveQuestionCount: number;
+  highRiskQuestionCount: number;
+  categoryLabels: string[];
+  issueBadges: string[];
+  outreachPriority: OutreachPriority;
+  outreachCandidate: boolean;
+  evidenceStatus: EvidenceStatusKo;
+  dataSummary: string;
 }
 
 export interface AdminRecentCollectItem {
@@ -216,7 +239,7 @@ export async function listAdminCases(
   let surveyQuery = supabase
     .from("survey_records")
     .select(
-      "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count",
+      "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
     )
     .order("observed_at", { ascending: false })
     .limit(500);
@@ -419,6 +442,39 @@ export async function listAdminCases(
     }
   }
 
+  const categoryLabelsBySurvey = new Map<string, string[]>();
+  try {
+    if (ids.length > 0) {
+      const { data: qrows } = await supabase
+        .from("survey_questions")
+        .select("id, survey_record_id, has_personal_info")
+        .in("survey_record_id", ids.slice(0, 200))
+        .eq("has_personal_info", true)
+        .limit(600);
+      const qids = (qrows || []).map((q) => String(q.id));
+      if (qids.length > 0) {
+        const { data: cats } = await supabase
+          .from("question_data_categories")
+          .select("survey_question_id, category_label")
+          .in("survey_question_id", qids.slice(0, 400));
+        const qToSurvey = new Map(
+          (qrows || []).map((q) => [String(q.id), String(q.survey_record_id)]),
+        );
+        for (const cat of cats || []) {
+          const surveyId = qToSurvey.get(String(cat.survey_question_id));
+          if (!surveyId) continue;
+          const label = String(cat.category_label || "").trim();
+          if (!label) continue;
+          const cur = categoryLabelsBySurvey.get(surveyId) || [];
+          if (!cur.includes(label) && cur.length < 3) cur.push(label);
+          categoryLabelsBySurvey.set(surveyId, cur);
+        }
+      }
+    }
+  } catch {
+    /* optional category labels */
+  }
+
   let cases: AdminCaseListItem[] = rows.map((row) => {
     const report = row.scan_report_id
       ? reportMap.get(row.scan_report_id as string)
@@ -427,6 +483,33 @@ export async function listAdminCases(
       row.publish_status as PublishStatus,
       publicationMap.get(row.id as string),
     );
+    const personalCount = Number(row.personal_info_question_count) || 0;
+    const sensitiveCount = Number(row.sensitive_question_count) || 0;
+    const highRiskCount = Number(row.high_risk_question_count) || 0;
+    const categoryLabels = categoryLabelsBySurvey.get(row.id as string) || [];
+    const evidenceCount = evidenceCountMap.get(row.id as string) || 0;
+    const captureStatus = captureStatusBySurvey.get(row.id as string) || null;
+    const userDecisionLabel =
+      (row.user_decision_label as string | null) ||
+      report?.user_decision_label ||
+      null;
+    const issueBadges = pickIssueBadges({
+      userDecisionLabel,
+      findingTitles: report?.summary ? [report.summary] : [],
+      hasSensitiveInfo: Boolean(row.has_sensitive_info),
+      hasHighRiskInfo: Boolean(row.has_high_risk_info),
+      isPublic: (row.public_private_type as string) === "public",
+    });
+    const outreachPriority = classifyOutreachPriority({
+      publicPrivateType: row.public_private_type as string,
+      hasPersonalInfo: Boolean(row.has_personal_info),
+      hasSensitiveInfo: Boolean(row.has_sensitive_info),
+      hasHighRiskInfo: Boolean(row.has_high_risk_info),
+      overallRiskLevel: row.overall_risk_level as string,
+      userDecisionLabel,
+      evidenceCount,
+      issueBadges,
+    });
     return {
       id: row.id as string,
       observedAt: row.observed_at as string,
@@ -436,10 +519,7 @@ export async function listAdminCases(
         scoreMap.get(row.id as string) ??
         report?.score ??
         null,
-      userDecisionLabel:
-        (row.user_decision_label as string | null) ||
-        report?.user_decision_label ||
-        null,
+      userDecisionLabel,
       platform: (row.platform || "unknown") as Platform,
       operatorName: (row.operator_name as string | null) || null,
       subjectType: (row.subject_type as string | null) || null,
@@ -449,12 +529,32 @@ export async function listAdminCases(
       hasSensitiveInfo: Boolean(row.has_sensitive_info),
       hasHighRiskInfo: Boolean(row.has_high_risk_info),
       publicPrivateType: (row.public_private_type as string) || "unknown",
-      evidenceCount: evidenceCountMap.get(row.id as string) || 0,
-      captureStatus: captureStatusBySurvey.get(row.id as string) || null,
+      evidenceCount,
+      captureStatus,
       reviewStatus: (row.review_status || "none") as ReviewStatus,
       publishStatus: (row.publish_status || "draft") as PublishStatus,
       publicationStatus,
       diagnosisStatus: report?.diagnosis_status || null,
+      personalInfoQuestionCount: personalCount,
+      sensitiveQuestionCount: sensitiveCount,
+      highRiskQuestionCount: highRiskCount,
+      categoryLabels,
+      issueBadges,
+      outreachPriority,
+      outreachCandidate: isOutreachCandidate(outreachPriority),
+      evidenceStatus: classifyEvidenceStatusKo({
+        evidenceCount,
+        captureStatus,
+      }),
+      dataSummary: formatDataCollectionSummary({
+        personalCount,
+        sensitiveCount,
+        highRiskCount,
+        hasPersonalInfo: Boolean(row.has_personal_info),
+        hasSensitiveInfo: Boolean(row.has_sensitive_info),
+        hasHighRiskInfo: Boolean(row.has_high_risk_info),
+        categoryLabels,
+      }),
     };
   });
 
@@ -464,15 +564,50 @@ export async function listAdminCases(
   }
 
   const hasEvidence = parseBoolFlag(query.hasEvidence);
-  if (hasEvidence === true) cases = cases.filter((c) => c.evidenceCount > 0);
-  if (hasEvidence === false) cases = cases.filter((c) => c.evidenceCount === 0);
+  if (hasEvidence === true) {
+    cases = cases.filter(
+      (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
+    );
+  }
+  if (hasEvidence === false) {
+    cases = cases.filter(
+      (c) => c.evidenceStatus === "증거 부족" || c.evidenceStatus === "캡처 필요",
+    );
+  }
+  if (query.outreachOnly === "true" || query.outreachOnly === "1") {
+    cases = cases.filter((c) => c.outreachCandidate);
+  }
+  if (query.priority && query.priority !== "all") {
+    cases = cases.filter((c) => c.outreachPriority === query.priority);
+  }
+  if (query.noticeGap === "true" || query.noticeGap === "1") {
+    cases = cases.filter((c) => c.issueBadges.length > 0);
+  }
+  if (query.reportReview === "true" || query.reportReview === "1") {
+    cases = cases.filter((c) => isReportReviewDecision(c.userDecisionLabel));
+  }
 
+  const PRIORITY_RANK: Record<string, number> = { A: 0, B: 1, C: 2 };
   cases.sort((a, b) => {
+    const p =
+      (PRIORITY_RANK[a.outreachPriority] ?? 9) -
+      (PRIORITY_RANK[b.outreachPriority] ?? 9);
+    if (p !== 0) return p;
     const riskDiff =
       (RISK_RANK[a.overallRiskLevel] ?? 99) - (RISK_RANK[b.overallRiskLevel] ?? 99);
     if (riskDiff !== 0) return riskDiff;
-    const evidenceDiff = Number(b.evidenceCount > 0) - Number(a.evidenceCount > 0);
-    if (evidenceDiff !== 0) return evidenceDiff;
+    const reportDiff =
+      Number(isReportReviewDecision(b.userDecisionLabel)) -
+      Number(isReportReviewDecision(a.userDecisionLabel));
+    if (reportDiff !== 0) return reportDiff;
+    const evidenceDiff =
+      Number(a.evidenceStatus === "증거 확보") -
+      Number(b.evidenceStatus === "증거 확보");
+    if (evidenceDiff !== 0) return -evidenceDiff;
+    const reviewDiff =
+      Number(a.reviewStatus === "none" || a.reviewStatus === "pending") -
+      Number(b.reviewStatus === "none" || b.reviewStatus === "pending");
+    if (reviewDiff !== 0) return -reviewDiff;
     return b.observedAt.localeCompare(a.observedAt);
   });
 

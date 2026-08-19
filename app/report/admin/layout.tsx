@@ -12,6 +12,6 @@ export default function AdminReportLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100">{children}</div>
+    <div className="min-h-screen bg-[#F7FAFB] text-slate-900">{children}</div>
   );
 }
