@@ -57,8 +57,15 @@ const COMPANY_BRAND =
 const UNI_OFFICIAL_TEXT =
   /(산학협력단|대학\s*본부|학생지원|입학처|경력개발|교무처|연구처|공식\s*센터|사업단|평생교육원|대학교\s*공식|교육혁신)/i;
 
-const ACADEMIC_TEXT =
+export const ACADEMIC_TEXT =
   /(논문|석사|박사|학위|졸업작품|연구\s*참여자|연구대상자|대학원생|개인\s*연구|과제\s*설문|졸업\s*논문|지도교수|개인\s*프로젝트|학생\s*과제|설문\s*사례비|연구\s*목적|학위논문|졸업\s*연구|[가-힣]{2,12}대학교\s*[가-힣]{2,20}학과\s*[가-힣]{2,4}\s*(입니다|입니다\.|입니다!)|OO대학교|oo대학교)/i;
+
+export function looksLikePersonalResearch(
+  text: string | null | undefined,
+): boolean {
+  if (!text) return false;
+  return ACADEMIC_TEXT.test(text);
+}
 
 /** Soft demotion when academic language coexists with weak official hints — score down, prefer not hard-delete. */
 const ACADEMIC_SOFT =
@@ -317,13 +324,17 @@ export function classifyRecencyLowCost(input: TriageInput): {
     score += 15;
   } else if (prevYearRe.test(text) && !yearRe.test(text)) {
     signals.push("mentions_prev_year_only");
-    score -= 5;
+    score -= 20;
   }
 
-  // Clear old year markers
-  if (/202[0-3]년|202[0-3]\s*하반기|2021|2022|2020/.test(text) && !yearRe.test(text)) {
+  const pastYearRe = new RegExp(
+    String.raw`\b(?:${[year - 2, year - 3, year - 4, year - 5, year - 6]
+      .filter((y) => y >= 2000)
+      .join("|")})\b`,
+  );
+  if (pastYearRe.test(text) && !yearRe.test(text)) {
     signals.push("legacy_year_marker");
-    score -= 20;
+    score -= 25;
   }
 
   if (/마감|종료된\s*설문|closed|조사\s*종료/.test(text)) {

@@ -8,9 +8,11 @@ import { resolveShortSurveyUrl } from "@/lib/collector/safeRedirect";
 import { validateSurveyResponseUrl } from "@/lib/collector/surveyUrlRules";
 import { titleOrNeedsConfirmation } from "@/lib/collector/titleUtils";
 import { normalizeSurveyUrl } from "@/lib/collector/urlNormalize";
+import { overlayFreshnessOnPage } from "@/lib/collector/surveyFreshness";
 import type {
   CollectorPlatform,
   CollectorSurveyStatus,
+  SurveyLinkFreshness,
 } from "@/lib/collector/types";
 
 export type CandidateProcessResult =
@@ -30,6 +32,7 @@ export type CandidateProcessResult =
         | "unreachable"
         | "unresolved";
       reason: string;
+      freshness?: SurveyLinkFreshness;
     }
   | {
       ok: false;
@@ -64,14 +67,29 @@ function mapPageToReady(
     };
   }
 
+  const confirmedLive =
+    page.verdict === "confirmed_survey" && page.status === "active";
+  const freshness = overlayFreshnessOnPage({
+    pageStatus: page.status,
+    pageReason: page.reason,
+    pageTitle: page.pageTitle,
+    url: canonicalUrl,
+    searchTitle,
+    confirmedLive,
+  });
+
   const verdict =
-    page.verdict === "confirmed_survey" ||
-    page.verdict === "closed_survey" ||
-    page.verdict === "restricted_survey" ||
-    page.verdict === "unreachable" ||
-    page.verdict === "unresolved"
-      ? page.verdict
-      : "unresolved";
+    freshness.status === "closed"
+      ? "closed_survey"
+      : freshness.status === "restricted"
+        ? "restricted_survey"
+        : page.verdict === "confirmed_survey" ||
+            page.verdict === "closed_survey" ||
+            page.verdict === "restricted_survey" ||
+            page.verdict === "unreachable" ||
+            page.verdict === "unresolved"
+          ? page.verdict
+          : "unresolved";
 
   return {
     ok: true,
@@ -79,11 +97,12 @@ function mapPageToReady(
     canonicalUrl,
     originalUrl,
     platform: page.platform || fallbackPlatform,
-    status: page.status,
+    status: freshness.status,
     title: titleOrNeedsConfirmation(page.pageTitle, searchTitle),
     pageTitle: page.pageTitle,
     verdict,
-    reason: page.reason,
+    reason: freshness.reason || page.reason,
+    freshness: freshness.record,
   };
 }
 

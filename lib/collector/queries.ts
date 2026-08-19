@@ -1,5 +1,12 @@
 import { bestTriageAcrossSources } from "@/lib/collector/candidateTriage";
-import { COLLECTOR_DIAGNOSIS_DAILY_MAX } from "@/lib/collector/diagnosisBridge";
+import {
+  classifyCollectLane,
+  diagnosisCoverage,
+  getAutoDiagnosisBatchSize,
+  getAutoDiagnosisDailyLimit,
+  getAutoDiagnosisMaxBacklogDays,
+  isAutoDiagnosisTarget,
+} from "@/lib/collector/collectConfirmedPolicy";
 import {
   countDiagnosisLinksByStatus,
   countDiagnosisLinksCreatedInKstDay,
@@ -8,6 +15,7 @@ import {
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
 import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
+import { listImprovementCandidates } from "@/lib/report/improvementCandidates";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -138,6 +146,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     "discovered",
     "closed",
     "restricted",
+    "stale",
     "unreachable",
     "invalid",
     "ignored",
@@ -202,6 +211,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
   const discovered = byStatus.discovered ?? 0;
   const unreachable = byStatus.unreachable ?? 0;
   const ignored = byStatus.ignored ?? 0;
+  const stale = byStatus.stale ?? 0;
   const verificationCompleted = active + closed + restricted + invalid;
   const denom = Math.max(totalLinksAll - ignored, 0);
   const verificationCompletionRate =
@@ -262,8 +272,8 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
         limited: today.byStatus.limited,
         failed:
           today.byStatus.failed_retryable + today.byStatus.failed_final,
-        dailyMax: COLLECTOR_DIAGNOSIS_DAILY_MAX,
-        remaining: Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - today.total),
+        dailyMax: getAutoDiagnosisDailyLimit(),
+        remaining: Math.max(0, getAutoDiagnosisDailyLimit() - today.total),
       },
     };
   } catch {
@@ -276,6 +286,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     unverified: discovered,
     closed,
     restricted,
+    stale,
     unreachable,
     invalid,
     ignored,
@@ -287,6 +298,65 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     discoveredBacklog: discovered,
     diagnosis,
   });
+
+  let screenedPersonal = ignored;
+  try {
+    const supabase = createSupabaseServerClient();
+    const { count, error } = await supabase
+      .from("survey_links")
+      .select("id", { count: "exact", head: true })
+      .eq("freshness->>reason_code", "personal_research");
+    if (!error && typeof count === "number") screenedPersonal = count;
+  } catch {
+    screenedPersonal = ignored;
+  }
+
+  let improvement = { count: 0, items: [] as NonNullable<CollectorSummary["improvementCandidates"]> };
+  try {
+    improvement = await listImprovementCandidates(12);
+  } catch {
+    /* survey_records may be empty */
+  }
+
+  const collectConfirmed = active;
+  const diagnosisQueued =
+    (diagnosis.queued || 0) + (diagnosis.running || 0);
+  const diagnosisCompleted =
+    (diagnosis.completed || 0) + (diagnosis.limited || 0);
+  const diagnosisMissing = todayFunnel.diagnosisBacklog;
+  const sampleSize = Math.min(collectConfirmed, 400);
+  const sampleCoverage = diagnosisCoverage(
+    sampleSize,
+    Math.max(0, sampleSize - diagnosisMissing),
+  );
+  const screenedOut = closed + stale + restricted + ignored + invalid + unreachable;
+  const opsFunnel: NonNullable<CollectorSummary["opsFunnel"]> = {
+    rawDiscovered: totalLinksAll,
+    collectCandidate: discovered,
+    collectConfirmed,
+    diagnosisQueued,
+    diagnosisCompleted,
+    diagnosisMissing,
+    screenedStale: stale,
+    screenedClosed: closed,
+    screenedPersonal,
+    screenedRestricted: restricted,
+    improvementCandidateCount: improvement.count,
+    collectConfirmedRate:
+      totalLinksAll > 0 ? collectConfirmed / totalLinksAll : 0,
+    diagnosisCoverageRate: sampleCoverage.coverageRate,
+    diagnosisMissingRate: sampleCoverage.missingRate,
+    screenedRate: totalLinksAll > 0 ? screenedOut / totalLinksAll : 0,
+    closedOrStaleRate:
+      totalLinksAll > 0 ? (closed + stale) / totalLinksAll : 0,
+    improvementCandidateRate:
+      diagnosisCompleted > 0 ? improvement.count / diagnosisCompleted : 0,
+    missingWarning: diagnosisMissing > 0 && collectConfirmed > 0,
+    sampleSize,
+    dailyLimit: getAutoDiagnosisDailyLimit(),
+    batchSize: getAutoDiagnosisBatchSize(),
+    maxBacklogDays: getAutoDiagnosisMaxBacklogDays(),
+  };
 
   return {
     totalSurveys,
@@ -325,6 +395,8 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     diagnosis,
     todayFunnel,
     qualityKpis,
+    opsFunnel,
+    improvementCandidates: improvement.items,
   };
 }
 
@@ -574,7 +646,7 @@ async function buildTodayOpsMetrics(input: {
   const normalDiagnosis = input.diagnosis?.today?.completed ?? 0;
   const diagnosisRemaining =
     input.diagnosis?.today?.remaining ??
-    Math.max(0, COLLECTOR_DIAGNOSIS_DAILY_MAX - diagnosisAttempted);
+    Math.max(0, getAutoDiagnosisDailyLimit() - diagnosisAttempted);
   const systemFailureRateToday =
     diagnosisAttempted > 0 ? systemFailureToday / diagnosisAttempted : 0;
 
@@ -602,7 +674,7 @@ async function buildTodayOpsMetrics(input: {
     extractionLimitedToday,
     diagnosisBacklog,
     discoveredBacklog: input.discoveredBacklog,
-    dailyDiagnosisCapacity: COLLECTOR_DIAGNOSIS_DAILY_MAX,
+    dailyDiagnosisCapacity: getAutoDiagnosisDailyLimit(),
     dailyDiagnosisRemaining: diagnosisRemaining,
   };
 
@@ -767,6 +839,17 @@ export async function listSurveyLinks(
         sample_source_url: meta?.sampleUrl ?? null,
         sample_source_title: meta?.sampleTitle ?? null,
         triage_queue: triage.queue,
+        collect_lane: classifyCollectLane({
+          status: row.status,
+          freshness: row.freshness,
+          title: row.title,
+        }),
+        auto_diagnosis_target: isAutoDiagnosisTarget({
+          status: row.status,
+          freshness: row.freshness,
+          title: row.title,
+          triage,
+        }),
       };
     });
 

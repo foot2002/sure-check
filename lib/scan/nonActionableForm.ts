@@ -10,7 +10,7 @@ const ENDED_SURVEY_RE =
 
 /** Generic limited copy — must not imply the survey ended. */
 export const NON_ACTIONABLE_LIMITED_MESSAGE =
-  "이 설문은 접근이 제한되어 진단이 제한되었습니다.";
+  "이 설문은 응답이 종료되었거나 접근이 제한되어 진단이 제한되었습니다.";
 
 export const ENDED_SURVEY_HEADLINE = "종료된 설문은 분석 대상이 아닙니다";
 

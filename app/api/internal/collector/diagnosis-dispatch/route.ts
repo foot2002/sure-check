@@ -3,14 +3,12 @@ import {
   authorizeCollectorCronRequest,
   isCollectorCronAuthConfigured,
 } from "@/lib/collector/cronAuth";
-import {
-  COLLECTOR_DIAGNOSIS_DISPATCH_MAX,
-  dispatchCollectorDiagnoses,
-} from "@/lib/collector/diagnosisBridge";
+import { getAutoDiagnosisBatchSize } from "@/lib/collector/collectConfirmedPolicy";
+import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Wave of ≤10 diagnoses; allow browser-tail jobs within Fluid Compute ceiling. */
+/** Wave of collect_confirmed diagnoses; leftover carries to the next cron wave. */
 export const maxDuration = 300;
 
 function parseParams(request: Request): {
@@ -20,7 +18,7 @@ function parseParams(request: Request): {
 } {
   const url = new URL(request.url);
   const limit = Number(
-    url.searchParams.get("limit") || COLLECTOR_DIAGNOSIS_DISPATCH_MAX,
+    url.searchParams.get("limit") || getAutoDiagnosisBatchSize(),
   );
   const dryRun =
     url.searchParams.get("dryRun") === "1" ||
@@ -32,7 +30,7 @@ function parseParams(request: Request): {
     inlineParam === "0" || inlineParam === "false" ? false : true;
 
   return {
-    limit: Number.isFinite(limit) ? limit : COLLECTOR_DIAGNOSIS_DISPATCH_MAX,
+    limit: Number.isFinite(limit) ? limit : getAutoDiagnosisBatchSize(),
     dryRun,
     processInline,
   };

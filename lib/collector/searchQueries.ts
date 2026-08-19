@@ -963,7 +963,63 @@ export function buildCollectorSearchQueries(options?: {
 }): CollectorSearchQuery[] {
   const strategy = resolveCollectorSearchStrategy(options?.strategy);
   if (strategy === "org_v1") {
-    return [...COLLECTOR_ORG_V1_QUERIES].sort(
+    const year = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
+    const boosted = COLLECTOR_ORG_V1_QUERIES.map((item) => {
+      const yearToken = String(year);
+      if (item.query.includes(yearToken)) return item;
+      return {
+        ...item,
+        query: `${yearToken} ${item.query} 진행 중`,
+      };
+    });
+    const freshnessExtras: CollectorSearchQuery[] = [
+      q({
+        id: "ov1-fresh-year-survey-d",
+        query: `${year} 설문조사 forms.gle`,
+        strategyGroup: "date_breadth",
+        organizationIntent: "mixed",
+        formPlatform: "forms.gle",
+        preferredSort: "date",
+        priority: 110,
+      }),
+      q({
+        id: "ov1-fresh-year-satis-d",
+        query: `${year} 만족도 조사 form.naver.com`,
+        strategyGroup: "date_breadth",
+        organizationIntent: "mixed",
+        formPlatform: "form.naver.com",
+        preferredSort: "date",
+        priority: 109,
+      }),
+      q({
+        id: "ov1-fresh-live-survey-d",
+        query: "진행 중 설문조사 moaform.com/q",
+        strategyGroup: "date_breadth",
+        organizationIntent: "mixed",
+        formPlatform: "moaform.com/q",
+        preferredSort: "date",
+        priority: 108,
+      }),
+      q({
+        id: "ov1-fresh-recent-survey-d",
+        query: "최근 설문조사 docs.google.com/forms",
+        strategyGroup: "date_breadth",
+        organizationIntent: "mixed",
+        formPlatform: "docs.google.com/forms",
+        preferredSort: "date",
+        priority: 107,
+      }),
+      q({
+        id: "ov1-fresh-opinion-d",
+        query: `${year} 의견수렴 참여 forms.gle`,
+        strategyGroup: "date_breadth",
+        organizationIntent: "public",
+        formPlatform: "forms.gle",
+        preferredSort: "date",
+        priority: 106,
+      }),
+    ];
+    return [...freshnessExtras, ...boosted].sort(
       (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
     );
   }

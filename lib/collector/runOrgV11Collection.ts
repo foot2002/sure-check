@@ -38,6 +38,7 @@ import {
 } from "@/lib/collector/naverSearch";
 import { isShortenerUrl } from "@/lib/collector/platformDetect";
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
+import { evaluateSurveyFreshness } from "@/lib/collector/surveyFreshness";
 import {
   finishCollectionRun,
   insertSurveySource,
@@ -408,8 +409,26 @@ export async function runOrgV11Collection(input: {
         qStat.candidateCount += 1;
         stats.candidateLinksCount += 1;
 
+        const searchFreshness = evaluateSurveyFreshness({
+          title: hit.title,
+          snippet: hit.description,
+          url: candidate,
+          publishedAt: hit.publishedAt,
+          mode: "search",
+        });
+        const excludeFromValidate =
+          !searchFreshness.shouldPageValidate &&
+          (searchFreshness.status === "closed" ||
+            searchFreshness.status === "stale" ||
+            searchFreshness.status === "restricted" ||
+            searchFreshness.status === "ignored");
+
         // Shorteners need network resolve — defer as pending with raw URL
         if (isShortenerUrl(candidate)) {
+          if (excludeFromValidate) {
+            knownSources.add(hit.link);
+            continue;
+          }
           const key = `short:${candidate}`;
           if (pendingKeys.has(key)) {
             qStat.duplicateSurveyCount += 1;
@@ -453,6 +472,51 @@ export async function runOrgV11Collection(input: {
         const format = validateSurveyResponseUrl(normalized.canonicalUrl);
         if (!format.ok) {
           stats.formatRejectedCount = (stats.formatRejectedCount || 0) + 1;
+          continue;
+        }
+
+        if (excludeFromValidate) {
+          if (!dryRun) {
+            const upserted = await upsertSurveyLinkPreferInsert({
+              canonicalUrl: normalized.canonicalUrl,
+              originalUrl: normalized.originalUrl,
+              platform: format.platform,
+              title: hit.title,
+              status: searchFreshness.status,
+              freshness: searchFreshness.record,
+            });
+            knownCanonicals.set(normalized.canonicalUrl, {
+              id: upserted.link.id,
+              status: searchFreshness.status,
+              platform: format.platform,
+            });
+            await insertSurveySource({
+              surveyLinkId: upserted.link.id,
+              sourceType: hit.sourceType,
+              sourceUrl: hit.link,
+              sourceTitle: hit.title,
+              searchQuery: hit.searchQuery,
+              sourcePublishedAt: hit.publishedAt ?? null,
+            });
+            if (upserted.isNew) stats.newSurveysCount += 1;
+            else stats.duplicateSurveysCount += 1;
+          } else if (knownCanonicals.has(normalized.canonicalUrl)) {
+            stats.duplicateSurveysCount += 1;
+          } else {
+            knownCanonicals.set(normalized.canonicalUrl, {
+              id: "dry",
+              status: searchFreshness.status,
+              platform: format.platform,
+            });
+            stats.newSurveysCount += 1;
+          }
+          if (searchFreshness.status === "closed") {
+            stats.closedCount = (stats.closedCount || 0) + 1;
+          }
+          if (searchFreshness.status === "restricted") {
+            stats.restrictedCount = (stats.restrictedCount || 0) + 1;
+          }
+          knownSources.add(hit.link);
           continue;
         }
 
@@ -934,6 +998,7 @@ export async function runOrgV11Collection(input: {
             platform: processed.platform,
             title: processed.title,
             status: processed.status,
+            freshness: processed.freshness,
           });
           knownCanonicals.set(processed.canonicalUrl, {
             id: upserted.link.id,

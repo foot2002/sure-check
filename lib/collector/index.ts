@@ -26,3 +26,4 @@ export * from "@/lib/collector/kpi";
 export * from "@/lib/collector/searchPartitions";
 export * from "@/lib/collector/dailyCanaryCap";
 export * from "@/lib/collector/runOrgV11Collection";
+export * from "@/lib/collector/surveyFreshness";

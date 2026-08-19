@@ -11,6 +11,7 @@ export type CollectorSurveyStatus =
   | "active"
   | "closed"
   | "restricted"
+  | "stale"
   | "unreachable"
   | "ignored"
   | "invalid";
@@ -32,6 +33,18 @@ export type UrlKind =
   | "shortener"
   | "unsupported";
 
+export interface SurveyLinkFreshness {
+  freshness_status?: string;
+  availability_status?: string;
+  detected_start_date?: string | null;
+  detected_end_date?: string | null;
+  detected_year?: number | null;
+  freshness_reason?: string;
+  reason_code?: string;
+  last_checked_at?: string;
+  should_diagnose?: boolean;
+}
+
 export interface SurveyLinkRow {
   id: string;
   canonical_url: string;
@@ -39,6 +52,7 @@ export interface SurveyLinkRow {
   platform: CollectorPlatform;
   title: string | null;
   status: CollectorSurveyStatus;
+  freshness?: SurveyLinkFreshness | null;
   first_discovered_at: string;
   last_discovered_at: string;
   discovery_count: number;
@@ -179,6 +193,7 @@ export interface CollectorMonitoringBreakdown {
   unverified: number;
   closed: number;
   restricted: number;
+  stale: number;
   unreachable: number;
   invalid: number;
   ignored: number;
@@ -268,6 +283,52 @@ export interface CollectorSummary {
     dailyDiagnosisCapacity: number;
     dailyDiagnosisRemaining: number;
   };
+  /**
+   * Raw discovered vs collect confirmed vs auto-diagnosis coverage.
+   * collect_confirmed maps to status=active after freshness/availability/officiality.
+   */
+  opsFunnel?: {
+    rawDiscovered: number;
+    collectCandidate: number;
+    collectConfirmed: number;
+    diagnosisQueued: number;
+    diagnosisCompleted: number;
+    diagnosisMissing: number;
+    screenedStale: number;
+    screenedClosed: number;
+    screenedPersonal: number;
+    screenedRestricted: number;
+    improvementCandidateCount: number;
+    collectConfirmedRate: number;
+    diagnosisCoverageRate: number;
+    diagnosisMissingRate: number;
+    screenedRate: number;
+    closedOrStaleRate: number;
+    improvementCandidateRate: number;
+    missingWarning: boolean;
+    sampleSize: number;
+    dailyLimit: number;
+    batchSize: number;
+    maxBacklogDays: number;
+  };
+  improvementCandidates?: Array<{
+    id: string;
+    operatorName: string | null;
+    surveyTitle: string | null;
+    surveyUrl: string | null;
+    platform: string | null;
+    publicPrivateType: string | null;
+    hasPersonalInfo: boolean;
+    hasSensitiveInfo: boolean;
+    hasHighRiskInfo: boolean;
+    gapLabels: string[];
+    riskLevel: string | null;
+    score: number | null;
+    hasEvidence: boolean;
+    reviewStatus: string | null;
+    priority: number;
+    wording: string;
+  }>;
 }
 
 export interface SurveyLinkListItem extends SurveyLinkRow {
@@ -294,6 +355,8 @@ export interface SurveyLinkListItem extends SurveyLinkRow {
   diagnosis_completed_at?: string | null;
   diagnosis_extractor?: string | null;
   diagnosis_limited_reason?: string | null;
+  collect_lane?: string | null;
+  auto_diagnosis_target?: boolean;
 }
 
 export interface SurveyLinkListFilters {

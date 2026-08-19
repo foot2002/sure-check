@@ -680,7 +680,7 @@ function resolveDecision(
   return { key: "OTHER", label: "기타 판단" };
 }
 
-/** General public reporting population: analyzable diagnoses only. */
+/** General public reporting population: diagnosed collect-confirmed / active recent surveys only. */
 function isAnalyzablePublicSurvey(survey: {
   overall_risk_level: string | null;
   user_decision_label: string | null;
@@ -691,6 +691,20 @@ function isAnalyzablePublicSurvey(survey: {
     survey.user_decision_label,
   );
   if (decision.key === "JUDGMENT_UNKNOWN") return false;
+  if (survey.overall_risk_level === "limited") {
+    const bucket = classifyLimitedOutcome({
+      overallRiskLevel: survey.overall_risk_level,
+      userDecisionLabel: survey.user_decision_label,
+    });
+    if (
+      bucket === "survey_closed" ||
+      bucket === "access_restricted" ||
+      bucket === "extraction_limited" ||
+      bucket === "system_failure"
+    ) {
+      return false;
+    }
+  }
   const bucket = classifyLimitedOutcome({
     overallRiskLevel: survey.overall_risk_level,
     userDecisionLabel: survey.user_decision_label,

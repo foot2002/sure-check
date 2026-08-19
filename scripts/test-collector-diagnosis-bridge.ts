@@ -44,6 +44,73 @@ function makeTriage(partial: Parameters<typeof triageCandidate>[0]) {
   assert.equal(isEligibleTriage(t), false);
 }
 
+// B_PRIORITY official company → eligible (collect_confirmed auto diagnosis)
+{
+  const t = makeTriage({
+    sourceTitle: "주식회사 테스트 고객만족 조사",
+    sourceUrl: "https://www.example.com/cs",
+    sortMode: "date",
+    firstSeenThisRun: true,
+  });
+  const eligible = isEligibleTriage({
+    ...t,
+    queue: "B_PRIORITY",
+    organization: "company",
+  });
+  assert.equal(eligible, true);
+}
+
+// discovered is never auto-diagnosed
+{
+  const publicA = makeTriage({
+    sourceTitle: "송파구청 만족도 조사",
+    sourceUrl: "https://www.songpa.go.kr/x",
+    sortMode: "date",
+    firstSeenThisRun: true,
+  });
+  const eligible = filterAndSortEligible([
+    {
+      id: "d1",
+      canonicalUrl: "https://forms.gle/disc",
+      platform: "google_forms",
+      title: "discovered",
+      status: "discovered",
+      triage: {
+        ...publicA,
+        queue: "A_PRIORITY",
+        organization: "public",
+      },
+    },
+  ]);
+  assert.equal(eligible.length, 0);
+}
+
+// stale_candidate freshness is excluded
+{
+  const publicA = makeTriage({
+    sourceTitle: "송파구청 만족도 조사",
+    sourceUrl: "https://www.songpa.go.kr/x",
+    sortMode: "date",
+    firstSeenThisRun: true,
+  });
+  const eligible = filterAndSortEligible([
+    {
+      id: "s1",
+      canonicalUrl: "https://forms.gle/stale-cand",
+      platform: "google_forms",
+      title: "topic year",
+      status: "active",
+      triage: {
+        ...publicA,
+        queue: "A_PRIORITY",
+        organization: "public",
+      },
+      freshness: { freshness_status: "stale_candidate", should_diagnose: false },
+    },
+  ]);
+  assert.equal(eligible.length, 0);
+}
+
 // filterAndSortEligible drops non-active and C
 {
   const publicA = makeTriage({
@@ -132,9 +199,9 @@ function makeTriage(partial: Parameters<typeof triageCandidate>[0]) {
   assert.ok(plats.has("moaform"));
 }
 
-assert.equal(COLLECTOR_DIAGNOSIS_DISPATCH_MAX, 10);
-assert.equal(COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING, 10);
-assert.equal(COLLECTOR_DIAGNOSIS_DAILY_MAX, 100);
+assert.equal(COLLECTOR_DIAGNOSIS_DISPATCH_MAX, 20);
+assert.equal(COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING, 20);
+assert.equal(COLLECTOR_DIAGNOSIS_DAILY_MAX, 300);
 
 // KST day bounds: 2026-08-08 17:30Z is still KST Aug 9 02:30 → day starts 08-08 15:00Z
 {

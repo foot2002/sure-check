@@ -23,7 +23,7 @@ export function emptyLimitedOutcomeCounts(): LimitedOutcomeCounts {
 }
 
 const CLOSED_RE =
-  /응답이\s*종료|설문이\s*종료|종료된\s*(모아폼|설문|Google)|모아폼\s*응답이\s*종료|네이버폼\s*응답이\s*종료|응답\s*기간이?\s*종료|응답이\s*마감|더\s*이상\s*응답|마감된\s*설문|this\s*form\s*is\s*no\s*longer\s*accepting|form\s*(is\s*)?closed|종료되었거나\s*비공개/i;
+  /응답이\s*종료|설문이\s*종료|종료된\s*(모아폼|설문|Google)|모아폼\s*응답이\s*종료|네이버폼\s*응답이\s*종료|응답\s*기간이?\s*종료|응답이\s*마감|더\s*이상\s*응답|마감된\s*설문|this\s*form\s*is\s*no\s*longer\s*accepting|form\s*(is\s*)?closed|종료되었거나\s*비공개|종료되었거나\s*접근이\s*제한/i;
 
 const ACCESS_RE =
   /로그인\s*필요|로그인이\s*필요|로그인\s*또는\s*접근|접근\s*권한|권한이\s*필요|비공개|access\s*denied|private|restricted|permission/i;

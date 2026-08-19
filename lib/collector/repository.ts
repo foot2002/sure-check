@@ -10,6 +10,7 @@ import type {
   CollectorSurveyStatus,
   CollectionQueryStatInput,
   CollectionQueryStatRow,
+  SurveyLinkFreshness,
   SurveyLinkRow,
   SurveySourceRow,
   UpsertSurveyResult,
@@ -17,6 +18,62 @@ import type {
 
 function getClient() {
   return createSupabaseServerClient();
+}
+
+function looksLikeMissingColumn(message: string, column: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes(column.toLowerCase()) &&
+    (m.includes("column") || m.includes("schema") || m.includes("does not exist"))
+  );
+}
+
+function looksLikeStatusConstraint(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("status") && (m.includes("check") || m.includes("violat"));
+}
+
+async function writeSurveyLinkPatch(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<{ data: SurveyLinkRow | null; error: string | null }> {
+  const supabase = getClient();
+  let next = { ...patch };
+  if (next.status === "stale") {
+    // Prefer native `stale`; fall back to ignored if migration 009 is not applied.
+  }
+
+  const attempt = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase
+      .from("survey_links")
+      .update(body)
+      .eq("id", id)
+      .select("*")
+      .single();
+    return { data: (data as SurveyLinkRow) || null, error };
+  };
+
+  let { data, error } = await attempt(next);
+  if (error && next.freshness && looksLikeMissingColumn(error.message, "freshness")) {
+    const rest = { ...next };
+    delete rest.freshness;
+    next = rest;
+    ({ data, error } = await attempt(next));
+  }
+  if (error && next.status === "stale" && looksLikeStatusConstraint(error.message)) {
+    next = { ...next, status: "ignored" };
+    ({ data, error } = await attempt(next));
+  }
+  if (error) return { data: null, error: error.message };
+  return { data, error: null };
+}
+
+function mergeFreshness(
+  existing: SurveyLinkFreshness | null | undefined,
+  next?: SurveyLinkFreshness | null,
+): SurveyLinkFreshness | undefined {
+  if (!next) return existing || undefined;
+  return { ...(existing || {}), ...next };
 }
 
 /**
@@ -131,26 +188,55 @@ export async function upsertSurveyLinkPreferInsert(input: {
   platform: CollectorPlatform;
   title?: string | null;
   status?: CollectorSurveyStatus;
+  freshness?: SurveyLinkFreshness | null;
 }): Promise<UpsertSurveyResult> {
   const supabase = getClient();
   const now = new Date().toISOString();
   const nextTitle = sanitizeSurveyTitle(input.title);
   const nextStatus = input.status || "discovered";
 
-  const { data: inserted, error: insertError } = await supabase
+  const insertBody: Record<string, unknown> = {
+    canonical_url: input.canonicalUrl,
+    original_url: input.originalUrl,
+    platform: input.platform,
+    title: nextTitle || "제목 확인 필요",
+    status: nextStatus,
+    first_discovered_at: now,
+    last_discovered_at: now,
+    discovery_count: 1,
+  };
+  if (input.freshness) insertBody.freshness = input.freshness;
+
+  let { data: inserted, error: insertError } = await supabase
     .from("survey_links")
-    .insert({
-      canonical_url: input.canonicalUrl,
-      original_url: input.originalUrl,
-      platform: input.platform,
-      title: nextTitle || "제목 확인 필요",
-      status: nextStatus,
-      first_discovered_at: now,
-      last_discovered_at: now,
-      discovery_count: 1,
-    })
+    .insert(insertBody)
     .select("*")
     .single();
+
+  if (
+    insertError &&
+    insertBody.freshness &&
+    looksLikeMissingColumn(insertError.message, "freshness")
+  ) {
+    delete insertBody.freshness;
+    ({ data: inserted, error: insertError } = await supabase
+      .from("survey_links")
+      .insert(insertBody)
+      .select("*")
+      .single());
+  }
+  if (
+    insertError &&
+    insertBody.status === "stale" &&
+    looksLikeStatusConstraint(insertError.message)
+  ) {
+    insertBody.status = "ignored";
+    ({ data: inserted, error: insertError } = await supabase
+      .from("survey_links")
+      .insert(insertBody)
+      .select("*")
+      .single());
+  }
 
   if (!insertError && inserted) {
     return { link: inserted as SurveyLinkRow, isNew: true };
@@ -165,6 +251,7 @@ export async function upsertSurveyLinkPreferInsert(input: {
     platform: input.platform,
     title: input.title,
     status: input.status,
+    freshness: input.freshness,
   });
 }
 
@@ -174,6 +261,7 @@ export async function upsertSurveyLink(input: {
   platform: CollectorPlatform;
   title?: string | null;
   status?: CollectorSurveyStatus;
+  freshness?: SurveyLinkFreshness | null;
 }): Promise<UpsertSurveyResult> {
   const supabase = getClient();
   const now = new Date().toISOString();
@@ -210,7 +298,8 @@ export async function upsertSurveyLink(input: {
       if (
         row.status === "closed" ||
         row.status === "restricted" ||
-        row.status === "ignored"
+        row.status === "ignored" ||
+        row.status === "stale"
       ) {
         status = row.status;
       } else {
@@ -226,7 +315,8 @@ export async function upsertSurveyLink(input: {
     } else if (nextStatus === "discovered") {
       if (
         row.status === "invalid" ||
-        row.status === "ignored"
+        row.status === "ignored" ||
+        row.status === "stale"
       ) {
         status = row.status;
       } else if (
@@ -238,29 +328,32 @@ export async function upsertSurveyLink(input: {
       } else {
         status = "discovered";
       }
+    } else if (nextStatus === "stale") {
+      status =
+        row.status === "closed" || row.status === "restricted"
+          ? row.status
+          : "stale";
     } else if (nextStatus === "ignored") {
-      status = "ignored";
+      status = row.status === "stale" ? "stale" : "ignored";
     } else if (nextStatus) {
       status = nextStatus;
     }
 
-    const { data: updated, error: updateError } = await supabase
-      .from("survey_links")
-      .update({
-        last_discovered_at: now,
-        discovery_count: (row.discovery_count || 1) + 1,
-        title: mergedTitle,
-        original_url: input.originalUrl || row.original_url,
-        status,
-      })
-      .eq("id", row.id)
-      .select("*")
-      .single();
+    const patch: Record<string, unknown> = {
+      last_discovered_at: now,
+      discovery_count: (row.discovery_count || 1) + 1,
+      title: mergedTitle,
+      original_url: input.originalUrl || row.original_url,
+      status,
+    };
+    const mergedFreshness = mergeFreshness(row.freshness, input.freshness);
+    if (mergedFreshness) patch.freshness = mergedFreshness;
 
-    if (updateError) {
-      throw new Error(`survey_links 갱신 실패: ${updateError.message}`);
+    const written = await writeSurveyLinkPatch(row.id, patch);
+    if (written.error || !written.data) {
+      throw new Error(`survey_links 갱신 실패: ${written.error || "empty"}`);
     }
-    return { link: updated as SurveyLinkRow, isNew: false };
+    return { link: written.data, isNew: false };
   }
 
   const { data: inserted, error: insertError } = await supabase
@@ -312,22 +405,18 @@ export async function updateSurveyLinkStatus(
   id: string,
   status: CollectorSurveyStatus,
   title?: string | null,
+  freshness?: SurveyLinkFreshness | null,
 ): Promise<SurveyLinkRow | null> {
-  const supabase = getClient();
   const patch: Record<string, unknown> = { status };
   const cleaned = sanitizeSurveyTitle(title);
   if (cleaned) patch.title = cleaned;
-  const { data, error } = await supabase
-    .from("survey_links")
-    .update(patch)
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) {
-    console.error("[collector] updateSurveyLinkStatus", error);
+  if (freshness) patch.freshness = freshness;
+  const written = await writeSurveyLinkPatch(id, patch);
+  if (written.error) {
+    console.error("[collector] updateSurveyLinkStatus", written.error);
     return null;
   }
-  return data as SurveyLinkRow;
+  return written.data;
 }
 
 export async function insertSurveySource(input: {

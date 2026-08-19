@@ -14,7 +14,11 @@ import {
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { updateSurveyLinkStatus } from "@/lib/collector/repository";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { CollectorSurveyStatus, SurveyLinkRow } from "@/lib/collector/types";
+import type {
+  CollectorSurveyStatus,
+  SurveyLinkFreshness,
+  SurveyLinkRow,
+} from "@/lib/collector/types";
 
 export type RevalidateTransition = {
   id: string;
@@ -67,6 +71,7 @@ async function validateWithRetry(
   status: CollectorSurveyStatus;
   reason: string;
   pageRequests: number;
+  freshness?: SurveyLinkFreshness;
 }> {
   let pageRequests = 0;
   let lastStatus: CollectorSurveyStatus = "unreachable";
@@ -80,6 +85,7 @@ async function validateWithRetry(
         status: processed.status,
         reason: processed.reason,
         pageRequests,
+        freshness: processed.freshness,
       };
     }
     const status =
@@ -157,6 +163,7 @@ export async function revalidatePendingSurveyLinks(input?: {
     "restricted",
     "invalid",
     "ignored",
+    "stale",
   ];
   const before = await countByStatus(trackStatuses);
 
@@ -280,7 +287,12 @@ export async function revalidatePendingSurveyLinks(input?: {
         }
 
         if (nextStatus !== row.status) {
-          await updateSurveyLinkStatus(row.id, nextStatus);
+          await updateSurveyLinkStatus(
+            row.id,
+            nextStatus,
+            undefined,
+            result.freshness,
+          );
           transitions.push({
             id: row.id,
             url: row.canonical_url,

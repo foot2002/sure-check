@@ -20,7 +20,7 @@ export function isClosedSurveyUrl(url: string): boolean {
 
 /** Phrase-level closed markers (Diagnosis Naver/Moa/Google + Collector). */
 export const SHARED_CLOSED_HTML_RE =
-  /no longer accepting responses|this\s*form\s*is\s*no\s*longer\s*accepting|form\s*(is\s*)?closed|응답을\s*더\s*이상\s*받지|더\s*이상\s*응답|응답\s*접수.?종료|응답이\s*마감|응답이\s*종료|설문이\s*종료|응답\s*기간이?\s*종료|마감된\s*설문|종료된\s*(모아폼|설문|Google)|네이버폼\s*응답이\s*종료|모아폼\s*응답이\s*종료|closedform/i;
+  /no longer accepting responses|not accepting responses|this\s*form\s*is\s*no\s*longer\s*accepting|form\s*(is\s*)?closed|deadline\s*passed|응답을\s*더\s*이상\s*받지|더\s*이상\s*응답을\s*받지\s*않습니다|더\s*이상\s*응답|응답\s*접수.?종료|응답이\s*마감|응답이\s*종료|설문이\s*종료|조사\s*종료|접수\s*종료|신청\s*종료|응답\s*기간이?\s*종료|마감되었습니다|종료되었습니다|마감된\s*설문|종료된\s*(모아폼|설문|Google)|네이버폼\s*응답이\s*종료|모아폼\s*응답이\s*종료|closedform/i;
 
 export function htmlLooksClosedSurvey(
   html: string,

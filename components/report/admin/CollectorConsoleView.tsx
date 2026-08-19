@@ -50,6 +50,7 @@ function statusLabel(status: string): string {
   if (status === "completed") return "COMPLETED";
   if (status === "unreachable") return "UNREACHABLE";
   if (status === "invalid") return "INVALID";
+  if (status === "stale") return "STALE";
   if (status === "ignored") return "IGNORED";
   return status.toUpperCase();
 }
@@ -60,6 +61,8 @@ function statusBadgeClass(status: string): string {
   if (s === "closed") return "border-slate-500/40 bg-slate-500/20 text-slate-200";
   if (s === "restricted" || s === "limited")
     return "border-amber-500/40 bg-amber-500/15 text-amber-100";
+  if (s === "stale" || s === "ignored")
+    return "border-slate-500/40 bg-slate-700/40 text-slate-200";
   if (s === "unreachable" || s === "invalid")
     return "border-rose-500/40 bg-rose-500/15 text-rose-100";
   return "border-slate-600 bg-slate-800 text-slate-200";
@@ -337,18 +340,30 @@ export function CollectorConsoleView({
       ) : null}
 
       {summary ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {[
-            ["전체 발견 링크", summary.monitoring?.totalDiscovered ?? summary.totalLinksAll],
-            ["유효 수집(active)", summary.monitoring?.validActive ?? summary.byStatus?.active ?? 0],
+            ["원시 발견 후보", summary.opsFunnel?.rawDiscovered ?? summary.monitoring?.totalDiscovered ?? summary.totalLinksAll],
+            ["수집 후보", summary.opsFunnel?.collectCandidate ?? summary.monitoring?.unverified ?? 0],
+            ["수집 확정", summary.opsFunnel?.collectConfirmed ?? summary.monitoring?.validActive ?? summary.byStatus?.active ?? 0],
             ["미검증", summary.monitoring?.unverified ?? summary.verification.unverifiedDiscovered],
             ["종료(closed)", summary.monitoring?.closed ?? summary.byStatus?.closed ?? 0],
+            ["과거 제외(stale)", summary.monitoring?.stale ?? summary.byStatus?.stale ?? 0],
             ["접근 제한", summary.monitoring?.restricted ?? summary.byStatus?.restricted ?? 0],
+            ["개인연구 제외", summary.opsFunnel?.screenedPersonal ?? summary.byStatus?.ignored ?? 0],
             [
               "자동진단 대상",
-              summary.monitoring?.diagnosisEligibleActive ??
+              summary.opsFunnel?.collectConfirmed ??
+                summary.monitoring?.diagnosisEligibleActive ??
                 summary.byStatus?.active ??
                 0,
+            ],
+            [
+              "자동진단 누락",
+              summary.opsFunnel?.diagnosisMissing ?? 0,
+            ],
+            [
+              "개선안내 후보",
+              summary.opsFunnel?.improvementCandidateCount ?? 0,
             ],
           ].map(([label, value]) => (
             <div
@@ -369,10 +384,54 @@ export function CollectorConsoleView({
       ) : null}
       {summary ? (
         <p className="mb-4 text-[11px] text-slate-500">
-          종료·접근제한 링크는 DB에 보존되며 유효 수집/자동진단 대상에서 제외됩니다.
+          수집건수는 수집 확정(collect_confirmed) 기준입니다. 원시 발견·수집 후보는 자동진단하지 않습니다.
+          종료·과거·비공개·개인연구 링크는 수집 확정에서 제외됩니다.
           unreachable {summary.monitoring?.unreachable ?? 0} · invalid{" "}
           {summary.monitoring?.invalid ?? 0} · 오늘 신규 {summary.todayNew}
         </p>
+      ) : null}
+
+      {summary?.opsFunnel?.missingWarning ? (
+        <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          수집 확정 URL 중 자동진단 누락 {summary.opsFunnel.diagnosisMissing.toLocaleString("ko-KR")}건이
+          있습니다 (최근 활성 표본 {summary.opsFunnel.sampleSize.toLocaleString("ko-KR")}건 기준).
+          운영상 실패로 보고 다음 웨이브에서 이월 처리하세요. 하루 한도{" "}
+          {summary.opsFunnel.dailyLimit} / 배치 {summary.opsFunnel.batchSize} / 이월{" "}
+          {summary.opsFunnel.maxBacklogDays}일.
+        </div>
+      ) : null}
+
+      {summary?.opsFunnel ? (
+        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            [
+              "수집 확정률",
+              `${(summary.opsFunnel.collectConfirmedRate * 100).toFixed(1)}%`,
+            ],
+            [
+              "자동진단 완료율",
+              `${(summary.opsFunnel.diagnosisCoverageRate * 100).toFixed(1)}%`,
+            ],
+            [
+              "자동진단 누락률",
+              `${(summary.opsFunnel.diagnosisMissingRate * 100).toFixed(1)}%`,
+            ],
+            [
+              "제외율",
+              `${(summary.opsFunnel.screenedRate * 100).toFixed(1)}%`,
+            ],
+          ].map(([label, value]) => (
+            <div
+              key={String(label)}
+              className="rounded-xl border border-slate-700 bg-slate-900/50 p-3"
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+                {label}
+              </p>
+              <p className="mt-1 text-xl font-bold text-white">{value}</p>
+            </div>
+          ))}
+        </section>
       ) : null}
 
       {summary?.diagnosis ? (
@@ -461,7 +520,7 @@ export function CollectorConsoleView({
                   >
                     {Number(value).toLocaleString("ko-KR")}
                     {String(label).includes("남은")
-                      ? ` / ${summary.diagnosis?.today?.dailyMax ?? 100}`
+                      ? ` / ${summary.diagnosis?.today?.dailyMax ?? summary.opsFunnel?.dailyLimit ?? 300}`
                       : ""}
                   </p>
                 </div>
@@ -678,6 +737,61 @@ export function CollectorConsoleView({
         </details>
       ) : null}
 
+      {summary?.improvementCandidates && summary.improvementCandidates.length > 0 ? (
+        <section className="mb-6 overflow-hidden rounded-xl border border-slate-700 bg-slate-900/60">
+          <div className="border-b border-slate-700 px-4 py-3">
+            <p className="text-sm font-semibold text-white">개선안내 후보</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              위반 확정이 아닙니다. 위반 소지·개선 필요·확인 필요로만 표시하며 외부 발송은 하지 않습니다.
+            </p>
+          </div>
+          <div className="divide-y divide-slate-800">
+            {summary.improvementCandidates.map((row) => (
+              <div key={row.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="rounded border border-teal-600/40 px-1.5 py-0.5 font-semibold text-teal-200">
+                    {row.wording}
+                  </span>
+                  <span className="text-slate-400">우선 {row.priority}</span>
+                  <span className="text-slate-400">
+                    {row.publicPrivateType || "구분 없음"}
+                  </span>
+                  <span className="text-slate-400">{row.platform || "—"}</span>
+                  {row.hasEvidence ? (
+                    <span className="text-emerald-300">증빙 있음</span>
+                  ) : (
+                    <span className="text-slate-500">증빙 없음</span>
+                  )}
+                  <span className="text-slate-400">
+                    검토 {row.reviewStatus || "—"}
+                  </span>
+                  {row.score != null ? (
+                    <span className="text-slate-300">점수 {row.score}</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-sm font-semibold text-white">
+                  {row.operatorName || "(기관명 없음)"} · {row.surveyTitle || "(제목 없음)"}
+                </p>
+                <p className="mt-1 break-all text-[11px] text-slate-400">
+                  {row.surveyUrl || "—"}
+                </p>
+                <p className="mt-1 text-[11px] text-amber-100/90">
+                  {[
+                    row.hasPersonalInfo ? "개인정보" : null,
+                    row.hasSensitiveInfo ? "민감정보" : null,
+                    row.hasHighRiskInfo ? "고위험정보" : null,
+                    row.riskLevel ? `위험도 ${row.riskLevel}` : null,
+                    ...row.gapLabels,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <form
         onSubmit={applyFilters}
         className="mb-5 grid gap-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4 md:grid-cols-3 lg:grid-cols-4"
@@ -707,6 +821,7 @@ export function CollectorConsoleView({
             <option value="active">응답가능</option>
             <option value="discovered">미확인</option>
             <option value="closed">응답종료</option>
+            <option value="stale">과거 설문</option>
             <option value="restricted">권한필요</option>
             <option value="unreachable">접속실패</option>
             <option value="invalid">비설문</option>
@@ -838,6 +953,16 @@ export function CollectorConsoleView({
                       <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[11px] font-semibold text-slate-200">
                         {platformLabel(item.platform)}
                       </span>
+                      {item.collect_lane ? (
+                        <span className="rounded border border-sky-700/50 px-1.5 py-0.5 text-[11px] text-sky-200">
+                          {item.collect_lane}
+                        </span>
+                      ) : null}
+                      {item.auto_diagnosis_target ? (
+                        <span className="rounded border border-teal-700/50 px-1.5 py-0.5 text-[11px] text-teal-200">
+                          자동진단 대상
+                        </span>
+                      ) : null}
                       {item.triage_queue ? (
                         <span
                           className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${
@@ -916,6 +1041,22 @@ export function CollectorConsoleView({
                     <p className="mt-1 text-sm font-semibold text-white">
                       {item.title || "(제목 없음)"}
                     </p>
+                    {item.freshness?.freshness_reason ||
+                    item.status === "closed" ||
+                    item.status === "stale" ||
+                    item.status === "restricted" ? (
+                      <p className="mt-1 text-[11px] text-amber-200/90">
+                        제외 사유:{" "}
+                        {item.freshness?.freshness_reason ||
+                          (item.status === "closed"
+                            ? "응답 종료 문구 감지"
+                            : item.status === "restricted"
+                              ? "접근 권한 필요"
+                              : item.status === "stale"
+                                ? "과거 설문으로 판단되어 진단 제외"
+                                : "")}
+                      </p>
+                    ) : null}
                     <a
                       href={item.canonical_url}
                       target="_blank"
