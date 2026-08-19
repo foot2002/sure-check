@@ -10,6 +10,7 @@ import {
   loadAdminEvidenceFiles,
   type EvidenceEmptyState,
 } from "@/lib/report/adminEvidence";
+import { summarizeEvidenceFiles } from "@/lib/report/adminOutreach";
 import type {
   PublicationStatus,
   ReviewOutcome,
@@ -49,6 +50,11 @@ export interface AdminCaseDetail {
     scanReportId: string | null;
     scanJobId: string;
     externalScanId: string | null;
+    hasTemporaryZip: boolean;
+    hasScreenshots: boolean;
+    downloadableEvidenceTypes: string[];
+    temporaryZipId: string | null;
+    screenshotFileIds: string[];
   };
   performance: {
     extractionMode: string | null;
@@ -311,6 +317,12 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
     captureJobCount: captureRows.length,
     evidenceFileCount: evidenceRows.length,
   });
+  const evidenceSummary = summarizeEvidenceFiles(
+    evidenceRows.map((e) => ({
+      id: e.id as string,
+      evidenceType: (e.evidence_type as string | null) || null,
+    })),
+  );
 
   return {
     id: survey.id,
@@ -347,6 +359,11 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       scanJobId: survey.scan_job_id,
       externalScanId:
         (scanJobPerf?.external_scan_id as string | null) || null,
+      hasTemporaryZip: evidenceSummary.hasTemporaryZip,
+      hasScreenshots: evidenceSummary.hasScreenshots,
+      downloadableEvidenceTypes: evidenceSummary.downloadableEvidenceTypes,
+      temporaryZipId: evidenceSummary.temporaryZipId,
+      screenshotFileIds: evidenceSummary.screenshotFileIds,
     },
     performance: {
       extractionMode:

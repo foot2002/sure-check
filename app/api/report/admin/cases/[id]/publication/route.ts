@@ -34,7 +34,7 @@ export async function PATCH(
       !body.publicationStatus ||
       !PUBLICATION_STATUSES.includes(body.publicationStatus as PublicationStatus)
     ) {
-      return NextResponse.json({ error: "유효하지 않은 공개 상태입니다." }, { status: 400 });
+      return NextResponse.json({ error: "유효하지 않은 개선안내 상태입니다." }, { status: 400 });
     }
 
     await updateAdminCasePublication({
@@ -57,6 +57,6 @@ export async function PATCH(
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error("[admin-publication]", error);
-    return NextResponse.json({ error: "공개 상태 저장에 실패했습니다." }, { status: 500 });
+    return NextResponse.json({ error: "개선안내 상태 저장에 실패했습니다." }, { status: 500 });
   }
 }

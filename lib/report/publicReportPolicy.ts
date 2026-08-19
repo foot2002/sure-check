@@ -5,8 +5,10 @@
 
 export const PUBLIC_REPORT_FORBIDDEN_KEYS = [
   "survey_url",
+  "surveyUrl",
   "form_url",
   "final_url",
+  "finalUrl",
   "captured_url",
   "storage_path",
   "storage_bucket",

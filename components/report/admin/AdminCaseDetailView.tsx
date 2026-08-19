@@ -8,12 +8,19 @@ import { AdminOutreachSections } from "@/components/report/admin/AdminOutreachSe
 import { AdminEvidenceDownloads } from "@/components/report/admin/AdminEvidenceDownloads";
 import {
   formatDataCollectionSummary,
+  outreachUiStatusKo,
+  classifyOutreachUiStatus,
+  isOutreachCandidate,
+  classifyOutreachPriority,
+  pickIssueBadges,
   publicPrivateKo,
+  publicationStatusKo,
   reviewStatusKo,
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
+import { AdminCaseActionBar } from "@/components/report/admin/AdminCaseActionBar";
 
-const TABS = ["요약", "증거", "검토·공개"] as const;
+const TABS = ["요약", "증거", "검토·조치"] as const;
 
 type Tab = (typeof TABS)[number];
 
@@ -154,11 +161,11 @@ export function AdminCaseDetailView({
     });
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
     if (!res.ok) {
-      setMessage(data?.error || "공개 상태 저장 실패");
+      setMessage(data?.error || "개선안내 상태 저장 실패");
       return;
     }
     setNamedWarningOpen(false);
-    setMessage("공개 상태를 저장했습니다.");
+    setMessage("개선안내 상태를 저장했습니다.");
   }
 
   if (error || !detail) {
@@ -192,10 +199,46 @@ export function AdminCaseDetailView({
           <p className="mt-1 text-sm text-slate-600">
             {s.operatorName || "운영주체 미확인"} · {publicPrivateKo(s.publicPrivateType)} · {riskLabelKo(s.overallRiskLevel)}
           </p>
+          <div className="mt-3">
+            <AdminCaseActionBar
+              caseId={detail.id}
+              surveyUrl={s.surveyUrl}
+              zipFileId={s.temporaryZipId}
+              screenshotIds={s.screenshotFileIds}
+              screenshotMeta={detail.evidenceFiles}
+              showIndividualCaptures
+              onMessage={setMessage}
+            />
+          </div>
         </div>
         <div className="text-right text-xs text-slate-500">
           <p>검토: {reviewStatusKo(s.reviewStatus)}</p>
-          <p>공개: {s.publicationStatus}</p>
+          <p>
+            개선안내:{" "}
+            {outreachUiStatusKo(
+              classifyOutreachUiStatus({
+                reviewStatus: s.reviewStatus,
+                publicationStatus: s.publicationStatus,
+                outreachCandidate: isOutreachCandidate(
+                  classifyOutreachPriority({
+                    publicPrivateType: s.publicPrivateType,
+                    hasPersonalInfo: s.hasPersonalInfo,
+                    hasSensitiveInfo: s.hasSensitiveInfo,
+                    hasHighRiskInfo: s.hasHighRiskInfo,
+                    overallRiskLevel: s.overallRiskLevel,
+                    userDecisionLabel: s.userDecisionLabel,
+                    evidenceCount: s.evidenceCount,
+                    issueBadges: pickIssueBadges({
+                      userDecisionLabel: s.userDecisionLabel,
+                      hasSensitiveInfo: s.hasSensitiveInfo,
+                      hasHighRiskInfo: s.hasHighRiskInfo,
+                      isPublic: s.publicPrivateType === "public",
+                    }),
+                  }),
+                ),
+              }),
+            )}
+          </p>
         </div>
       </div>
 
@@ -267,16 +310,6 @@ export function AdminCaseDetailView({
                 </p>
               </div>
             </div>
-            {s.surveyUrl ? (
-              <a
-                href={s.surveyUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-block break-all text-sm text-teal-800 hover:underline"
-              >
-                {s.surveyUrl}
-              </a>
-            ) : null}
           </div>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -591,7 +624,7 @@ export function AdminCaseDetailView({
         </div>
       ) : null}
 
-      {tab === "검토·공개" ? (
+      {tab === "검토·조치" ? (
         <div className="space-y-6">
           <div className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-semibold text-slate-900">검토 처리</h3>
@@ -609,7 +642,7 @@ export function AdminCaseDetailView({
                 {["none", "pending", "in_review", "resolved", "dismissed"].map(
                   (v) => (
                     <option key={v} value={v}>
-                      {v}
+                      {reviewStatusKo(v)}
                     </option>
                   ),
                 )}
@@ -665,16 +698,16 @@ export function AdminCaseDetailView({
           </div>
 
           <div className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-900">공개 처리</h3>
+            <h3 className="text-sm font-semibold text-slate-900">개선안내 상태</h3>
             <ul className="space-y-1 text-sm text-slate-500">
-              <li>private: 내부 전용</li>
-              <li>aggregate_only: 공개 통계에만 포함</li>
-              <li>public_anonymized: 익명 사례로 공개 가능</li>
-              <li>public_named: 기관명 포함 공개 가능 (검토 완료 후)</li>
-              <li>archived: 보관/제외</li>
+              <li>내부검토: 공문 발송 전 내부 확인</li>
+              <li>통계만 반영: 집계 통계에만 포함</li>
+              <li>익명 사례 가능: 익명 사례로 참고 가능</li>
+              <li>기관명 포함 검토: 기관명 포함 여부는 신중히 판단</li>
+              <li>보관/제외: 발송 대상에서 제외</li>
             </ul>
             <label className="block text-sm text-slate-700">
-              공개 상태
+              개선안내 상태
               <select
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
                 value={publicationStatus}
@@ -690,7 +723,7 @@ export function AdminCaseDetailView({
                   "archived",
                 ].map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {publicationStatusKo(v)}
                   </option>
                 ))}
               </select>
@@ -700,7 +733,7 @@ export function AdminCaseDetailView({
               onClick={() => savePublication(false)}
               className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
             >
-              공개 상태 저장
+              개선안내 상태 저장
             </button>
           </div>
 
@@ -726,7 +759,7 @@ export function AdminCaseDetailView({
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              관리자·개발 검수용입니다. 공개 API에는 포함되지 않습니다.
+              관리자·개발 검수용입니다. 집계 통계 API에는 포함되지 않습니다.
             </p>
             {jsonOpen ? (
               <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-slate-100 p-3 text-xs text-slate-700">
@@ -741,12 +774,12 @@ export function AdminCaseDetailView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-5">
             <h2 className="text-lg font-bold text-amber-900">
-              기관·기업명 공개 경고
+              기관명 포함 검토 경고
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-700">
-              기관·기업명 공개는 명예훼손, 사실오인, 법적 분쟁 가능성이 있으므로
-              검토 완료 후 신중하게 선택해야 합니다. 자동진단 결과만으로 위법
-              여부를 단정하거나 단정적으로 표현해서는 안 됩니다.
+              기관·기업명을 외부 자료에 넣는 것은 명예훼손, 사실오인, 법적 분쟁
+              가능성이 있으므로 검토 완료 후 신중하게 선택해야 합니다. 자동진단
+              결과만으로 위법 여부를 단정하거나 단정적으로 표현해서는 안 됩니다.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -761,7 +794,7 @@ export function AdminCaseDetailView({
                 onClick={() => savePublication(true)}
                 className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
               >
-                이해했으며 public_named로 저장
+                이해했으며 기관명 포함 검토로 저장
               </button>
             </div>
           </div>

@@ -3,11 +3,12 @@ import {
   getAdminSessionFromCookies,
   isAdminAuthConfigured,
 } from "@/lib/report/adminAuth";
-import { listAdminCases } from "@/lib/report/adminCases";
+import { listAdminCases, AdminRangeError } from "@/lib/report/adminCases";
 import { AdminConsoleView } from "@/components/report/admin/AdminConsoleView";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export default async function AdminReportPage({
   searchParams,
@@ -55,11 +56,17 @@ export default async function AdminReportPage({
       priority: pick("priority"),
       noticeGap: pick("noticeGap"),
       reportReview: pick("reportReview"),
+      outreachStatus: pick("outreachStatus"),
+      from: pick("from"),
+      to: pick("to"),
       q: pick("q"),
     });
   } catch (err) {
     console.error("[admin-page]", err);
-    error = "검토 목록을 불러오지 못했습니다.";
+    error =
+      err instanceof AdminRangeError
+        ? err.message
+        : "검토 목록을 불러오지 못했습니다.";
   }
 
   return (
@@ -67,7 +74,7 @@ export default async function AdminReportPage({
       data={data}
       error={error}
       filters={{
-        range: pick("range") || "7d",
+        range: pick("from") && pick("to") ? "custom" : pick("range") || "7d",
         risk: pick("risk") || "all",
         reviewStatus: pick("reviewStatus") || "all",
         publicationStatus: pick("publicationStatus") || "all",
@@ -82,7 +89,10 @@ export default async function AdminReportPage({
         priority: pick("priority") || "all",
         noticeGap: pick("noticeGap") || "all",
         reportReview: pick("reportReview") || "all",
+        outreachStatus: pick("outreachStatus") || "all",
         q: pick("q") || "",
+        from: pick("from") || "",
+        to: pick("to") || "",
       }}
     />
   );

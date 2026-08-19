@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import { AdminOutreachSections } from "@/components/report/admin/AdminOutreachSections";
+import { AdminCaseActionBar } from "@/components/report/admin/AdminCaseActionBar";
 import {
   classifyOutreachPriority,
   pickIssueBadges,
@@ -41,7 +41,10 @@ export function AdminCaseDrawer({
   useEffect(() => {
     if (!caseId) return;
     let cancelled = false;
-    fetch(`/api/report/admin/cases/${caseId}`)
+    fetch(`/api/report/admin/cases/${caseId}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-store" },
+    })
       .then(async (res) => {
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "상세를 불러오지 못했습니다.");
@@ -134,13 +137,15 @@ export function AdminCaseDrawer({
             </button>
           </div>
           <div className="mt-3">
-            <Link
-              href={`/report/admin/cases/${caseId}`}
-              target="_blank"
-              className="text-sm font-semibold text-teal-800 hover:underline"
-            >
-              새 탭에서 전체 상세 보기
-            </Link>
+            <AdminCaseActionBar
+              caseId={caseId}
+              surveyUrl={s?.surveyUrl}
+              zipFileId={s?.temporaryZipId}
+              screenshotIds={s?.screenshotFileIds}
+              screenshotMeta={current?.evidenceFiles}
+              showFullDetailLink
+              onMessage={setMessage}
+            />
           </div>
         </div>
         <div className="space-y-4 px-5 py-4">

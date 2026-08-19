@@ -7,6 +7,8 @@ export const EVIDENCE_TYPE_LABEL: Record<string, string> = {
   pii_question_screenshot: "개인정보 문항 캡처",
   sensitive_question_screenshot: "민감정보 문항 캡처",
   high_risk_question_screenshot: "고위험정보 문항 캡처",
+  first_page_screenshot: "첫 페이지 캡처",
+  final_page_screenshot: "제출 직전 페이지 캡처",
   summary_document: "요약 문서",
   metadata: "메타데이터",
 };

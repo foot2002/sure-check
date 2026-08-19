@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { AdminCaseListItem, AdminCaseListPayload } from "@/lib/report/adminCases";
+import { appliedAdminRangeLabel } from "@/lib/report/adminCases";
 import { AdminCaseDrawer } from "@/components/report/admin/AdminCaseDrawer";
+import { AdminCaseRowActions } from "@/components/report/admin/AdminCaseRowActions";
 import {
+  outreachUiStatusKo,
   publicPrivateKo,
-  publicationStatusKo,
   reviewStatusKo,
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
@@ -28,7 +30,10 @@ type Filters = {
   priority: string;
   noticeGap: string;
   reportReview: string;
+  outreachStatus: string;
   q: string;
+  from: string;
+  to: string;
 };
 
 function riskBadge(level: string) {
@@ -49,6 +54,16 @@ function priorityBadge(p: string) {
   return "bg-slate-200 text-slate-700";
 }
 
+function kstDateInputValue(value?: string): string {
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export function AdminConsoleView({
   data,
   error,
@@ -59,32 +74,92 @@ export function AdminConsoleView({
   filters: Filters;
 }) {
   const router = useRouter();
-  const [form, setForm] = useState(filters);
+  const [form, setForm] = useState<Filters>({
+    ...filters,
+    from: filters.from || "",
+    to: filters.to || "",
+  });
   const [openId, setOpenId] = useState<string | null>(null);
+  const [clientPayload, setClientPayload] = useState<AdminCaseListPayload | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
+  const payload = clientPayload ?? data;
+  const loadError = clientError ?? error;
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  function toParams(next: Filters): URLSearchParams {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(next)) {
+      if (key === "from" || key === "to" || key === "range") continue;
+      if (!value || value === "all") continue;
+      params.set(key, value);
+    }
+    if (next.range === "custom") {
+      params.set("from", next.from);
+      params.set("to", next.to);
+    } else {
+      params.set("range", next.range || "7d");
+    }
+    return params;
+  }
+
+  async function apply(next: Filters) {
+    if (next.range === "custom") {
+      if (!next.from || !next.to) {
+        setRangeError("시작일과 종료일을 선택하세요.");
+        setForm(next);
+        return;
+      }
+      if (next.from > next.to) {
+        setRangeError("시작일이 종료일보다 늦습니다.");
+        setForm(next);
+        return;
+      }
+    }
+    setRangeError(null);
+    setForm(next);
+    const params = toParams(next);
+    const qs = params.toString();
+    router.replace(`/report/admin?${qs}`, { scroll: false });
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/report/admin/cases?${qs}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-store" },
+      });
+      const json = (await res.json().catch(() => null)) as
+        | (AdminCaseListPayload & { error?: string })
+        | null;
+      if (!res.ok || !json?.cases) {
+        setClientError(json?.error || "검토 목록을 불러오지 못했습니다.");
+        return;
+      }
+      setClientPayload(json);
+      setClientError(null);
+      setOpenId((id) =>
+        id && json.cases.some((row) => row.id === id) ? id : null,
+      );
+    } catch {
+      setClientError("검토 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function applyFilters(event: FormEvent) {
     event.preventDefault();
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(form)) {
-      if (!value || value === "all") continue;
-      if (key === "range" && value === "7d") continue;
-      params.set(key, value);
-    }
-    const qs = params.toString();
-    router.push(qs ? `/report/admin?${qs}` : "/report/admin");
+    void apply(form);
   }
 
   function setQuick(patch: Partial<Filters>) {
-    const next = { ...form, ...patch };
-    setForm(next);
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(next)) {
-      if (!value || value === "all") continue;
-      if (key === "range" && value === "7d") continue;
-      params.set(key, value);
-    }
-    const qs = params.toString();
-    router.push(qs ? `/report/admin?${qs}` : "/report/admin");
+    void apply({ ...form, ...patch });
   }
 
   async function logout() {
@@ -120,7 +195,7 @@ export function AdminConsoleView({
             href="/report"
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
-            공개 /report
+            집계 통계 /report
           </Link>
           <button
             type="button"
@@ -132,22 +207,32 @@ export function AdminConsoleView({
         </div>
       </header>
 
-      {error ? (
+      {loadError ? (
         <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {error}
+          {loadError}
+        </div>
+      ) : null}
+      {toast ? (
+        <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+          {toast}
         </div>
       ) : null}
 
-      {data ? (
+      {payload ? (
         <>
+        <p className="mb-2 text-xs text-slate-500">
+          적용 기간: {appliedAdminRangeLabel(payload)}
+          {" · "}목록 {payload.cases.length.toLocaleString("ko-KR")}건
+          {loading ? " · 갱신 중…" : ""}
+        </p>
         <section className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {[
-            ["분석 가능 진단", data.kpi.totalScans],
-            ["검토 대기", data.kpi.reviewPendingCount],
-            ["고위험/신고 검토", data.kpi.highOrReportReviewCount],
-            ["공공부문 확인 필요", data.kpi.publicSectorReviewCount],
-            ["증빙 캡처 확보", data.kpi.evidenceCaptureCount],
-            ["공개 후보", data.kpi.publicationCandidateCount],
+            ["분석 가능 진단", payload.kpi.totalScans],
+            ["미검토", payload.kpi.reviewPendingCount],
+            ["고위험/신고 검토", payload.kpi.highOrReportReviewCount],
+            ["공공부문 확인 필요", payload.kpi.publicSectorReviewCount],
+            ["증빙 캡처 확보", payload.kpi.evidenceCaptureCount],
+            ["개선안내 후보", payload.kpi.publicationCandidateCount],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -164,11 +249,11 @@ export function AdminConsoleView({
         </section>
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
-            ["스캔 대기", data.queue.scanPending],
-            ["스캔 실행", data.queue.scanRunning],
-            ["스캔 실패", data.queue.scanFailed],
-            ["캡처 대기", data.queue.capturePending],
-            ["캡처 실행", data.queue.captureRunning],
+            ["스캔 대기", payload.queue.scanPending],
+            ["스캔 실행", payload.queue.scanRunning],
+            ["스캔 실패", payload.queue.scanFailed],
+            ["캡처 대기", payload.queue.capturePending],
+            ["캡처 실행", payload.queue.captureRunning],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -193,7 +278,9 @@ export function AdminConsoleView({
             ["우선순위 A", form.priority === "A", { priority: form.priority === "A" ? "all" : "A" }],
             ["증거 확보", form.hasEvidence === "true", { hasEvidence: form.hasEvidence === "true" ? "all" : "true" }],
             ["증거 부족", form.hasEvidence === "false", { hasEvidence: form.hasEvidence === "false" ? "all" : "false" }],
-            ["미검토", form.reviewStatus === "none", { reviewStatus: form.reviewStatus === "none" ? "all" : "none" }],
+            ["미검토", form.outreachStatus === "unreviewed", { outreachStatus: form.outreachStatus === "unreviewed" ? "all" : "unreviewed" }],
+            ["발송대상", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
+            ["공문발송 검토", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
             ["공공기관", form.publicPrivate === "public", { publicPrivate: form.publicPrivate === "public" ? "all" : "public" }],
             ["민간기업", form.publicPrivate === "private", { publicPrivate: form.publicPrivate === "private" ? "all" : "private" }],
             ["개인정보 포함", form.hasPersonalInfo === "true", { hasPersonalInfo: form.hasPersonalInfo === "true" ? "all" : "true" }],
@@ -230,6 +317,7 @@ export function AdminConsoleView({
               ["7d", "최근 7일"],
               ["30d", "최근 30일"],
               ["all", "전체"],
+              ["custom", "기간 설정"],
             ],
           },
           {
@@ -253,15 +341,17 @@ export function AdminConsoleView({
             ],
           },
           {
-            key: "reviewStatus",
-            label: "검토상태",
+            key: "outreachStatus",
+            label: "개선안내 상태",
             options: [
               ["all", "전체"],
-              ["none", "미검토"],
-              ["pending", "대기"],
-              ["in_review", "검토 중"],
-              ["resolved", "완료"],
-              ["dismissed", "보류"],
+              ["unreviewed", "미검토"],
+              ["in_review", "검토중"],
+              ["candidate", "개선안내 후보"],
+              ["send", "발송대상"],
+              ["hold", "보류"],
+              ["exclude", "제외"],
+              ["done", "완료"],
             ],
           },
           {
@@ -288,9 +378,29 @@ export function AdminConsoleView({
             <select
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900"
               value={form[field.key as keyof Filters]}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, [field.key]: e.target.value }))
-              }
+              onChange={(e) => {
+                const value = e.target.value;
+                if (field.key === "range") {
+                  if (value === "custom") {
+                    const today = kstDateInputValue();
+                    setForm((prev) => ({
+                      ...prev,
+                      range: "custom",
+                      from: prev.from || today,
+                      to: prev.to || today,
+                    }));
+                    return;
+                  }
+                  void apply({ ...form, range: value, from: "", to: "" });
+                  return;
+                }
+                const next = { ...form, [field.key]: e.target.value };
+                if (field.key === "outreachStatus" || field.key === "priority" || field.key === "risk" || field.key === "hasEvidence" || field.key === "publicPrivate") {
+                  void apply(next);
+                } else {
+                  setForm(next);
+                }
+              }}
             >
               {field.options.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -317,6 +427,52 @@ export function AdminConsoleView({
             필터 적용
           </button>
         </div>
+        {form.range === "custom" ? (
+          <div className="md:col-span-3 lg:col-span-4 rounded-lg border border-teal-100 bg-teal-50/60 p-3">
+            <p className="text-xs font-semibold text-teal-900">기간 설정</p>
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <label className="text-xs text-slate-600">
+                시작일
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                  value={form.from}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, from: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                종료일
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900"
+                  value={form.to}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, to: e.target.value }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
+                onClick={() => void apply({ ...form, range: "custom" })}
+              >
+                적용
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => void apply({ ...form, range: "7d", from: "", to: "" })}
+              >
+                초기화
+              </button>
+            </div>
+            {rangeError ? (
+              <p className="mt-2 text-xs text-rose-700">{rangeError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </form>
 
       <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -334,7 +490,7 @@ export function AdminConsoleView({
                 "수집 정보",
                 "증거 상태",
                 "검토 상태",
-                "공개 상태",
+                "개선안내 상태",
                 "조치",
               ].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-2.5">
@@ -344,7 +500,7 @@ export function AdminConsoleView({
             </tr>
           </thead>
           <tbody>
-            {(data?.cases || []).map((row: AdminCaseListItem) => (
+            {(payload?.cases || []).map((row: AdminCaseListItem) => (
               <tr
                 key={row.id}
                 className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50/60 ${
@@ -403,23 +559,18 @@ export function AdminConsoleView({
                   {reviewStatusKo(row.reviewStatus)}
                 </td>
                 <td className="whitespace-nowrap px-3 py-3 text-slate-500">
-                  {publicationStatusKo(row.publicationStatus)}
+                  {outreachUiStatusKo(row.outreachUiStatus)}
                 </td>
-                <td className="px-3 py-3">
-                  <button
-                    type="button"
-                    className="rounded bg-teal-700 px-2 py-1 text-xs font-semibold text-white hover:bg-teal-800"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenId(row.id);
-                    }}
-                  >
-                    검토
-                  </button>
+                <td className="min-w-[16rem] whitespace-nowrap px-3 py-3">
+                  <AdminCaseRowActions
+                    row={row}
+                    onReview={() => setOpenId(row.id)}
+                    onMessage={setToast}
+                  />
                 </td>
               </tr>
             ))}
-            {data && data.cases.length === 0 ? (
+            {payload && payload.cases.length === 0 ? (
               <tr>
                 <td colSpan={12} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.

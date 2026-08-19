@@ -4,14 +4,20 @@ import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import {
   buildOutreachCopy,
   classifyOutreachPriority,
+  classifyOutreachUiStatus,
   improvementChecklist,
   isOutreachCandidate,
+  outreachUiStatusKo,
   pickIssueBadges,
-  publicationStatusKo,
   recommendedAction,
   reviewStatusKo,
   assertNoConfirmedViolationWording,
 } from "@/lib/report/adminOutreach";
+import {
+  downloadAdminBlob,
+  reviewReportDownloadUrl,
+  reviewReportFilename,
+} from "@/components/report/admin/adminDownloads";
 import { AdminEvidenceDownloads } from "@/components/report/admin/AdminEvidenceDownloads";
 
 export function AdminOutreachSections({
@@ -73,6 +79,17 @@ export function AdminOutreachSections({
     }
   }
 
+  async function downloadReviewReport() {
+    try {
+      await downloadAdminBlob(
+        reviewReportDownloadUrl(detail.id),
+        reviewReportFilename(detail.id),
+      );
+    } catch {
+      onMessage?.("검토 리포트를 내려받지 못했습니다.");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -106,8 +123,16 @@ export function AdminOutreachSections({
             <dd>{reviewStatusKo(s.reviewStatus)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">공개 상태</dt>
-            <dd>{publicationStatusKo(s.publicationStatus)}</dd>
+            <dt className="text-xs text-slate-500">개선안내 상태 / 공문발송 검토</dt>
+            <dd>
+              {outreachUiStatusKo(
+                classifyOutreachUiStatus({
+                  reviewStatus: s.reviewStatus,
+                  publicationStatus: s.publicationStatus,
+                  outreachCandidate: isOutreachCandidate(priority),
+                }),
+              )}
+            </dd>
           </div>
         </dl>
       </section>
@@ -160,6 +185,13 @@ export function AdminOutreachSections({
             onClick={() => void copyText(copy.letterSummary)}
           >
             공문 요약 복사
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+            onClick={() => void downloadReviewReport()}
+          >
+            검토 리포트 다운로드
           </button>
         </div>
       </section>

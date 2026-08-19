@@ -3,10 +3,11 @@ import {
   getAdminSessionFromCookies,
   unauthorizedJson,
 } from "@/lib/report/adminAuth";
-import { listAdminCases } from "@/lib/report/adminCases";
+import { listAdminCases, AdminRangeError } from "@/lib/report/adminCases";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   if (!(await getAdminSessionFromCookies())) return unauthorizedJson();
@@ -29,6 +30,9 @@ export async function GET(request: Request) {
       priority: searchParams.get("priority"),
       noticeGap: searchParams.get("noticeGap"),
       reportReview: searchParams.get("reportReview"),
+      outreachStatus: searchParams.get("outreachStatus"),
+      from: searchParams.get("from"),
+      to: searchParams.get("to"),
       q: searchParams.get("q"),
     });
     return NextResponse.json(payload, {
@@ -37,6 +41,9 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof AdminRangeError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error("[admin-cases]", error);
     return NextResponse.json(
       { error: "검토 목록을 불러오지 못했습니다." },

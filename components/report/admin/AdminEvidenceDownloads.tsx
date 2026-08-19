@@ -6,7 +6,12 @@ import {
   classifyOutreachPriority,
   evidenceDownloadFilename,
   needsEvidenceDownload,
+  pickEvidenceFile,
 } from "@/lib/report/adminOutreach";
+import {
+  downloadAdminBlob,
+  evidenceProxyDownloadUrl,
+} from "@/components/report/admin/adminDownloads";
 
 export function AdminEvidenceDownloads({
   detail,
@@ -35,55 +40,47 @@ export function AdminEvidenceDownloads({
     priority,
   });
   const files = detail.evidenceFiles;
-  const zip = files.find((f) => f.evidenceType === "temporary_zip");
-  const notice = files.find((f) => f.evidenceType === "notice_screenshot");
-  const personal = files.find((f) => f.evidenceType === "pii_question_screenshot");
-  const sensitive = files.find((f) => f.evidenceType === "sensitive_question_screenshot");
-  const highRisk = files.find((f) => f.evidenceType === "high_risk_question_screenshot");
-  const firstPage =
-    files.find(
-      (f) =>
-        f.evidenceType === "key_screenshot" &&
-        (f.pageNumber === 1 || /첫|공개 설문/.test(f.label || "")),
-    ) || files.find((f) => f.evidenceType === "key_screenshot");
-  const submitPage = files.find((f) =>
-    /제출|직전|submit/.test(`${f.label || ""}`),
-  );
+  const zip = pickEvidenceFile(files, "zip");
+  const notice = pickEvidenceFile(files, "notice");
+  const personal = pickEvidenceFile(files, "pii");
+  const sensitive = pickEvidenceFile(files, "sensitive");
+  const highRisk = pickEvidenceFile(files, "high_risk");
+  const firstPage = pickEvidenceFile(files, "first_page");
+  const submitPage = pickEvidenceFile(files, "final_page");
   const screenshots = files.filter((f) => f.evidenceType !== "temporary_zip");
 
   async function downloadFile(fileId: string, filename: string) {
     setBusy(fileId);
     try {
-      const res = await fetch(
-        `/api/report/admin/evidence/${fileId}/download?caseId=${encodeURIComponent(detail.id)}`,
-      );
-      if (!res.ok) {
-        onMessage?.("증빙 파일을 내려받지 못했습니다.");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await downloadAdminBlob(evidenceProxyDownloadUrl(fileId, detail.id), filename);
+    } catch {
+      onMessage?.("증빙 파일을 내려받지 못했습니다.");
     } finally {
       setBusy(null);
     }
   }
 
   async function downloadAllScreenshots() {
-    for (const file of screenshots) {
+    if (screenshots.length > 0) {
+      for (const file of screenshots) {
+        await downloadFile(
+          file.id,
+          evidenceDownloadFilename({
+            caseId: detail.id,
+            evidenceType: file.evidenceType,
+            label: file.label,
+            pageNumber: file.pageNumber,
+          }),
+        );
+      }
+      return;
+    }
+    if (zip) {
       await downloadFile(
-        file.id,
+        zip.id,
         evidenceDownloadFilename({
           caseId: detail.id,
-          evidenceType: file.evidenceType,
-          label: file.label,
-          pageNumber: file.pageNumber,
+          evidenceType: "temporary_zip",
         }),
       );
     }
@@ -123,11 +120,39 @@ export function AdminEvidenceDownloads({
   }
 
   const btn =
-    "rounded-lg border border-teal-700 bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50";
+    "rounded-lg border border-teal-700 bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50";
   const ghost =
-    "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
+    "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
   if (!show && files.length === 0) return null;
+
+  function typedButton(
+    label: string,
+    file: { id: string; evidenceType: string; label?: string | null; pageNumber?: number | null } | null,
+  ) {
+    return (
+      <button
+        type="button"
+        className={ghost}
+        disabled={!file || Boolean(busy)}
+        title={file ? undefined : `${label} 없음`}
+        onClick={() => {
+          if (!file) return;
+          void downloadFile(
+            file.id,
+            evidenceDownloadFilename({
+              caseId: detail.id,
+              evidenceType: file.evidenceType,
+              label: file.label,
+              pageNumber: file.pageNumber,
+            }),
+          );
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -159,68 +184,38 @@ export function AdminEvidenceDownloads({
         </div>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
-          {zip ? (
-            <button
-              type="button"
-              className={btn}
-              disabled={Boolean(busy)}
-              onClick={() =>
-                void downloadFile(
-                  zip.id,
-                  evidenceDownloadFilename({
-                    caseId: detail.id,
-                    evidenceType: "temporary_zip",
-                  }),
-                )
-              }
-            >
-              신고용 ZIP 다운로드
-            </button>
-          ) : (
-            <p className="w-full text-xs text-amber-800">
-              신고용 ZIP이 없습니다. 증빙자료 생성을 권장합니다.
-            </p>
-          )}
-          {screenshots.length > 0 ? (
-            <button
-              type="button"
-              className={btn}
-              disabled={Boolean(busy)}
-              onClick={() => void downloadAllScreenshots()}
-            >
-              캡처 이미지 전체 다운로드
-            </button>
-          ) : null}
-          {firstPage ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(firstPage.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: firstPage.evidenceType, label: firstPage.label, pageNumber: firstPage.pageNumber }))}>
-              첫 페이지 캡처 다운로드
-            </button>
-          ) : null}
-          {notice ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(notice.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: notice.evidenceType, label: notice.label }))}>
-              고지문 캡처 다운로드
-            </button>
-          ) : null}
-          {personal ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(personal.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: personal.evidenceType }))}>
-              개인정보 문항 캡처 다운로드
-            </button>
-          ) : null}
-          {sensitive ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(sensitive.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: sensitive.evidenceType }))}>
-              민감정보 문항 캡처 다운로드
-            </button>
-          ) : null}
-          {highRisk ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(highRisk.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: highRisk.evidenceType }))}>
-              고위험정보 문항 캡처 다운로드
-            </button>
-          ) : null}
-          {submitPage ? (
-            <button type="button" className={ghost} disabled={Boolean(busy)} onClick={() => void downloadFile(submitPage.id, evidenceDownloadFilename({ caseId: detail.id, evidenceType: submitPage.evidenceType, label: submitPage.label }))}>
-              제출 직전 페이지 캡처 다운로드
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={btn}
+            disabled={!zip || Boolean(busy)}
+            title={zip ? undefined : "신고용 ZIP 없음"}
+            onClick={() => {
+              if (!zip) return;
+              void downloadFile(
+                zip.id,
+                evidenceDownloadFilename({
+                  caseId: detail.id,
+                  evidenceType: "temporary_zip",
+                }),
+              );
+            }}
+          >
+            신고용 ZIP 다운로드
+          </button>
+          <button
+            type="button"
+            className={btn}
+            disabled={(screenshots.length === 0 && !zip) || Boolean(busy)}
+            onClick={() => void downloadAllScreenshots()}
+          >
+            캡처 이미지 전체 다운로드
+          </button>
+          {typedButton("첫 페이지 캡처 다운로드", firstPage)}
+          {typedButton("고지문 캡처 다운로드", notice)}
+          {typedButton("개인정보 문항 캡처 다운로드", personal)}
+          {typedButton("민감정보 문항 캡처 다운로드", sensitive)}
+          {typedButton("고위험정보 문항 캡처 다운로드", highRisk)}
+          {typedButton("제출 직전 페이지 캡처 다운로드", submitPage)}
           <button
             type="button"
             className={ghost}

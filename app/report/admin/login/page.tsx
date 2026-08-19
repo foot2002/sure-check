@@ -43,7 +43,7 @@ export default function AdminLoginPage() {
         </p>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">관리자 로그인</h1>
         <p className="mt-2 text-sm text-slate-600">
-          검토 콘솔은 비밀번호로 보호됩니다. 공개 모니터링(`/report`)과는
+          검토 콘솔은 비밀번호로 보호됩니다. 집계 통계(`/report`)와는
           분리되어 있습니다.
         </p>
         <form onSubmit={onSubmit} className="mt-6 space-y-4">

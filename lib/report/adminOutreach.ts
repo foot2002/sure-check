@@ -259,23 +259,59 @@ export function evidenceDownloadFilename(input: {
   return `capture-${input.evidenceType}-${id}.png`;
 }
 
+export type OutreachUiStatus =
+  | "unreviewed"
+  | "in_review"
+  | "candidate"
+  | "send"
+  | "hold"
+  | "exclude"
+  | "done";
+
+export function classifyOutreachUiStatus(input: {
+  reviewStatus?: string | null;
+  publicationStatus?: string | null;
+  outreachCandidate?: boolean;
+}): OutreachUiStatus {
+  const review = (input.reviewStatus || "none").toLowerCase();
+  const pub = (input.publicationStatus || "private").toLowerCase();
+  if (pub === "archived") return "exclude";
+  if (review === "dismissed") return "hold";
+  if (review === "in_review") return "in_review";
+  if (review === "resolved") return input.outreachCandidate ? "send" : "done";
+  if (input.outreachCandidate) return "candidate";
+  return "unreviewed";
+}
+
+export function outreachUiStatusKo(status: OutreachUiStatus | string | null | undefined): string {
+  const s = (status || "unreviewed") as OutreachUiStatus;
+  if (s === "unreviewed") return "미검토";
+  if (s === "in_review") return "검토중";
+  if (s === "candidate") return "개선안내 후보";
+  if (s === "send") return "발송대상";
+  if (s === "hold") return "보류";
+  if (s === "exclude") return "제외";
+  if (s === "done") return "완료";
+  return "미검토";
+}
+
 export function reviewStatusKo(status: string | null | undefined): string {
   const s = (status || "none").toLowerCase();
   if (s === "none" || s === "pending") return "미검토";
-  if (s === "in_review") return "검토 중";
-  if (s === "resolved") return "검토 완료";
+  if (s === "in_review") return "검토중";
+  if (s === "resolved") return "완료";
   if (s === "dismissed") return "보류";
   return status || "미검토";
 }
 
 export function publicationStatusKo(status: string | null | undefined): string {
   const s = (status || "private").toLowerCase();
-  if (s === "private") return "비공개";
-  if (s === "aggregate_only") return "집계만";
-  if (s === "public_anonymized") return "익명 공개";
-  if (s === "public_named") return "실명 공개";
-  if (s === "archived") return "보관";
-  return status || "비공개";
+  if (s === "private") return "내부검토";
+  if (s === "aggregate_only") return "통계만 반영";
+  if (s === "public_anonymized") return "익명 사례 가능";
+  if (s === "public_named") return "기관명 포함 검토";
+  if (s === "archived") return "보관/제외";
+  return "내부검토";
 }
 
 export function publicPrivateKo(value: string | null | undefined): string {
@@ -298,4 +334,91 @@ export function riskLabelKo(level: string | null | undefined): string {
 
 export function assertNoConfirmedViolationWording(text: string): boolean {
   return !/위반\s*확정/.test(text);
+}
+
+export function summarizeEvidenceFiles(
+  files: Array<{ id: string; evidenceType?: string | null }>,
+): {
+  hasTemporaryZip: boolean;
+  temporaryZipId: string | null;
+  hasScreenshots: boolean;
+  screenshotFileIds: string[];
+  downloadableEvidenceTypes: string[];
+} {
+  const zip = files.find((f) => f.evidenceType === "temporary_zip");
+  const screenshots = files.filter(
+    (f) => f.id && f.evidenceType && f.evidenceType !== "temporary_zip",
+  );
+  const types = [
+    ...new Set(
+      files
+        .map((f) => String(f.evidenceType || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  return {
+    hasTemporaryZip: Boolean(zip),
+    temporaryZipId: zip?.id ?? null,
+    hasScreenshots: screenshots.length > 0,
+    screenshotFileIds: screenshots.map((f) => f.id),
+    downloadableEvidenceTypes: types,
+  };
+}
+
+export function pickEvidenceFile<
+  T extends {
+    id: string;
+    evidenceType?: string | null;
+    label?: string | null;
+    pageNumber?: number | null;
+  },
+>(
+  files: T[],
+  kind:
+    | "zip"
+    | "first_page"
+    | "notice"
+    | "pii"
+    | "sensitive"
+    | "high_risk"
+    | "final_page",
+): T | null {
+  if (kind === "zip") {
+    return files.find((f) => f.evidenceType === "temporary_zip") || null;
+  }
+  if (kind === "notice") {
+    return files.find((f) => f.evidenceType === "notice_screenshot") || null;
+  }
+  if (kind === "pii") {
+    return files.find((f) => f.evidenceType === "pii_question_screenshot") || null;
+  }
+  if (kind === "sensitive") {
+    return (
+      files.find((f) => f.evidenceType === "sensitive_question_screenshot") ||
+      null
+    );
+  }
+  if (kind === "high_risk") {
+    return (
+      files.find((f) => f.evidenceType === "high_risk_question_screenshot") ||
+      null
+    );
+  }
+  if (kind === "first_page") {
+    return (
+      files.find((f) => f.evidenceType === "first_page_screenshot") ||
+      files.find(
+        (f) =>
+          f.evidenceType === "key_screenshot" &&
+          (f.pageNumber === 1 || /첫|first/i.test(f.label || "")),
+      ) ||
+      files.find((f) => f.evidenceType === "key_screenshot") ||
+      null
+    );
+  }
+  return (
+    files.find((f) => f.evidenceType === "final_page_screenshot") ||
+    files.find((f) => /제출|직전|submit|final/i.test(`${f.label || ""}`)) ||
+    null
+  );
 }

@@ -4,6 +4,10 @@ import {
   unauthorizedJson,
 } from "@/lib/report/adminAuth";
 import { getAdminCaseDetail } from "@/lib/report/adminCaseDetail";
+import {
+  buildAdminReviewReportDocx,
+  reviewReportFilename,
+} from "@/lib/report/adminReviewReportDocx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +22,14 @@ export async function GET(
   try {
     const { id } = await context.params;
     const detail = await getAdminCaseDetail(id);
-    return NextResponse.json(detail, {
+    const bytes = await buildAdminReviewReportDocx(detail);
+    const filename = reviewReportFilename(id);
+    return new NextResponse(new Blob([Buffer.from(bytes)]), {
+      status: 200,
       headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       },
     });
@@ -31,9 +41,9 @@ export async function GET(
     if (status === 404) {
       return NextResponse.json({ error: "케이스를 찾을 수 없습니다." }, { status: 404 });
     }
-    console.error("[admin-case-detail]", error);
+    console.error("[admin-review-report]", error);
     return NextResponse.json(
-      { error: "케이스 상세를 불러오지 못했습니다." },
+      { error: "검토 리포트를 만들지 못했습니다." },
       { status: 500 },
     );
   }

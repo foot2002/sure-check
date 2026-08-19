@@ -8,12 +8,15 @@ import {
 import {
   classifyEvidenceStatusKo,
   classifyOutreachPriority,
+  classifyOutreachUiStatus,
   formatDataCollectionSummary,
   isOutreachCandidate,
   isReportReviewDecision,
   pickIssueBadges,
+  summarizeEvidenceFiles,
   type EvidenceStatusKo,
   type OutreachPriority,
+  type OutreachUiStatus,
 } from "@/lib/report/adminOutreach";
 import type {
   OverallRiskLevel,
@@ -23,7 +26,7 @@ import type {
   ReviewStatus,
 } from "@/lib/db/types";
 
-export type AdminRange = "today" | "7d" | "30d" | "all";
+export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
 export interface AdminCaseListQuery {
   range?: string | null;
@@ -42,6 +45,9 @@ export interface AdminCaseListQuery {
   priority?: string | null;
   noticeGap?: string | null;
   reportReview?: string | null;
+  outreachStatus?: string | null;
+  from?: string | null;
+  to?: string | null;
 }
 
 export interface AdminKpi {
@@ -113,8 +119,14 @@ export interface AdminCaseListItem {
   issueBadges: string[];
   outreachPriority: OutreachPriority;
   outreachCandidate: boolean;
+  outreachUiStatus: OutreachUiStatus;
   evidenceStatus: EvidenceStatusKo;
   dataSummary: string;
+  hasTemporaryZip: boolean;
+  temporaryZipId: string | null;
+  hasScreenshots: boolean;
+  screenshotFileIds: string[];
+  downloadableEvidenceTypes: string[];
 }
 
 export interface AdminRecentCollectItem {
@@ -165,11 +177,37 @@ function addDaysKst(isoDate: string, days: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
-export function resolveAdminRange(rangeRaw: string | null | undefined): {
+const KST_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export class AdminRangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AdminRangeError";
+  }
+}
+
+export function parseAdminDate(value: string | null | undefined): string | null {
+  const v = (value || "").trim();
+  return KST_DATE_RE.test(v) ? v : null;
+}
+
+export function resolveAdminRange(
+  rangeRaw?: string | null,
+  fromRaw?: string | null,
+  toRaw?: string | null,
+): {
   range: AdminRange;
   from: string | null;
   to: string | null;
 } {
+  const customFrom = parseAdminDate(fromRaw);
+  const customTo = parseAdminDate(toRaw);
+  if (customFrom && customTo) {
+    if (customFrom > customTo) {
+      throw new AdminRangeError("시작일이 종료일보다 늦습니다.");
+    }
+    return { range: "custom", from: customFrom, to: customTo };
+  }
   const today = kstToday();
   const value = (rangeRaw || "7d").toLowerCase();
   if (value === "all") return { range: "all", from: null, to: null };
@@ -177,7 +215,23 @@ export function resolveAdminRange(rangeRaw: string | null | undefined): {
   if (value === "30d") {
     return { range: "30d", from: addDaysKst(today, -29), to: today };
   }
+  if (value === "custom") {
+    throw new AdminRangeError("기간 설정에는 시작일과 종료일이 필요합니다.");
+  }
   return { range: "7d", from: addDaysKst(today, -6), to: today };
+}
+
+export function appliedAdminRangeLabel(input: {
+  range: AdminRange;
+  from: string | null;
+  to: string | null;
+}): string {
+  if (input.range === "today") return "오늘";
+  if (input.range === "7d") return "최근 7일";
+  if (input.range === "30d") return "최근 30일";
+  if (input.range === "all") return "전체";
+  if (input.from && input.to) return `${input.from} ~ ${input.to}`;
+  return "기간 설정";
 }
 
 export function mapPublishToPublication(
@@ -233,7 +287,7 @@ function parseBoolFlag(value: string | null | undefined): boolean | null {
 export async function listAdminCases(
   query: AdminCaseListQuery = {},
 ): Promise<AdminCaseListPayload> {
-  const { range, from, to } = resolveAdminRange(query.range);
+  const { range, from, to } = resolveAdminRange(query.range, query.from, query.to);
   const supabase = createSupabaseServerClient();
 
   let surveyQuery = supabase
@@ -242,7 +296,7 @@ export async function listAdminCases(
       "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
     )
     .order("observed_at", { ascending: false })
-    .limit(500);
+    .limit(range === "all" ? 3000 : 1500);
 
   if (from) surveyQuery = surveyQuery.gte("observed_date_kst", from);
   if (to) surveyQuery = surveyQuery.lte("observed_date_kst", to);
@@ -309,13 +363,13 @@ export async function listAdminCases(
       ids.length
         ? supabase
             .from("evidence_files")
-            .select("id, survey_record_id, scan_job_id")
+            .select("id, survey_record_id, scan_job_id, evidence_type")
             .in("survey_record_id", ids)
         : Promise.resolve({ data: [], error: null }),
       scanJobIds.length
         ? supabase
             .from("evidence_files")
-            .select("id, survey_record_id, scan_job_id")
+            .select("id, survey_record_id, scan_job_id, evidence_type")
             .in("scan_job_id", scanJobIds)
         : Promise.resolve({ data: [], error: null }),
       ids.length
@@ -367,23 +421,32 @@ export async function listAdminCases(
     }
   }
 
-  const evidenceIdsBySurvey = new Map<string, Set<string>>();
-  const addEvidence = (surveyId: string | null | undefined, evidenceId: string) => {
-    if (!surveyId) return;
-    const set = evidenceIdsBySurvey.get(surveyId) || new Set<string>();
-    set.add(evidenceId);
-    evidenceIdsBySurvey.set(surveyId, set);
+  const evidenceFilesBySurvey = new Map<
+    string,
+    Array<{ id: string; evidenceType: string }>
+  >();
+  const addEvidence = (
+    surveyId: string | null | undefined,
+    evidenceId: string,
+    evidenceType: string,
+  ) => {
+    if (!surveyId || !evidenceId) return;
+    const list = evidenceFilesBySurvey.get(surveyId) || [];
+    if (list.some((f) => f.id === evidenceId)) return;
+    list.push({ id: evidenceId, evidenceType: evidenceType || "" });
+    evidenceFilesBySurvey.set(surveyId, list);
   };
   for (const row of [...(evidenceRes.data || []), ...(evidenceByScanRes.data || [])]) {
+    const evidenceType = String(row.evidence_type || "");
     if (row.survey_record_id) {
-      addEvidence(row.survey_record_id, row.id);
+      addEvidence(row.survey_record_id, row.id, evidenceType);
     } else if (row.scan_job_id) {
-      addEvidence(surveyIdByScanJob.get(row.scan_job_id), row.id);
+      addEvidence(
+        surveyIdByScanJob.get(row.scan_job_id),
+        row.id,
+        evidenceType,
+      );
     }
-  }
-  const evidenceCountMap = new Map<string, number>();
-  for (const [surveyId, set] of evidenceIdsBySurvey.entries()) {
-    evidenceCountMap.set(surveyId, set.size);
   }
   const publicationMap = new Map<string, PublicationStatus>();
   for (const row of pubsRes.data || []) {
@@ -487,7 +550,9 @@ export async function listAdminCases(
     const sensitiveCount = Number(row.sensitive_question_count) || 0;
     const highRiskCount = Number(row.high_risk_question_count) || 0;
     const categoryLabels = categoryLabelsBySurvey.get(row.id as string) || [];
-    const evidenceCount = evidenceCountMap.get(row.id as string) || 0;
+    const evidenceFiles = evidenceFilesBySurvey.get(row.id as string) || [];
+    const evidenceSummary = summarizeEvidenceFiles(evidenceFiles);
+    const evidenceCount = evidenceFiles.length;
     const captureStatus = captureStatusBySurvey.get(row.id as string) || null;
     const userDecisionLabel =
       (row.user_decision_label as string | null) ||
@@ -510,6 +575,7 @@ export async function listAdminCases(
       evidenceCount,
       issueBadges,
     });
+    const outreachCandidate = isOutreachCandidate(outreachPriority);
     return {
       id: row.id as string,
       observedAt: row.observed_at as string,
@@ -541,7 +607,12 @@ export async function listAdminCases(
       categoryLabels,
       issueBadges,
       outreachPriority,
-      outreachCandidate: isOutreachCandidate(outreachPriority),
+      outreachCandidate,
+      outreachUiStatus: classifyOutreachUiStatus({
+        reviewStatus: (row.review_status || "none") as string,
+        publicationStatus,
+        outreachCandidate,
+      }),
       evidenceStatus: classifyEvidenceStatusKo({
         evidenceCount,
         captureStatus,
@@ -555,6 +626,11 @@ export async function listAdminCases(
         hasHighRiskInfo: Boolean(row.has_high_risk_info),
         categoryLabels,
       }),
+      hasTemporaryZip: evidenceSummary.hasTemporaryZip,
+      temporaryZipId: evidenceSummary.temporaryZipId,
+      hasScreenshots: evidenceSummary.hasScreenshots,
+      screenshotFileIds: evidenceSummary.screenshotFileIds.slice(0, 12),
+      downloadableEvidenceTypes: evidenceSummary.downloadableEvidenceTypes,
     };
   });
 
@@ -586,6 +662,9 @@ export async function listAdminCases(
   if (query.reportReview === "true" || query.reportReview === "1") {
     cases = cases.filter((c) => isReportReviewDecision(c.userDecisionLabel));
   }
+  if (query.outreachStatus && query.outreachStatus !== "all") {
+    cases = cases.filter((c) => c.outreachUiStatus === query.outreachStatus);
+  }
 
   const PRIORITY_RANK: Record<string, number> = { A: 0, B: 1, C: 2 };
   cases.sort((a, b) => {
@@ -610,15 +689,6 @@ export async function listAdminCases(
     if (reviewDiff !== 0) return -reviewDiff;
     return b.observedAt.localeCompare(a.observedAt);
   });
-
-  const evidenceCaptureCount = captures.filter(
-    (c) =>
-      c.status === "success" ||
-      c.status === "partial" ||
-      c.completeness === "complete" ||
-      c.completeness === "partial" ||
-      (c.captured_page_count || 0) > 0,
-  ).length;
 
   const outcomeBuckets = {
     normalDiagnosis: 0,
@@ -675,12 +745,10 @@ export async function listAdminCases(
   };
 
   const kpi: AdminKpi = {
-    totalScans: showOpsLimited
-      ? rawCaseCount
-      : outcomeBuckets.normalDiagnosis,
+    totalScans: cases.length,
     rawTotalScans: rawCaseCount,
     reviewPendingCount: cases.filter(
-      (c) => c.reviewStatus === "pending" || c.reviewStatus === "none",
+      (c) => c.outreachUiStatus === "unreviewed",
     ).length,
     highOrReportReviewCount: cases.filter(
       (c) =>
@@ -694,13 +762,12 @@ export async function listAdminCases(
         c.hasPersonalInfo &&
         c.platform !== "wiseon_csap",
     ).length,
-    evidenceCaptureCount,
+    evidenceCaptureCount: cases.filter(
+      (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
+    ).length,
     limitedAnalysisCount: excludedFromReporting.total,
     publicationCandidateCount: cases.filter(
-      (c) =>
-        c.publicationStatus === "aggregate_only" ||
-        c.publicationStatus === "public_anonymized" ||
-        (c.reviewStatus === "resolved" && c.publicationStatus === "private"),
+      (c) => c.outreachUiStatus === "send" || c.outreachUiStatus === "candidate",
     ).length,
     outcomeBuckets,
     excludedFromReporting,

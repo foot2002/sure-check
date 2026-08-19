@@ -9,6 +9,7 @@ import { createSignedEvidenceUrl } from "@/lib/storage/evidenceStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SIGNED_URL_TTL_SECONDS = 120;
 
