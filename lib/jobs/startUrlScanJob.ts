@@ -56,6 +56,11 @@ export async function startUrlScanJob(input: {
   completedPolicy?: "ttl_cache" | "any_completed";
   /** When true, await processScanJob (scripts). Route handlers use after(). */
   processInline?: boolean;
+  /**
+   * Collector auto-dispatch: create a pending scan_job and return.
+   * Does not run processScanJob or Next.js after().
+   */
+  enqueueOnly?: boolean;
   onProcessSettled?: () => void;
 }): Promise<StartUrlScanResult> {
   const formUrl = input.formUrl.trim();
@@ -103,7 +108,13 @@ export async function startUrlScanJob(input: {
       const running = await findRunningScanByCacheKey(cacheKey);
       if (running?.external_scan_id) {
         const scanId = running.external_scan_id;
-        await scheduleProcess(scanId, input.processInline, input.onProcessSettled);
+        if (!input.enqueueOnly) {
+          await scheduleProcess(
+            scanId,
+            input.processInline,
+            input.onProcessSettled,
+          );
+        }
         return {
           ok: true,
           scanId,
@@ -201,7 +212,9 @@ export async function startUrlScanJob(input: {
     }
   }
 
-  await scheduleProcess(scanId, input.processInline, input.onProcessSettled);
+  if (!input.enqueueOnly) {
+    await scheduleProcess(scanId, input.processInline, input.onProcessSettled);
+  }
 
   return {
     ok: true,

@@ -345,6 +345,13 @@ export function CollectorConsoleView({
             ["원시 발견 후보", summary.opsFunnel?.rawDiscovered ?? summary.monitoring?.totalDiscovered ?? summary.totalLinksAll],
             ["수집 후보", summary.opsFunnel?.collectCandidate ?? summary.monitoring?.unverified ?? 0],
             ["수집 확정", summary.opsFunnel?.collectConfirmed ?? summary.monitoring?.validActive ?? summary.byStatus?.active ?? 0],
+            ["자동진단 큐 등록", (summary.diagnosis?.queued ?? 0) + (summary.diagnosis?.running ?? 0) + (summary.diagnosis?.completed ?? 0) + (summary.diagnosis?.limited ?? 0) + (summary.diagnosis?.skipped ?? 0) + (summary.diagnosis?.skippedClosed ?? 0) + (summary.diagnosis?.skippedRestricted ?? 0) + (summary.diagnosis?.failed ?? 0) + (summary.diagnosis?.timeout ?? 0)],
+            ["자동진단 대기", summary.diagnosis?.queued ?? 0],
+            ["자동진단 진행 중", summary.diagnosis?.running ?? 0],
+            ["자동진단 완료", summary.diagnosis?.completed ?? 0],
+            ["종료로 제외", summary.diagnosis?.skippedClosed ?? 0],
+            ["접근제한 제외", summary.diagnosis?.skippedRestricted ?? 0],
+            ["실패", summary.diagnosis?.failed ?? 0],
             ["미검증", summary.monitoring?.unverified ?? summary.verification.unverifiedDiscovered],
             ["종료(closed)", summary.monitoring?.closed ?? summary.byStatus?.closed ?? 0],
             ["과거 제외(stale)", summary.monitoring?.stale ?? summary.byStatus?.stale ?? 0],
@@ -480,12 +487,22 @@ export function CollectorConsoleView({
             ))}
           </section>
           {summary.diagnosis.today ? (
-            <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
               {[
                 [
                   `오늘 시도(${summary.diagnosis.today.kstDate})`,
                   summary.diagnosis.today.attempted,
                   "border-violet-200 text-violet-800",
+                ],
+                [
+                  "오늘 대기",
+                  summary.diagnosis.today.queued ?? 0,
+                  "border-sky-200 text-sky-800",
+                ],
+                [
+                  "오늘 진행 중",
+                  summary.diagnosis.today.running ?? 0,
+                  "border-sky-200 text-sky-800",
                 ],
                 [
                   "오늘 완료",
@@ -498,8 +515,23 @@ export function CollectorConsoleView({
                   "border-amber-200 text-amber-800",
                 ],
                 [
+                  "종료로 제외",
+                  summary.diagnosis.today.skippedClosed ?? 0,
+                  "border-slate-200 text-slate-800",
+                ],
+                [
+                  "접근제한 제외",
+                  summary.diagnosis.today.skippedRestricted ?? 0,
+                  "border-slate-200 text-slate-800",
+                ],
+                [
                   "오늘 실패",
                   summary.diagnosis.today.failed,
+                  "border-rose-200 text-rose-800",
+                ],
+                [
+                  "타임아웃",
+                  summary.diagnosis.today.timeout ?? 0,
                   "border-rose-200 text-rose-800",
                 ],
                 [
@@ -999,12 +1031,20 @@ export function CollectorConsoleView({
                               ? "중"
                               : item.diagnosis_status === "limited"
                                 ? "제한"
-                                : item.diagnosis_status === "failed" ||
-                                    item.diagnosis_status ===
-                                      "failed_retryable" ||
-                                    item.diagnosis_status === "failed_final"
-                                  ? "실패"
-                                  : "미진단"}
+                                : item.diagnosis_status === "skipped_closed"
+                                  ? "종료 제외"
+                                  : item.diagnosis_status === "skipped_restricted"
+                                    ? "접근제한 제외"
+                                    : item.diagnosis_status === "timeout"
+                                      ? "타임아웃"
+                                      : item.diagnosis_status === "skipped"
+                                        ? "제외"
+                                        : item.diagnosis_status === "failed" ||
+                                            item.diagnosis_status ===
+                                              "failed_retryable" ||
+                                            item.diagnosis_status === "failed_final"
+                                          ? "실패"
+                                          : "미진단"}
                       </span>
                       {item.diagnosis_status === "completed" &&
                       (item.diagnosis_score != null || item.diagnosis_grade) ? (

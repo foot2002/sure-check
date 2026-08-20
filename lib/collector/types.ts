@@ -233,13 +233,22 @@ export interface CollectorSummary {
     /** failed_retryable + failed_final */
     failed: number;
     skipped: number;
+    skippedClosed?: number;
+    skippedRestricted?: number;
+    timeout?: number;
     /** KST-day auto-diagnosis ops (survey_diagnosis_links only). */
     today?: {
       kstDate: string;
       attempted: number;
+      queued: number;
+      running: number;
       completed: number;
       limited: number;
+      skipped: number;
+      skippedClosed: number;
+      skippedRestricted: number;
       failed: number;
+      timeout: number;
       dailyMax: number;
       remaining: number;
     };
@@ -347,6 +356,9 @@ export interface SurveyLinkListItem extends SurveyLinkRow {
     | "failed_final"
     | "failed"
     | "skipped"
+    | "skipped_closed"
+    | "skipped_restricted"
+    | "timeout"
     | "undiagnosed"
     | null;
   diagnosis_job_id?: string | null;

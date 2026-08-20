@@ -2,7 +2,8 @@
  * Run collector diagnosis dispatch (dry-run or enqueue).
  * Usage:
  *   npx tsx scripts/run-collector-diagnosis-dispatch.ts --dry-run --limit=20
- *   npx tsx scripts/run-collector-diagnosis-dispatch.ts --enqueue --limit=10 --inline
+ *   npx tsx scripts/run-collector-diagnosis-dispatch.ts --enqueue --limit=10
+ * Dispatcher is enqueue-only; worker processes scan_jobs via /api/internal/jobs/run-next.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -59,10 +60,15 @@ async function main() {
   const { dryRun, limit, processInline, outFile } = parseArgs(
     process.argv.slice(2),
   );
+  if (processInline) {
+    console.warn(
+      "[dispatch] --inline is ignored; dispatcher is enqueue-only. Use /api/internal/jobs/run-next for processing.",
+    );
+  }
   const result = await dispatchCollectorDiagnoses({
     dryRun,
     limit,
-    processInline: dryRun ? false : processInline,
+    processInline: false,
   });
 
   const quality = {

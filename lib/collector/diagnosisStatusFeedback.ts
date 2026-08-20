@@ -163,15 +163,23 @@ export async function feedbackCollectorStatusFromDiagnosisLink(input: {
 }): Promise<CollectorStatusFeedbackResult | null> {
   if (
     input.linkageStatus !== "limited" &&
-    input.linkageStatus !== "completed"
+    input.linkageStatus !== "completed" &&
+    input.linkageStatus !== "skipped_closed" &&
+    input.linkageStatus !== "skipped_restricted"
   ) {
     return null;
   }
   // completed with questions is not a status feedback source here.
   if (input.linkageStatus === "completed") return null;
+  const limitedReason =
+    input.linkageStatus === "skipped_closed"
+      ? input.limitedReason || "응답이 종료되었습니다."
+      : input.linkageStatus === "skipped_restricted"
+        ? input.limitedReason || "접근이 제한되었습니다."
+        : input.limitedReason;
   return planCollectorStatusFeedback({
     surveyLinkId: input.surveyLinkId,
-    limitedReason: input.limitedReason,
+    limitedReason,
     dryRun: input.dryRun,
   });
 }

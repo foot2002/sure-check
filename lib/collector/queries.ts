@@ -254,6 +254,9 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     limited: 0,
     failed: 0,
     skipped: 0,
+    skippedClosed: 0,
+    skippedRestricted: 0,
+    timeout: 0,
   };
   try {
     const counts = await countDiagnosisLinksByStatus();
@@ -265,13 +268,22 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
       limited: counts.limited,
       failed: counts.failed_retryable + counts.failed_final,
       skipped: counts.skipped,
+      skippedClosed: counts.skipped_closed,
+      skippedRestricted: counts.skipped_restricted,
+      timeout: counts.timeout,
       today: {
         kstDate: today.kstDate,
         attempted: today.total,
+        queued: today.byStatus.queued,
+        running: today.byStatus.running,
         completed: today.byStatus.completed,
         limited: today.byStatus.limited,
+        skipped: today.byStatus.skipped,
+        skippedClosed: today.byStatus.skipped_closed,
+        skippedRestricted: today.byStatus.skipped_restricted,
         failed:
           today.byStatus.failed_retryable + today.byStatus.failed_final,
+        timeout: today.byStatus.timeout,
         dailyMax: getAutoDiagnosisDailyLimit(),
         remaining: Math.max(0, getAutoDiagnosisDailyLimit() - today.total),
       },

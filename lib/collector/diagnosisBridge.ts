@@ -5,7 +5,6 @@
 
 import {
   bestTriageAcrossSources,
-  looksLikePersonalResearch,
   type RecencyClass,
   type TriageResult,
 } from "@/lib/collector/candidateTriage";
@@ -18,12 +17,15 @@ import {
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
 import type { CollectorOrgQualityClass } from "@/lib/collector/orgQuality";
-import { updateSurveyLinkStatus } from "@/lib/collector/repository";
 import {
-  checkSurveyFreshnessAndAvailability,
-  isDiagnosisBlockedStatus,
-} from "@/lib/collector/surveyFreshness";
-import type { CollectorPlatform, SurveyLinkFreshness } from "@/lib/collector/types";
+  AUTO_DIAGNOSIS_BATCH_SIZE_DEFAULT,
+  AUTO_DIAGNOSIS_DAILY_LIMIT_DEFAULT,
+  diagnosisPriorityScore,
+  getAutoDiagnosisBatchSize,
+  getAutoDiagnosisDailyLimit,
+  isAutoDiagnosisTarget,
+  isOfficialAutoDiagnosisTriage,
+} from "@/lib/collector/collectConfirmedPolicy";
 import {
   countInProgressScanJobs,
   findAnyCompletedScanByCacheKey,
@@ -34,14 +36,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
 import { normalizeUrl } from "@/lib/utils/normalizeUrl";
 
-import {
-  AUTO_DIAGNOSIS_BATCH_SIZE_DEFAULT,
-  AUTO_DIAGNOSIS_DAILY_LIMIT_DEFAULT,
-  diagnosisPriorityScore,
-  getAutoDiagnosisBatchSize,
-  getAutoDiagnosisDailyLimit,
-  isOfficialAutoDiagnosisTriage,
-} from "@/lib/collector/collectConfirmedPolicy";
+import type { CollectorPlatform, SurveyLinkFreshness } from "@/lib/collector/types";
 
 /** Default batch size (env AUTO_DIAGNOSIS_BATCH_SIZE overrides at runtime). */
 export const COLLECTOR_DIAGNOSIS_DISPATCH_MAX = AUTO_DIAGNOSIS_BATCH_SIZE_DEFAULT;
@@ -112,6 +107,15 @@ export type DispatchResult = {
     limitReached: boolean;
   };
   reason?: string | null;
+  /** Alias of eligibleBeforeDedupe for ops responses. */
+  candidates?: number;
+  skippedAlreadyQueued?: number;
+  skippedClosed?: number;
+  skippedRestricted?: number;
+  dailyUsed?: number;
+  dailyLimit?: number;
+  carryover?: number;
+  enqueueOnly?: boolean;
 };
 
 function scanIdentity(canonicalUrl: string): {
@@ -154,11 +158,16 @@ export function filterAndSortEligible(
 ): EligibleCandidate[] {
   const out: EligibleCandidate[] = [];
   for (const row of rows) {
-    if (row.status !== "active") continue;
-    if (row.freshness?.should_diagnose === false) continue;
-    if (row.freshness?.freshness_status === "stale_candidate") continue;
-    if (looksLikePersonalResearch(row.title)) continue;
-    if (!isEligibleTriage(row.triage)) continue;
+    if (
+      !isAutoDiagnosisTarget({
+        status: row.status,
+        freshness: row.freshness,
+        title: row.title,
+        triage: row.triage,
+      })
+    ) {
+      continue;
+    }
     const { normalized, cacheKey } = scanIdentity(row.canonicalUrl);
     out.push({
       surveyLinkId: row.id,
@@ -265,13 +274,27 @@ async function loadActiveCandidatesFromDb(
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => String(r.id));
-  const { data: sources, error: sErr } = await supabase
-    .from("survey_sources")
-    .select(
-      "survey_link_id, source_url, source_title, search_query, source_published_at, source_type",
-    )
-    .in("survey_link_id", ids);
-  if (sErr) throw new Error(`load survey_sources: ${sErr.message}`);
+  type SourceRow = {
+    survey_link_id: unknown;
+    source_url: unknown;
+    source_title: unknown;
+    search_query: unknown;
+    source_published_at: unknown;
+    source_type: unknown;
+  };
+  const sources: SourceRow[] = [];
+  const sourceChunk = 150;
+  for (let i = 0; i < ids.length; i += sourceChunk) {
+    const slice = ids.slice(i, i + sourceChunk);
+    const { data, error: sErr } = await supabase
+      .from("survey_sources")
+      .select(
+        "survey_link_id, source_url, source_title, search_query, source_published_at, source_type",
+      )
+      .in("survey_link_id", slice);
+    if (sErr) throw new Error(`load survey_sources: ${sErr.message}`);
+    sources.push(...((data as SourceRow[] | null) || []));
+  }
 
   const byLink = new Map<string, typeof sources>();
   for (const s of sources || []) {
@@ -316,16 +339,21 @@ async function filterOpenForEnqueue(
   const blockedIds = await findSurveyIdsWithBlockingDiagnosis(
     candidates.map((c) => c.surveyLinkId),
   );
-  const open: EligibleCandidate[] = [];
+  const neverScanned: EligibleCandidate[] = [];
+  const alreadyCompleted: EligibleCandidate[] = [];
   for (const c of candidates) {
     if (blockedIds.has(c.surveyLinkId)) continue;
     const running = await findRunningScanByCacheKey(c.scanCacheKey);
     if (running?.external_scan_id) continue;
     const completed = await findAnyCompletedScanByCacheKey(c.scanCacheKey);
-    if (completed?.job.external_scan_id) continue;
-    open.push(c);
+    if (completed?.job.external_scan_id) {
+      alreadyCompleted.push(c);
+      continue;
+    }
+    neverScanned.push(c);
   }
-  return open;
+  // Prefer URLs with no completed scan so missing diagnosis drains first.
+  return neverScanned.concat(alreadyCompleted);
 }
 
 function emptyCounts() {
@@ -343,70 +371,12 @@ function emptyCounts() {
   };
 }
 
-/**
- * Lightweight status re-check before enqueue (no browser / full diagnosis).
- * Closed/restricted updates survey_links and does NOT consume daily quota.
- */
-async function precheckBeforeDiagnosisEnqueue(input: {
-  surveyLinkId: string;
-  canonicalUrl: string;
-  platform: CollectorPlatform;
-  dryRun: boolean;
-  title?: string | null;
-}): Promise<"ok" | "closed" | "restricted" | "stale"> {
-  const check = await checkSurveyFreshnessAndAvailability(input.canonicalUrl, {
-    title: input.title,
-    platform: input.platform,
-    fetchPage: true,
-  });
-  if (check.status === "closed" || check.availabilityStatus === "closed") {
-    if (!input.dryRun) {
-      await updateSurveyLinkStatus(
-        input.surveyLinkId,
-        "closed",
-        input.title,
-        check.record,
-      );
-    }
-    return "closed";
-  }
-  if (check.status === "restricted" || check.availabilityStatus === "restricted") {
-    if (!input.dryRun) {
-      await updateSurveyLinkStatus(
-        input.surveyLinkId,
-        "restricted",
-        input.title,
-        check.record,
-      );
-    }
-    return "restricted";
-  }
-  if (
-    !check.shouldDiagnose ||
-    check.status === "stale" ||
-    check.availabilityStatus === "stale" ||
-    isDiagnosisBlockedStatus(check.status)
-  ) {
-    if (!input.dryRun) {
-      await updateSurveyLinkStatus(
-        input.surveyLinkId,
-        check.status === "stale" || check.status === "ignored"
-          ? check.status
-          : "stale",
-        input.title,
-        check.record,
-      );
-    }
-    return "stale";
-  }
-  return "ok";
-}
-
 export async function dispatchCollectorDiagnoses(input?: {
   limit?: number;
   dryRun?: boolean;
   processInline?: boolean;
 }): Promise<DispatchResult> {
+  void input?.processInline;
   const dryRun = Boolean(input?.dryRun);
   const batchSize = getAutoDiagnosisBatchSize();
   const dailyMax = getAutoDiagnosisDailyLimit();
@@ -442,6 +412,14 @@ export async function dispatchCollectorDiagnoses(input?: {
       recencyDistribution: {},
       daily,
       reason: "daily_limit_reached_carryover",
+      candidates: 0,
+      skippedAlreadyQueued: 0,
+      skippedClosed: 0,
+      skippedRestricted: 0,
+      dailyUsed: daily.used,
+      dailyLimit: daily.max,
+      carryover: 0,
+      enqueueOnly: true,
     };
   }
 
@@ -513,42 +491,6 @@ export async function dispatchCollectorDiagnoses(input?: {
       continue;
     }
 
-    // Safety pre-check: closed/restricted skip enqueue (no quota / no linkage row).
-    const precheck = await precheckBeforeDiagnosisEnqueue({
-      surveyLinkId: c.surveyLinkId,
-      canonicalUrl: c.canonicalUrl,
-      platform: c.platform,
-      dryRun,
-      title: c.title,
-    });
-    if (precheck === "closed") {
-      outcomes.push({
-        ...base,
-        outcome: "skipped_precheck_closed",
-        skipReason: "precheck_survey_closed",
-      });
-      counts.skippedPrecheckClosed += 1;
-      continue;
-    }
-    if (precheck === "restricted") {
-      outcomes.push({
-        ...base,
-        outcome: "skipped_precheck_restricted",
-        skipReason: "precheck_access_restricted",
-      });
-      counts.skippedPrecheckRestricted += 1;
-      continue;
-    }
-    if (precheck === "stale") {
-      outcomes.push({
-        ...base,
-        outcome: "skipped_not_eligible",
-        skipReason: "precheck_stale_or_not_fresh",
-      });
-      counts.skippedStale += 1;
-      continue;
-    }
-
     if (dryRun) {
       const running = await findRunningScanByCacheKey(c.scanCacheKey);
       if (running?.external_scan_id) {
@@ -557,18 +499,6 @@ export async function dispatchCollectorDiagnoses(input?: {
           outcome: "skipped_duplicate",
           diagnosisJobId: running.external_scan_id,
           skipReason: "scan_job_running_or_pending",
-        });
-        counts.skippedDuplicate += 1;
-        continue;
-      }
-      const completed = await findAnyCompletedScanByCacheKey(c.scanCacheKey);
-      if (completed?.job.external_scan_id) {
-        outcomes.push({
-          ...base,
-          outcome: "skipped_duplicate",
-          diagnosisJobId: completed.job.external_scan_id,
-          reportId: completed.reportId,
-          skipReason: "scan_job_already_completed",
         });
         counts.skippedDuplicate += 1;
         continue;
@@ -582,10 +512,22 @@ export async function dispatchCollectorDiagnoses(input?: {
       formUrl: c.canonicalUrl,
       trigger: "collector_auto",
       completedPolicy: "any_completed",
-      processInline: Boolean(input?.processInline),
+      processInline: false,
+      enqueueOnly: true,
     });
 
     if (!started.ok) {
+      await insertDiagnosisLink({
+        surveyLinkId: c.surveyLinkId,
+        diagnosisJobId: null,
+        canonicalUrl: c.canonicalUrl,
+        scanCacheKey: c.scanCacheKey,
+        status: "failed_retryable",
+        lastError: started.error,
+        skipReason: "enqueue_failed",
+      });
+      linkageCreated += 1;
+      remainingDaily -= 1;
       outcomes.push({
         ...base,
         outcome: "failed",
@@ -596,7 +538,6 @@ export async function dispatchCollectorDiagnoses(input?: {
     }
 
     if (started.alreadyCompleted || started.reusedRunningJob) {
-      // Still creates an auto linkage row — counts toward daily cap.
       await insertDiagnosisLink({
         surveyLinkId: c.surveyLinkId,
         diagnosisJobId: started.scanId,
@@ -632,10 +573,6 @@ export async function dispatchCollectorDiagnoses(input?: {
     });
     linkageCreated += 1;
 
-    if (input?.processInline && link?.id && started.scanId) {
-      await syncDiagnosisLinkFromScanJob(link.id, started.scanId);
-    }
-
     outcomes.push({
       ...base,
       outcome: "queued",
@@ -648,6 +585,13 @@ export async function dispatchCollectorDiagnoses(input?: {
   }
 
   const usedAfter = day.total + (dryRun ? 0 : linkageCreated);
+  const remainingAfter = dryRun
+    ? dailyRemaining
+    : Math.max(0, dailyMax - usedAfter);
+  const carryover = Math.max(
+    0,
+    eligible.length - (dryRun ? counts.wouldEnqueue : linkageCreated),
+  );
   return {
     dryRun,
     limit,
@@ -662,14 +606,18 @@ export async function dispatchCollectorDiagnoses(input?: {
     daily: {
       ...daily,
       used: dryRun ? day.total : usedAfter,
-      remaining: dryRun
-        ? dailyRemaining
-        : Math.max(0, dailyMax - usedAfter),
-      limitReached:
-        (dryRun ? dailyRemaining : Math.max(0, dailyMax - usedAfter)) <=
-        0,
+      remaining: remainingAfter,
+      limitReached: remainingAfter <= 0,
     },
     reason: null,
+    candidates: eligible.length,
+    skippedAlreadyQueued: counts.skippedDuplicate,
+    skippedClosed: counts.skippedPrecheckClosed,
+    skippedRestricted: counts.skippedPrecheckRestricted,
+    dailyUsed: dryRun ? day.total : usedAfter,
+    dailyLimit: dailyMax,
+    carryover,
+    enqueueOnly: true,
   };
 }
 

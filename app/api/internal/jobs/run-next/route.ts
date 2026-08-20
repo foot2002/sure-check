@@ -47,6 +47,7 @@ async function handle(request: Request): Promise<Response> {
 
   let kind: "scan" | "capture" | "both" = "both";
   let captureBatch = 2;
+  let scanBatch = 3;
   try {
     const url = new URL(request.url);
     const kindParam = url.searchParams.get("kind");
@@ -57,6 +58,10 @@ async function handle(request: Request): Promise<Response> {
     if (Number.isFinite(batchParam) && batchParam > 0) {
       captureBatch = Math.min(5, Math.floor(batchParam));
     }
+    const scanBatchParam = Number(url.searchParams.get("scanBatch") || "3");
+    if (Number.isFinite(scanBatchParam) && scanBatchParam > 0) {
+      scanBatch = Math.min(8, Math.floor(scanBatchParam));
+    }
   } catch {
     /* ignore */
   }
@@ -66,6 +71,7 @@ async function handle(request: Request): Promise<Response> {
       const body = (await request.json().catch(() => ({}))) as {
         kind?: string;
         captureBatch?: number;
+        scanBatch?: number;
       };
       if (body.kind === "scan" || body.kind === "capture" || body.kind === "both") {
         kind = body.kind;
@@ -73,22 +79,23 @@ async function handle(request: Request): Promise<Response> {
       if (typeof body.captureBatch === "number" && body.captureBatch > 0) {
         captureBatch = Math.min(5, Math.floor(body.captureBatch));
       }
+      if (typeof body.scanBatch === "number" && body.scanBatch > 0) {
+        scanBatch = Math.min(8, Math.floor(body.scanBatch));
+      }
     } catch {
       /* empty body ok */
     }
-  }
-
-  // Cron default: drain capture backlog; scans have their own diagnosis dispatch.
-  if (request.method === "GET" && kind === "both") {
-    kind = "capture";
   }
 
   const workerId = `cron_${process.pid}_${Date.now()}`;
   const results: Array<Record<string, unknown>> = [];
 
   if (kind === "scan" || kind === "both") {
-    const scan = await processNextScanJob(workerId);
-    results.push({ type: "scan", ...scan });
+    for (let i = 0; i < scanBatch; i += 1) {
+      const scan = await processNextScanJob(`${workerId}_s${i}`);
+      results.push({ type: "scan", ...scan });
+      if (!scan.scanId) break;
+    }
   }
   if (kind === "capture" || kind === "both") {
     for (let i = 0; i < captureBatch; i += 1) {

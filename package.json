@@ -55,6 +55,8 @@
     "evidence:preservation": "tsx scripts/check-evidence-preservation.ts",
     "diagnosis:regression": "tsx scripts/check-diagnosis-regression.ts",
     "diagnosis:ended-check": "tsx scripts/check-ended-survey-handling.ts",
+    "diagnosis:dispatch-check": "tsx scripts/check-auto-diagnosis-dispatch.ts",
+    "diagnosis:worker-check": "tsx scripts/check-scan-worker-processing.ts",
     "collector:freshness-check": "tsx scripts/check-collector-freshness-filter.ts",
     "collector:backfill-stale": "tsx scripts/backfill-stale-survey-links.ts",
     "check:form-context": "tsx scripts/check-form-context.ts",

@@ -1,3 +1,4 @@
+import { syncDiagnosisLinkByExternalScanId } from "@/lib/collector/diagnosisLinkRepository";
 import { after } from "next/server";
 import { cloneReportForScan, getUrlCache } from "@/lib/cache/inMemoryUrlCache";
 import { getJobWorkerConfig, isMonitoringConfigured } from "@/lib/jobs/config";
@@ -23,6 +24,17 @@ import { SCAN_PROGRESS_STEPS } from "@/lib/types/scan";
 import type { ScanReport, ScanStatus } from "@/lib/types/scan";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
 import { normalizeUrl } from "@/lib/utils/normalizeUrl";
+
+async function syncCollectorDiagnosisLink(externalScanId: string): Promise<void> {
+  try {
+    await syncDiagnosisLinkByExternalScanId(externalScanId);
+  } catch (err) {
+    console.warn(
+      "[jobs] diagnosis link sync skipped:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
 
 function createPreviewCaptureId(): string {
   return `cap_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -277,7 +289,7 @@ async function processClaimedScanJob(
     }
 
     void workerId;
-
+    await syncCollectorDiagnosisLink(externalScanId);
     return { ok: true, scanId: externalScanId, status: terminalStatus };
   } catch (err) {
     const message =
@@ -317,6 +329,7 @@ async function processClaimedScanJob(
       console.error("[jobs] failed to persist scan failure:", updateErr);
     }
 
+    await syncCollectorDiagnosisLink(externalScanId);
     return { ok: false, scanId: externalScanId, status };
   }
 }

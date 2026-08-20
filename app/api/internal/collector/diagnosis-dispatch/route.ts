@@ -8,13 +8,12 @@ import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Wave of collect_confirmed diagnoses; leftover carries to the next cron wave. */
-export const maxDuration = 300;
+/** Enqueue-only: scan_jobs + survey_diagnosis_links queued. No diagnosis. */
+export const maxDuration = 60;
 
 function parseParams(request: Request): {
   limit: number;
   dryRun: boolean;
-  processInline: boolean;
 } {
   const url = new URL(request.url);
   const limit = Number(
@@ -23,16 +22,10 @@ function parseParams(request: Request): {
   const dryRun =
     url.searchParams.get("dryRun") === "1" ||
     url.searchParams.get("dryRun") === "true";
-  // Cron / default: process inline so each wave reaches a terminal linkage state.
-  // Opt out with inline=0|false.
-  const inlineParam = url.searchParams.get("inline");
-  const processInline =
-    inlineParam === "0" || inlineParam === "false" ? false : true;
 
   return {
     limit: Number.isFinite(limit) ? limit : getAutoDiagnosisBatchSize(),
     dryRun,
-    processInline,
   };
 }
 
@@ -51,22 +44,15 @@ async function handle(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let { limit, dryRun, processInline } = parseParams(request);
+  let { limit, dryRun } = parseParams(request);
   if (request.method === "POST") {
     try {
       const body = (await request.json().catch(() => ({}))) as {
         limit?: number;
         dryRun?: boolean;
-        processInline?: boolean;
-        inline?: boolean;
       };
       if (typeof body.limit === "number") limit = body.limit;
       if (typeof body.dryRun === "boolean") dryRun = body.dryRun;
-      if (typeof body.processInline === "boolean") {
-        processInline = body.processInline;
-      } else if (typeof body.inline === "boolean") {
-        processInline = body.inline;
-      }
     } catch {
       /* empty */
     }
@@ -75,7 +61,7 @@ async function handle(request: Request): Promise<Response> {
   const result = await dispatchCollectorDiagnoses({
     limit,
     dryRun,
-    processInline: dryRun ? false : processInline,
+    processInline: false,
   });
   return NextResponse.json({
     ok: true,
@@ -84,7 +70,7 @@ async function handle(request: Request): Promise<Response> {
   });
 }
 
-/** Vercel Cron (Bearer CRON_SECRET) and manual ops. */
+/** Vercel Cron (Bearer CRON_SECRET) and manual ops. Enqueue only. */
 export async function GET(request: Request) {
   return handle(request);
 }

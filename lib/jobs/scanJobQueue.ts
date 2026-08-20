@@ -94,10 +94,26 @@ export async function recoverStaleScanJobs(
     })
     .in("status", ["pending", "running", "idle"])
     .lt("updated_at", cutoff)
-    .select("id");
+    .select("id, external_scan_id");
   if (error) {
     console.warn("[jobs] recoverStaleScanJobs:", error.message);
     return 0;
+  }
+  const ids = (data || [])
+    .map((row) => String(row.external_scan_id || ""))
+    .filter(Boolean);
+  if (ids.length > 0) {
+    try {
+      const { syncDiagnosisLinksByExternalScanIds } = await import(
+        "@/lib/collector/diagnosisLinkRepository"
+      );
+      await syncDiagnosisLinksByExternalScanIds(ids);
+    } catch (err) {
+      console.warn(
+        "[jobs] recoverStaleScanJobs link sync:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
   return data?.length ?? 0;
 }

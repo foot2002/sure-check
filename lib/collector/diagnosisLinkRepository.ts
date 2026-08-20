@@ -2,6 +2,7 @@
  * survey_diagnosis_links repository — linkage only to scan_jobs / reports.
  */
 
+import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type SurveyDiagnosisLinkStatus =
@@ -11,7 +12,23 @@ export type SurveyDiagnosisLinkStatus =
   | "limited"
   | "failed_retryable"
   | "failed_final"
-  | "skipped";
+  | "skipped"
+  | "skipped_closed"
+  | "skipped_restricted"
+  | "timeout";
+
+export const SURVEY_DIAGNOSIS_LINK_STATUSES: SurveyDiagnosisLinkStatus[] = [
+  "queued",
+  "running",
+  "completed",
+  "limited",
+  "failed_retryable",
+  "failed_final",
+  "skipped",
+  "skipped_closed",
+  "skipped_restricted",
+  "timeout",
+];
 
 /** Statuses that block automatic re-enqueue for the same survey_link. */
 export const DIAGNOSIS_LINK_BLOCKING_STATUSES: SurveyDiagnosisLinkStatus[] = [
@@ -20,7 +37,37 @@ export const DIAGNOSIS_LINK_BLOCKING_STATUSES: SurveyDiagnosisLinkStatus[] = [
   "completed",
   "limited",
   "failed_final",
+  "skipped_closed",
+  "skipped_restricted",
 ];
+
+export function emptyDiagnosisLinkStatusCounts(): Record<
+  SurveyDiagnosisLinkStatus,
+  number
+> {
+  return {
+    queued: 0,
+    running: 0,
+    completed: 0,
+    limited: 0,
+    failed_retryable: 0,
+    failed_final: 0,
+    skipped: 0,
+    skipped_closed: 0,
+    skipped_restricted: 0,
+    timeout: 0,
+  };
+}
+
+function fallbackLegacyStatus(
+  status: SurveyDiagnosisLinkStatus,
+): SurveyDiagnosisLinkStatus {
+  if (status === "skipped_closed" || status === "skipped_restricted") {
+    return "skipped";
+  }
+  if (status === "timeout") return "failed_retryable";
+  return status;
+}
 
 export type SurveyDiagnosisLinkRow = {
   id: string;
@@ -54,13 +101,56 @@ function mapScanStatusToLinkage(
   return null;
 }
 
+/** Map a finished scan_job (+ limited reason) to the collector linkage status. */
+export function linkageStatusFromScanOutcome(input: {
+  scanStatus: string;
+  errorMessage?: string | null;
+  limitedReason?: string | null;
+  summary?: string | null;
+}): SurveyDiagnosisLinkStatus {
+  const scanStatus = String(input.scanStatus || "");
+  const text = [input.errorMessage, input.limitedReason, input.summary]
+    .filter(Boolean)
+    .join(" ");
+  const bucket = classifyLimitedOutcome({
+    scanStatus,
+    limitedReason: input.limitedReason,
+    errorMessage: input.errorMessage,
+    summary: input.summary,
+  });
+
+  if (scanStatus === "pending" || scanStatus === "idle") return "queued";
+  if (scanStatus === "running") return "running";
+  if (scanStatus === "completed" && bucket === "normal_diagnosis") {
+    return "completed";
+  }
+  if (bucket === "survey_closed") return "skipped_closed";
+  if (bucket === "access_restricted") return "skipped_restricted";
+  if (
+    bucket === "system_failure" ||
+    /timed?\s*out|시간이\s*초과|timeout/i.test(text)
+  ) {
+    return "timeout";
+  }
+  if (scanStatus === "cancelled") return "failed_final";
+  if (scanStatus === "failed") return "failed_retryable";
+  if (scanStatus === "limited" || bucket === "extraction_limited") {
+    return "limited";
+  }
+  if (scanStatus === "completed") return "completed";
+  return mapScanStatusToLinkage(scanStatus) ?? "failed_retryable";
+}
+
 function isTerminalLinkageStatus(status: SurveyDiagnosisLinkStatus): boolean {
   return (
     status === "completed" ||
     status === "limited" ||
     status === "failed_retryable" ||
     status === "failed_final" ||
-    status === "skipped"
+    status === "skipped" ||
+    status === "skipped_closed" ||
+    status === "skipped_restricted" ||
+    status === "timeout"
   );
 }
 
@@ -113,15 +203,7 @@ export async function findDiagnosisLinksBySurveyIds(
     .from("survey_diagnosis_links")
     .select("*")
     .in("survey_link_id", surveyLinkIds)
-    .in("status", [
-      "queued",
-      "running",
-      "completed",
-      "limited",
-      "failed_retryable",
-      "failed_final",
-      "skipped",
-    ])
+    .in("status", SURVEY_DIAGNOSIS_LINK_STATUSES)
     .order("created_at", { ascending: false });
   if (error) {
     console.error("[diagnosisLink] findBySurveyIds", error.message);
@@ -160,9 +242,7 @@ export async function insertDiagnosisLink(input: {
       extractor_key: input.extractorKey ?? null,
       diagnosis_version: "sure-check-v1",
       queued_at:
-        input.status === "queued" ||
-        input.status === "completed" ||
-        input.status === "limited"
+        input.status === "queued" || isTerminalLinkageStatus(input.status)
           ? now
           : null,
       started_at: null,
@@ -173,6 +253,33 @@ export async function insertDiagnosisLink(input: {
     .select("*")
     .single();
   if (error) {
+    const legacy = fallbackLegacyStatus(input.status);
+    if (legacy !== input.status && /check|constraint|invalid/i.test(error.message)) {
+      const retry = await supabase
+        .from("survey_diagnosis_links")
+        .insert({
+          survey_link_id: input.surveyLinkId,
+          diagnosis_job_id: input.diagnosisJobId,
+          report_id: input.reportId ?? null,
+          canonical_url: input.canonicalUrl,
+          scan_cache_key: input.scanCacheKey,
+          status: legacy,
+          skip_reason: input.skipReason ?? input.status,
+          extractor_key: input.extractorKey ?? null,
+          diagnosis_version: "sure-check-v1",
+          queued_at:
+            input.status === "queued" || isTerminalLinkageStatus(input.status)
+              ? now
+              : null,
+          started_at: null,
+          completed_at: isTerminalLinkageStatus(input.status) ? now : null,
+          attempts: input.attempts ?? (input.status === "queued" ? 1 : 0),
+          last_error: input.lastError ?? null,
+        })
+        .select("*")
+        .single();
+      if (!retry.error) return retry.data as SurveyDiagnosisLinkRow;
+    }
     console.error("[diagnosisLink] insert", error.message);
     return null;
   }
@@ -210,23 +317,29 @@ export async function updateDiagnosisLinkStatus(input: {
     .from("survey_diagnosis_links")
     .update(patch)
     .eq("id", input.id);
-  if (error) console.error("[diagnosisLink] update", error.message);
+  if (error) {
+    const legacy = fallbackLegacyStatus(input.status);
+    if (legacy !== input.status && /check|constraint|invalid/i.test(error.message)) {
+      const retry = await supabase
+        .from("survey_diagnosis_links")
+        .update({
+          ...patch,
+          status: legacy,
+          skip_reason: input.skipReason ?? input.status,
+        })
+        .eq("id", input.id);
+      if (!retry.error) return;
+    }
+    console.error("[diagnosisLink] update", error.message);
+  }
 }
 
 export async function countDiagnosisLinksByStatus(): Promise<
   Record<SurveyDiagnosisLinkStatus, number>
 > {
-  const empty: Record<SurveyDiagnosisLinkStatus, number> = {
-    queued: 0,
-    running: 0,
-    completed: 0,
-    limited: 0,
-    failed_retryable: 0,
-    failed_final: 0,
-    skipped: 0,
-  };
+  const empty = emptyDiagnosisLinkStatusCounts();
   const supabase = createSupabaseServerClient();
-  for (const status of Object.keys(empty) as SurveyDiagnosisLinkStatus[]) {
+  for (const status of SURVEY_DIAGNOSIS_LINK_STATUSES) {
     const { count, error } = await supabase
       .from("survey_diagnosis_links")
       .select("id", { count: "exact", head: true })
@@ -269,18 +382,10 @@ export async function countDiagnosisLinksCreatedInKstDay(
   byStatus: Record<SurveyDiagnosisLinkStatus, number>;
 }> {
   const { kstDate, startUtcIso, endUtcIso } = getKstDayBounds(now);
-  const byStatus: Record<SurveyDiagnosisLinkStatus, number> = {
-    queued: 0,
-    running: 0,
-    completed: 0,
-    limited: 0,
-    failed_retryable: 0,
-    failed_final: 0,
-    skipped: 0,
-  };
+  const byStatus = emptyDiagnosisLinkStatusCounts();
   const supabase = createSupabaseServerClient();
   let total = 0;
-  for (const status of Object.keys(byStatus) as SurveyDiagnosisLinkStatus[]) {
+  for (const status of SURVEY_DIAGNOSIS_LINK_STATUSES) {
     const { count, error } = await supabase
       .from("survey_diagnosis_links")
       .select("id", { count: "exact", head: true })
@@ -321,6 +426,42 @@ export async function findSurveyIdsWithBlockingDiagnosis(
   return blocked;
 }
 
+export async function findDiagnosisLinkIdByExternalScanId(
+  externalScanId: string,
+): Promise<string | null> {
+  if (!externalScanId) return null;
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("survey_diagnosis_links")
+    .select("id")
+    .eq("diagnosis_job_id", externalScanId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[diagnosisLink] findByJob", error.message);
+    return null;
+  }
+  return data?.id ? String(data.id) : null;
+}
+
+export async function syncDiagnosisLinkByExternalScanId(
+  externalScanId: string,
+): Promise<SurveyDiagnosisLinkStatus | null> {
+  const linkId = await findDiagnosisLinkIdByExternalScanId(externalScanId);
+  if (!linkId) return null;
+  return syncDiagnosisLinkFromScanJob(linkId, externalScanId);
+}
+
+export async function syncDiagnosisLinksByExternalScanIds(
+  externalScanIds: string[],
+): Promise<void> {
+  for (const id of externalScanIds) {
+    if (!id) continue;
+    await syncDiagnosisLinkByExternalScanId(id);
+  }
+}
+
 export async function syncDiagnosisLinkFromScanJob(
   linkId: string,
   externalScanId: string,
@@ -333,15 +474,9 @@ export async function syncDiagnosisLinkFromScanJob(
     .maybeSingle();
   if (error || !job) return null;
 
-  const next = mapScanStatusToLinkage(String(job.status));
-  if (!next) return null;
-
   let reportId: string | null = null;
   let reportJson: Record<string, unknown> | null = null;
-  if (
-    (next === "completed" || next === "limited" || next === "failed_retryable") &&
-    job.id
-  ) {
+  if (job.id) {
     const { data: report } = await supabase
       .from("scan_reports")
       .select("id, report_json")
@@ -353,27 +488,59 @@ export async function syncDiagnosisLinkFromScanJob(
     reportJson = (report?.report_json as Record<string, unknown> | null) ?? null;
   }
 
+  const limitedReason =
+    (typeof reportJson?.limitedReason === "string"
+      ? reportJson.limitedReason
+      : null) ||
+    (typeof (reportJson?.form as { limitedReason?: string } | undefined)
+      ?.limitedReason === "string"
+      ? (reportJson?.form as { limitedReason?: string }).limitedReason
+      : null) ||
+    null;
+  const summary =
+    typeof reportJson?.summary === "string" ? reportJson.summary : null;
+  const next = linkageStatusFromScanOutcome({
+    scanStatus: String(job.status),
+    errorMessage: job.error_message ? String(job.error_message) : null,
+    limitedReason,
+    summary,
+  });
+
   const extractorKey = pickExtractorKey(
     job as { extraction_mode?: string | null },
     reportJson,
   );
-  const errMsg =
+  const errMsg = isTerminalLinkageStatus(next)
+    ? String(
+        job.error_message ||
+          limitedReason ||
+          summary ||
+          (next === "completed" ? "" : next),
+      ) || null
+    : null;
+  const skipReason =
+    next === "skipped_closed" ||
+    next === "skipped_restricted" ||
     next === "limited" ||
-    next === "failed_retryable" ||
-    next === "failed_final"
-      ? String(job.error_message || (next === "limited" ? "limited" : "scan failed"))
-      : null;
+    next === "timeout" ||
+    next === "skipped"
+      ? errMsg
+      : undefined;
 
   await updateDiagnosisLinkStatus({
     id: linkId,
     status: next,
     reportId,
     extractorKey,
-    lastError: errMsg,
-    skipReason: next === "limited" ? errMsg : undefined,
+    lastError: next === "completed" ? null : errMsg,
+    skipReason,
   });
 
-  if (next === "limited") {
+  if (
+    next === "limited" ||
+    next === "skipped_closed" ||
+    next === "skipped_restricted"
+  ) {
     try {
       const { data: linkRow } = await supabase
         .from("survey_diagnosis_links")
@@ -390,11 +557,7 @@ export async function syncDiagnosisLinkFromScanJob(
         await feedbackCollectorStatusFromDiagnosisLink({
           surveyLinkId,
           linkageStatus: next,
-          limitedReason:
-            errMsg ||
-            (typeof reportJson?.limitedReason === "string"
-              ? reportJson.limitedReason
-              : null),
+          limitedReason: errMsg || limitedReason,
         });
       }
     } catch (err) {
