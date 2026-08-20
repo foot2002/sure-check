@@ -5,7 +5,7 @@ import {
   appliedAdminRangeLabel,
   resolveAdminRange,
 } from "@/lib/report/adminCases";
-import { buildAdminReviewReportDocx } from "@/lib/report/adminReviewReportDocx";
+import { buildAdminReviewReportDocx, rewriteReportWording } from "@/lib/report/adminReviewReportDocx";
 import { PUBLIC_REPORT_FORBIDDEN_KEYS } from "@/lib/report/publicReportPolicy";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -98,14 +98,24 @@ function main() {
     /wordprocessingml\.document/.test(reviewRoute),
   );
   const docxLib = read("lib/report/adminReviewReportDocx.ts");
-  check("DOCX includes problem reasons", /3\. 주요 문제/.test(docxLib));
-  check("DOCX includes improvement guidance", /5\. 개선 권고/.test(docxLib));
+  check("DOCX matches evidence summary sections", /법·정책 저촉·검토 포인트/.test(docxLib));
+  check("DOCX includes notice checks", /고지문 확인/.test(docxLib));
+  check("DOCX includes question originals", /개인정보·민감정보 문항/.test(docxLib));
+  check("DOCX includes improvement guidance", /4\. 개선 권고/.test(docxLib));
   check("DOCX includes disclaimer", /위법 여부를 확정하는 자료가 아닙니다/.test(docxLib));
   check("DOCX includes score", /점수:/.test(docxLib));
+  check("DOCX uses diagnosis-and-improvement wording", /진단 및 개선요구 증빙 요약서/.test(docxLib));
+  check("DOCX reason heading avoids 신고", /2\. 진단 및 개선요구 이유/.test(docxLib) && !/2\. 신고 이유/.test(docxLib));
   check("DOCX filename uses caseId", /sure-check-review-report-\$\{caseId\}\.docx/.test(docxLib));
   check(
     "DOCX builder is not a report_json dump",
     !/JSON\.stringify\(detail\.reportJson/.test(docxLib),
+  );
+  check(
+    "rewriteReportWording maps 신고",
+    rewriteReportWording("신고증빙 요약서") === "진단 및 개선요구 증빙 요약서" &&
+      rewriteReportWording("신고 이유") === "진단 및 개선요구 이유" &&
+      rewriteReportWording("응답 거부·신고 검토") === "응답 거부·진단 및 개선요구 검토",
   );
 
   const signed = read(
