@@ -207,6 +207,9 @@ export class SupabaseMonitoringRepository {
   /**
    * Update an already-queued scan_jobs row, then insert report/survey children.
    * Used by the async job worker so we do not create duplicate scan_jobs.
+   *
+   * Do not mark the job completed / monitoring_saved until survey_records exist.
+   * Otherwise a killed after() worker looks "done" and the admin list stays empty.
    */
   async finalizeMonitoringSnapshotForJob(
     scanJobId: string,
@@ -216,52 +219,36 @@ export class SupabaseMonitoringRepository {
     const snapshot = rows ?? reportToMonitoringRows(report);
     const supabase = createSupabaseServerClient();
 
+    const metadata = {
+      form_url: snapshot.scanJob.form_url,
+      file_name: snapshot.scanJob.file_name,
+      url_host: snapshot.scanJob.url_host,
+      form_url_hash: snapshot.scanJob.form_url_hash,
+      survey_url_hash: snapshot.scanJob.survey_url_hash,
+      platform: snapshot.scanJob.platform,
+      current_step: snapshot.scanJob.current_step,
+      total_steps: snapshot.scanJob.total_steps,
+      step_label: snapshot.scanJob.step_label,
+      error_message: snapshot.scanJob.error_message,
+      started_at: snapshot.scanJob.started_at,
+      updated_at: new Date().toISOString(),
+    };
+
     const { error: updateError } = await supabase
       .from("scan_jobs")
       .update({
-        form_url: snapshot.scanJob.form_url,
-        file_name: snapshot.scanJob.file_name,
-        url_host: snapshot.scanJob.url_host,
-        form_url_hash: snapshot.scanJob.form_url_hash,
-        survey_url_hash: snapshot.scanJob.survey_url_hash,
-        platform: snapshot.scanJob.platform,
-        status: snapshot.scanJob.status,
-        current_step: snapshot.scanJob.current_step,
-        total_steps: snapshot.scanJob.total_steps,
-        step_label: snapshot.scanJob.step_label,
-        error_message: snapshot.scanJob.error_message,
-        started_at: snapshot.scanJob.started_at,
-        completed_at: snapshot.scanJob.completed_at,
-        monitoring_saved: true,
+        ...metadata,
         locked_at: null,
         locked_by: null,
-        updated_at: new Date().toISOString(),
       })
       .eq("id", scanJobId);
     if (updateError) {
       // Migration 002 may not be applied yet — retry without queue columns.
       const { error: retryError } = await supabase
         .from("scan_jobs")
-        .update({
-          form_url: snapshot.scanJob.form_url,
-          file_name: snapshot.scanJob.file_name,
-          url_host: snapshot.scanJob.url_host,
-          form_url_hash: snapshot.scanJob.form_url_hash,
-          survey_url_hash: snapshot.scanJob.survey_url_hash,
-          platform: snapshot.scanJob.platform,
-          status: snapshot.scanJob.status,
-          current_step: snapshot.scanJob.current_step,
-          total_steps: snapshot.scanJob.total_steps,
-          step_label: snapshot.scanJob.step_label,
-          error_message: snapshot.scanJob.error_message,
-          started_at: snapshot.scanJob.started_at,
-          completed_at: snapshot.scanJob.completed_at,
-          updated_at: new Date().toISOString(),
-        })
+        .update(metadata)
         .eq("id", scanJobId);
       throwOnError("finalizeMonitoringSnapshotForJob.update", retryError);
-    } else {
-      // ok
     }
 
     const { data: existingReport } = await supabase
@@ -272,6 +259,7 @@ export class SupabaseMonitoringRepository {
       .limit(1)
       .maybeSingle();
 
+    let result: MonitoringSaveResult;
     if (existingReport?.id) {
       const { data: survey } = await supabase
         .from("survey_records")
@@ -280,17 +268,28 @@ export class SupabaseMonitoringRepository {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return {
-        scanJobId,
-        scanReportId: existingReport.id as string,
-        surveyRecordId: (survey?.id as string | undefined) || "",
-        questionCount: 0,
-        findingCount: 0,
-        complianceCheckCount: 0,
-      };
+      if (survey?.id) {
+        result = {
+          scanJobId,
+          scanReportId: existingReport.id as string,
+          surveyRecordId: survey.id as string,
+          questionCount: 0,
+          findingCount: 0,
+          complianceCheckCount: 0,
+        };
+      } else {
+        result = await this.insertSurveyChildren(
+          scanJobId,
+          existingReport.id as string,
+          snapshot,
+        );
+      }
+    } else {
+      result = await this.insertMonitoringChildren(scanJobId, snapshot);
     }
 
-    return this.insertMonitoringChildren(scanJobId, snapshot);
+    await this.markMonitoringSaved(scanJobId);
+    return result;
   }
 
   private async insertMonitoringChildren(
@@ -301,6 +300,14 @@ export class SupabaseMonitoringRepository {
       scanJobId,
       snapshot.scanReport,
     );
+    return this.insertSurveyChildren(scanJobId, scanReportId, snapshot);
+  }
+
+  private async insertSurveyChildren(
+    scanJobId: string,
+    scanReportId: string,
+    snapshot: MonitoringSnapshotRows,
+  ): Promise<MonitoringSaveResult> {
     const surveyRecordId = await this.saveSurveyRecord(
       scanJobId,
       scanReportId,
@@ -334,6 +341,20 @@ export class SupabaseMonitoringRepository {
       findingCount,
       complianceCheckCount,
     };
+  }
+
+  private async markMonitoringSaved(scanJobId: string): Promise<void> {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase
+      .from("scan_jobs")
+      .update({
+        monitoring_saved: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", scanJobId);
+    if (error) {
+      console.warn("[monitoring] markMonitoringSaved failed:", error.message);
+    }
   }
 
   /**
