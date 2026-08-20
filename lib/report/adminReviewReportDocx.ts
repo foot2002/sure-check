@@ -355,9 +355,10 @@ export async function buildAdminReviewReportDocx(
       `진단일시(KST): ${view.generatedAtKst} · 진단 ID: ${view.diagnosisId}`,
     ),
     wBlank(),
-    wPara(view.disclaimer),
+    wPara("1. 공문용 개선 요청 문구", { heading: true }),
+    wPara(copy.letterSummary),
     wBlank(),
-    wPara("1. 설문 기본 내용과 진단 결과 (법 문제)", { heading: true }),
+    wPara("2. 설문 기본 내용과 진단 결과 (법 문제)", { heading: true }),
     wPara("설문 기본 정보", { bold: true }),
     wPara(`- 설문 제목: ${view.surveyTitle}`),
     wPara(`- 설문 URL: ${view.surveyUrl}`),
@@ -381,7 +382,7 @@ export async function buildAdminReviewReportDocx(
     wTable(["항목", "확인 여부"], noticeRows),
     wPara("개인정보·민감정보 문항", { bold: true }),
     wTable(["번호", "문항 원문", "탐지 유형", "분류"], questionRows),
-    wPara("2. 진단 및 개선요구 이유", { heading: true }),
+    wPara("3. 진단 및 개선요구 이유", { heading: true }),
     wPara(view.reportReason),
     wBlank(),
     wPara("핵심 사유", { bold: true }),
@@ -391,7 +392,7 @@ export async function buildAdminReviewReportDocx(
         : "- 해당 항목 없음",
     ),
     wBlank(),
-    wPara("3. 증빙 주요 내용", { heading: true }),
+    wPara("4. 증빙 주요 내용", { heading: true }),
     wPara(`- 첨부 화면 캡처 수: ${screenshots.length}개`),
     wPara(
       `- 캡처 파일명: ${
@@ -404,26 +405,10 @@ export async function buildAdminReviewReportDocx(
     ),
     wPara(`- 저장된 증빙 파일 수: ${s.evidenceCount}`),
     wBlank(),
-    wPara("진단 한계", { bold: true }),
-    wPara(
-      view.limitations.length > 0
-        ? view.limitations.map((item) => `- ${item}`).join("\n")
-        : "- 해당 항목 없음",
-    ),
-    wBlank(),
-    wPara("4. 개선 권고", { heading: true }),
+    wPara("5. 개선 권고", { heading: true }),
     wPara(`- 개선안내 우선순위: ${priority}`),
     wPara(checks.map((item) => `- ${item}`).join("\n")),
     wBlank(),
-    wPara("5. 공문용 개선 요청 문구", { heading: true }),
-    wPara(copy.letterSummary),
-    wBlank(),
-    wPara("6. 유의사항", { heading: true }),
-    wPara("- 본 리포트는 공개 설문 화면에 대한 자동진단 기반 검토 자료입니다."),
-    wPara("- 개별 설문의 위법 여부를 확정하는 자료가 아닙니다."),
-    wPara(
-      "- 최종 판단은 기관의 사실관계 확인 및 관련 법령 검토에 따라 달라질 수 있습니다.",
-    ),
     '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>',
   ].join("");
 

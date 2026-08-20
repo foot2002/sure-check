@@ -223,7 +223,9 @@ export function improvementChecklist(input: {
     "외부 설문도구 사용 및 위탁 처리 여부 안내",
     "국외이전 여부 확인",
   ];
-  if (input.isPublic) items.push("공공부문인 경우 클라우드 보안 기준 확인");
+  if (input.isPublic) {
+    items.push("공공기관의 경우 CSAP 보안인증 클라우드 의무적 사용");
+  }
   return items;
 }
 

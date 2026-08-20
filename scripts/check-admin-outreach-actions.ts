@@ -101,11 +101,19 @@ function main() {
   check("DOCX matches evidence summary sections", /법·정책 저촉·검토 포인트/.test(docxLib));
   check("DOCX includes notice checks", /고지문 확인/.test(docxLib));
   check("DOCX includes question originals", /개인정보·민감정보 문항/.test(docxLib));
-  check("DOCX includes improvement guidance", /4\. 개선 권고/.test(docxLib));
-  check("DOCX includes disclaimer", /위법 여부를 확정하는 자료가 아닙니다/.test(docxLib));
+  check("DOCX leads with letter copy", /1\. 공문용 개선 요청 문구/.test(docxLib));
+  check("DOCX includes improvement guidance", /5\. 개선 권고/.test(docxLib));
+  check("DOCX omits 유의사항 section", !/6\. 유의사항/.test(docxLib) && !/본 리포트는 공개 설문 화면에 대한 자동진단/.test(docxLib));
+  check("DOCX omits 진단 한계 section", !/진단 한계/.test(docxLib));
   check("DOCX includes score", /점수:/.test(docxLib));
   check("DOCX uses diagnosis-and-improvement wording", /진단 및 개선요구 증빙 요약서/.test(docxLib));
-  check("DOCX reason heading avoids 신고", /2\. 진단 및 개선요구 이유/.test(docxLib) && !/2\. 신고 이유/.test(docxLib));
+  check("DOCX reason heading avoids 신고", /3\. 진단 및 개선요구 이유/.test(docxLib) && !/신고 이유/.test(docxLib));
+  check(
+    "improvement checklist uses CSAP cloud wording",
+    /공공기관의 경우 CSAP 보안인증 클라우드 의무적 사용/.test(
+      read("lib/report/adminOutreach.ts"),
+    ),
+  );
   check("DOCX filename uses caseId", /sure-check-review-report-\$\{caseId\}\.docx/.test(docxLib));
   check(
     "DOCX builder is not a report_json dump",
