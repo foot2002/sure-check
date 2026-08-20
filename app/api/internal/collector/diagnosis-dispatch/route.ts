@@ -8,8 +8,8 @@ import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Enqueue-only: scan_jobs + survey_diagnosis_links queued. No diagnosis. */
-export const maxDuration = 60;
+/** Enqueue-only (no page precheck). Keep 300s: candidate scan lookups can exceed 60s. */
+export const maxDuration = 300;
 
 function parseParams(request: Request): {
   limit: number;
