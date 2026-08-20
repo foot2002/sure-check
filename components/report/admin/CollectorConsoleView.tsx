@@ -372,6 +372,36 @@ export function CollectorConsoleView({
               "개선안내 후보",
               summary.opsFunnel?.improvementCandidateCount ?? 0,
             ],
+            [
+              "공식 사이트 수집 대상 기관",
+              summary.officialSite?.institutionCount ?? 0,
+            ],
+            [
+              "오늘 공식 사이트 탐색 기관",
+              summary.officialSite?.crawledToday ?? 0,
+            ],
+            [
+              "오늘 발견한 설문 링크",
+              summary.officialSite?.surveysFoundToday ?? 0,
+            ],
+            [
+              "최근 60일 적격 설문",
+              summary.officialSite?.recentEligible ?? 0,
+            ],
+            [
+              "과거 연도 제외",
+              summary.officialSite?.oldYearExcluded ?? 0,
+            ],
+            [
+              "날짜 불명 보류",
+              summary.officialSite?.dateUnknownHold ?? 0,
+            ],
+            [
+              "오늘 자동진단 큐 등록",
+              summary.officialSite?.diagnosisQueued ??
+                (summary.diagnosis?.queued ?? 0) +
+                  (summary.diagnosis?.running ?? 0),
+            ],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -916,6 +946,7 @@ export function CollectorConsoleView({
             <option value="web">웹문서</option>
             <option value="blog">블로그</option>
             <option value="cafe">카페</option>
+            <option value="official_site">공식 사이트</option>
           </select>
         </label>
         <label className="text-xs text-slate-500">

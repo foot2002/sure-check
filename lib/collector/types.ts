@@ -16,7 +16,7 @@ export type CollectorSurveyStatus =
   | "ignored"
   | "invalid";
 
-export type CollectorSourceType = "web" | "blog" | "cafe" | "unknown";
+export type CollectorSourceType = "web" | "blog" | "cafe" | "unknown" | "official_site";
 
 export type CollectionRunTrigger = "admin" | "cron";
 
@@ -43,6 +43,9 @@ export interface SurveyLinkFreshness {
   reason_code?: string;
   last_checked_at?: string;
   should_diagnose?: boolean;
+  diagnosis_eligible_recent?: boolean;
+  diagnosis_exclusion_reason?: string | null;
+  discovery_channel?: string;
 }
 
 export interface SurveyLinkRow {
@@ -319,6 +322,15 @@ export interface CollectorSummary {
     dailyLimit: number;
     batchSize: number;
     maxBacklogDays: number;
+  };
+  officialSite?: {
+    institutionCount: number;
+    crawledToday: number;
+    surveysFoundToday: number;
+    recentEligible: number;
+    oldYearExcluded: number;
+    dateUnknownHold: number;
+    diagnosisQueued: number;
   };
   improvementCandidates?: Array<{
     id: string;

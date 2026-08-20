@@ -16,6 +16,11 @@ import {
 } from "@/lib/collector/diagnosisLinkRepository";
 import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import { listImprovementCandidates } from "@/lib/report/improvementCandidates";
+import {
+  countOfficialInstitutionSites,
+  countOfficialSitesCrawledToday,
+  countOfficialSiteSurveysFoundToday,
+} from "@/lib/collector/officialSiteRepository";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -370,6 +375,10 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     maxBacklogDays: getAutoDiagnosisMaxBacklogDays(),
   };
 
+  const officialSite = await loadOfficialSiteAdminStats(
+    (diagnosis.queued || 0) + (diagnosis.running || 0),
+  );
+
   return {
     totalSurveys,
     totalLinksAll,
@@ -408,7 +417,71 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     todayFunnel,
     qualityKpis,
     opsFunnel,
+    officialSite,
     improvementCandidates: improvement.items,
+  };
+}
+
+async function countFreshnessReason(reason: string): Promise<number> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { count, error } = await supabase
+      .from("survey_links")
+      .select("id", { count: "exact", head: true })
+      .eq("freshness->>reason_code", reason);
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function loadOfficialSiteAdminStats(diagnosisQueued: number): Promise<
+  NonNullable<CollectorSummary["officialSite"]>
+> {
+  const [
+    institutionCount,
+    crawledToday,
+    surveysFoundToday,
+    recentEligible,
+    staleYear,
+    staleTopic,
+    previousYear,
+    dateUnknownHold,
+    unknownNoSignal,
+    activeUnknown,
+  ] = await Promise.all([
+    countOfficialInstitutionSites(),
+    countOfficialSitesCrawledToday(),
+    countOfficialSiteSurveysFoundToday(),
+    (async () => {
+      try {
+        const supabase = createSupabaseServerClient();
+        const { count, error } = await supabase
+          .from("survey_links")
+          .select("id", { count: "exact", head: true })
+          .eq("freshness->>diagnosis_eligible_recent", "true");
+        if (error) return 0;
+        return count ?? 0;
+      } catch {
+        return 0;
+      }
+    })(),
+    countFreshnessReason("stale_year"),
+    countFreshnessReason("stale_topic_year"),
+    countFreshnessReason("previous_year_phrase"),
+    countFreshnessReason("date_unknown_hold"),
+    countFreshnessReason("unknown_no_signal"),
+    countFreshnessReason("active_unknown_date"),
+  ]);
+  return {
+    institutionCount,
+    crawledToday,
+    surveysFoundToday,
+    recentEligible,
+    oldYearExcluded: staleYear + staleTopic + previousYear,
+    dateUnknownHold: dateUnknownHold + unknownNoSignal + activeUnknown,
+    diagnosisQueued,
   };
 }
 

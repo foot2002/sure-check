@@ -34,6 +34,10 @@
       "maxDuration": 300,
       "memory": 1024
     },
+    "app/api/internal/collector/official-sites/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
     "app/api/internal/jobs/run-next/route.ts": {
       "maxDuration": 300,
       "memory": 2048
@@ -195,6 +199,10 @@
     {
       "path": "/api/internal/jobs/run-next",
       "schedule": "30 22 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 16 * * *"
     }
   ]
 }

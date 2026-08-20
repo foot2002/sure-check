@@ -79,6 +79,7 @@ export function looksLikeSurveyDomainUrl(url: string): boolean {
   if (host === "form.naver.com") return true;
   if (host === "moaform.com" || host.endsWith(".moaform.com")) return true;
   if (host === "surveyl.ink" || host.endsWith(".surveyl.ink")) return true;
+  if (host.includes("wiseon")) return true;
   return false;
 }
 

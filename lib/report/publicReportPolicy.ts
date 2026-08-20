@@ -28,7 +28,12 @@ export const PUBLIC_REPORT_FORBIDDEN_KEYS = [
   "byte_size",
   "scan_job_id",
   "survey_record_id",
-  "capture_job_id",
+  "homepageUrl",
+  "seedUrls",
+  "homepage_url",
+  "source_url",
+  "canonical_url",
+  "original_url",
 ] as const;
 
 const FORBIDDEN_KEY_SET = new Set(

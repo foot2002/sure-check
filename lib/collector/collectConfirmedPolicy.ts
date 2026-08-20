@@ -17,7 +17,6 @@ export const AUTO_DIAGNOSIS_TARGET_LANES = [
   "collect_confirmed",
   "active_recent",
   "active_candidate",
-  "active_unknown_date",
 ] as const;
 
 export type AutoDiagnosisTargetLane = (typeof AUTO_DIAGNOSIS_TARGET_LANES)[number];
@@ -28,7 +27,7 @@ export type CollectLane =
   | "collect_confirmed"
   | "active_recent"
   | "active_candidate"
-  | "active_unknown_date"
+  | "date_unknown_hold"
   | "stale_candidate"
   | "screened_out";
 
@@ -112,7 +111,19 @@ function freshnessShouldDiagnose(
   freshness?: SurveyLinkFreshness | null,
 ): boolean {
   if (!freshness) return true;
+  if (freshness.diagnosis_eligible_recent === false) return false;
   if (freshness.should_diagnose === false) return false;
+  const reason = String(freshness.diagnosis_exclusion_reason || freshness.reason_code || "");
+  if (
+    reason === "date_unknown_hold" ||
+    reason === "active_unknown_date" ||
+    reason === "stale_year" ||
+    reason === "stale_topic_year" ||
+    reason === "previous_year_phrase" ||
+    reason === "published_too_old"
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -133,8 +144,15 @@ export function classifyCollectLane(input: {
   if (!status || status === "raw_discovered") return "raw_discovered";
 
   if (status === "active") {
-    if (!freshnessShouldDiagnose(freshness)) return "screened_out";
-    if (reason === "active_unknown_date") return "active_unknown_date";
+    if (!freshnessShouldDiagnose(freshness)) {
+      if (reason === "date_unknown_hold" || reason === "active_unknown_date") {
+        return "date_unknown_hold";
+      }
+      return "screened_out";
+    }
+    if (reason === "active_unknown_date" || reason === "date_unknown_hold") {
+      return "date_unknown_hold";
+    }
     if (freshnessStatus === "active_candidate" || reason === "active_candidate") {
       return "active_candidate";
     }

@@ -27,6 +27,9 @@ export type FreshnessReasonCode =
   | "current_year"
   | "published_recent"
   | "active_unknown_date"
+  | "date_unknown_hold"
+  | "in_progress_phrase"
+  | "previous_year_phrase"
   | "active_candidate"
   | "end_date_passed"
   | "start_date_future"
@@ -49,6 +52,8 @@ export type SurveyFreshnessRecord = {
   reason_code: FreshnessReasonCode;
   last_checked_at: string;
   should_diagnose: boolean;
+  diagnosis_eligible_recent: boolean;
+  diagnosis_exclusion_reason: string | null;
 };
 
 export type FreshnessCheckResult = {
@@ -92,6 +97,11 @@ const TOPIC_YEAR_RE =
   /(\d{4})\s*년\s*도?\s*(만족도|실적|사업|평가|성과|운영|고객|교육|업무)/;
 
 const RANGE_LABEL_RE = /(?:응답|조사|설문|접수|참여)\s*기간/;
+
+const PREVIOUS_YEAR_PHRASE_RE = /작년|전년도|지난해/;
+
+const IN_PROGRESS_PHRASE_RE =
+  /진행\s*중|모집\s*중|응답\s*중|접수\s*중|참여\s*가능|현재\s*진행|현재\s*모집|현재\s*접수/;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -247,7 +257,13 @@ function koreanReason(
     case "published_recent":
       return "게시일이 최근이라 수집 대상으로 판단";
     case "active_unknown_date":
-      return "날짜는 불명확하나 현재 응답 가능한 설문으로 확인";
+      return "날짜는 불명확해 자동진단을 보류";
+    case "date_unknown_hold":
+      return "날짜 불명 — 자동진단 보류";
+    case "in_progress_phrase":
+      return "현재 진행 중 표현이 있어 최근 설문으로 판단";
+    case "previous_year_phrase":
+      return "작년·전년도 신호로 과거 설문 제외";
     case "active_candidate":
       return "종료 문구 없이 최근 신호로 진단 후보";
     case "end_date_passed":
@@ -295,6 +311,8 @@ function toRecord(
     reason_code: input.code,
     last_checked_at: input.now.toISOString(),
     should_diagnose: input.shouldDiagnose,
+    diagnosis_eligible_recent: input.shouldDiagnose,
+    diagnosis_exclusion_reason: input.shouldDiagnose ? null : input.code,
   };
 }
 
@@ -394,6 +412,17 @@ export function evaluateSurveyFreshness(
     );
   }
 
+  if (PREVIOUS_YEAR_PHRASE_RE.test(blob)) {
+    return finish(
+      "stale",
+      "stale",
+      "previous_year_phrase",
+      "stale",
+      false,
+      false,
+    );
+  }
+
   if (dates.end && dates.end < kst.ymd) {
     return finish("closed", "closed", "end_date_passed", "closed", false, false);
   }
@@ -415,17 +444,6 @@ export function evaluateSurveyFreshness(
 
   if (maxPast != null && !mentionsCurrentYear) {
     const topic = isTopicYearContext(blob, maxPast);
-    if (input.confirmedLive && mode === "page") {
-      return finish(
-        "active",
-        "active",
-        "active_unknown_date",
-        "active",
-        true,
-        false,
-        maxPast,
-      );
-    }
     if (topic) {
       return finish(
         "stale",
@@ -446,25 +464,24 @@ export function evaluateSurveyFreshness(
   }
   if (publishedYmd) {
     const age = daysBetweenYmd(publishedYmd, kst.ymd);
-    if (Number.isFinite(age) && age > MAX_COLLECTION_WINDOW_DAYS) {
-      if (input.confirmedLive && mode === "page") {
+    if (Number.isFinite(age) && age > windowDays) {
+      const periodOpen =
+        Boolean(dates.end && dates.end >= kst.ymd) ||
+        Boolean(
+          dates.start &&
+            dates.start <= kst.ymd &&
+            (!dates.end || dates.end >= kst.ymd),
+        );
+      if (!periodOpen) {
         return finish(
-          "active",
-          "active",
-          "active_unknown_date",
-          "active",
-          true,
+          "stale",
+          "stale",
+          "published_too_old",
+          "stale",
+          false,
           false,
         );
       }
-      return finish(
-        "stale",
-        "stale",
-        "published_too_old",
-        "stale",
-        false,
-        false,
-      );
     }
     if (Number.isFinite(age) && age <= windowDays) {
       return finish(
@@ -472,20 +489,6 @@ export function evaluateSurveyFreshness(
         "active",
         "published_recent",
         mode === "page" && input.confirmedLive ? "active" : "discovered",
-        true,
-        true,
-      );
-    }
-    if (
-      Number.isFinite(age) &&
-      age <= MAX_COLLECTION_WINDOW_DAYS &&
-      age > windowDays
-    ) {
-      return finish(
-        "unknown",
-        "stale_candidate",
-        "published_recent",
-        "discovered",
         true,
         true,
       );
@@ -504,34 +507,52 @@ export function evaluateSurveyFreshness(
     );
   }
 
-  if (!dates.start && !dates.end && !CLOSED_PHRASE_RE.test(blob)) {
-    if (input.confirmedLive && mode === "page") {
-      return finish(
-        "active",
-        "active",
-        "active_unknown_date",
-        "active",
-        true,
-        false,
-      );
-    }
+  if (IN_PROGRESS_PHRASE_RE.test(blob)) {
+    return finish(
+      "active",
+      "active_candidate",
+      "in_progress_phrase",
+      mode === "page" && input.confirmedLive ? "active" : "discovered",
+      true,
+      true,
+    );
+  }
+
+  if (!dates.start && !dates.end) {
     return finish(
       "unknown",
       "unknown",
-      "unknown_no_signal",
-      "discovered",
+      "date_unknown_hold",
+      mode === "page" && input.confirmedLive ? "active" : "discovered",
       false,
-      isStrictRecentCollection() ? false : true,
+      false,
+    );
+  }
+
+  if (
+    (dates.end && dates.end >= kst.ymd) ||
+    (dates.start &&
+      dates.start <= kst.ymd &&
+      dates.end &&
+      dates.end >= kst.ymd)
+  ) {
+    return finish(
+      "active",
+      "active",
+      "recent_window",
+      mode === "page" && input.confirmedLive ? "active" : "discovered",
+      true,
+      true,
     );
   }
 
   return finish(
     "unknown",
-    "active_candidate",
-    "active_candidate",
+    "unknown",
+    "date_unknown_hold",
     mode === "page" && input.confirmedLive ? "active" : "discovered",
-    true,
-    true,
+    false,
+    false,
   );
 }
 
@@ -598,30 +619,35 @@ export function overlayFreshnessOnPage(input: {
     return evaluated;
   }
   if (evaluated.availabilityStatus === "stale") {
-    if (input.confirmedLive) {
-      const now = input.now ?? new Date();
-      return resultFrom(
-        toRecord({
-          availability: "active",
-          freshnessStatus: "active",
-          code: "active_unknown_date",
-          year: evaluated.detectedYear,
-          start: evaluated.detectedStartDate,
-          end: evaluated.detectedEndDate,
-          shouldDiagnose: true,
-          now,
-        }),
-        { status: "active", shouldPageValidate: false },
-      );
-    }
     return evaluated;
+  }
+  if (
+    evaluated.reasonCode === "date_unknown_hold" ||
+    evaluated.reasonCode === "active_unknown_date"
+  ) {
+    return {
+      ...evaluated,
+      shouldDiagnose: false,
+      record: {
+        ...evaluated.record,
+        should_diagnose: false,
+        diagnosis_eligible_recent: false,
+        diagnosis_exclusion_reason: "date_unknown_hold",
+        reason_code: "date_unknown_hold",
+        freshness_reason: "날짜 불명 — 자동진단 보류",
+      },
+      status: input.confirmedLive ? "active" : evaluated.status,
+    };
   }
   if (input.confirmedLive) {
     return {
       ...evaluated,
       status: "active",
-      availabilityStatus: "active",
-      shouldDiagnose: evaluated.shouldDiagnose || true,
+      availabilityStatus:
+        evaluated.availabilityStatus === "unknown"
+          ? "active"
+          : evaluated.availabilityStatus,
+      shouldDiagnose: evaluated.shouldDiagnose,
     };
   }
   return evaluated;

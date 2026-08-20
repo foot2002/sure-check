@@ -184,10 +184,10 @@ async function main(): Promise<void> {
       mode: "page",
       confirmedLive: true,
     });
-    assertCase("과거 연도지만 현재 응답 가능 → active_unknown_date", live, {
-      availability: "active",
-      diagnose: true,
-      status: "active",
+    assertCase("과거 연도 신호는 응답 가능해도 진단 제외", live, {
+      availability: "stale",
+      diagnose: false,
+      status: "stale",
     });
   }
 
@@ -232,24 +232,25 @@ async function main(): Promise<void> {
   {
     const liveUnknown = evaluateSurveyFreshness({
       title: "의견 설문",
-      snippet: "현재 참여해 주세요",
+      snippet: "아래 링크에서 응답해 주세요",
       url: "https://forms.gle/live-nodate",
       mode: "page",
       confirmedLive: true,
     });
-    assertCase("날짜 없지만 현재 응답 가능 → active_unknown_date", liveUnknown, {
-      availability: "active",
-      diagnose: true,
-      status: "active",
+    assertCase("날짜 불명 설문은 보류", liveUnknown, {
+      diagnose: false,
     });
-    assert.ok(
+    assert.equal(liveUnknown.reasonCode, "date_unknown_hold");
+    assert.equal(liveUnknown.record.diagnosis_exclusion_reason, "date_unknown_hold");
+    assert.equal(
       isAutoDiagnosisTarget({
         status: liveUnknown.status,
         freshness: liveUnknown.record,
       }),
-      "active_unknown_date must be auto-diagnosis target",
+      false,
+      "date_unknown_hold must not be auto-diagnosis target",
     );
-    console.log("  PASS  날짜 없지만 현재 응답 가능 → 자동진단 대상");
+    console.log("  PASS  날짜 불명 → date_unknown_hold (자동진단 제외)");
   }
 
   {

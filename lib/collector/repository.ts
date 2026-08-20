@@ -367,6 +367,7 @@ export async function upsertSurveyLink(input: {
       first_discovered_at: now,
       last_discovered_at: now,
       discovery_count: 1,
+      freshness: input.freshness || null,
     })
     .select("*")
     .single();
