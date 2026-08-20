@@ -10,9 +10,10 @@ import {
 } from "@/lib/collector/candidateTriage";
 import {
   countDiagnosisLinksCreatedInKstDay,
-  findActiveDiagnosisLinkForSurvey,
+  DIAGNOSIS_LINK_BLOCKING_STATUSES,
+  findDiagnosisLinksBySurveyIds,
   findSurveyIdsWithBlockingDiagnosis,
-  insertDiagnosisLink,
+  insertDiagnosisLinks,
   syncDiagnosisLinkFromScanJob,
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
@@ -28,8 +29,7 @@ import {
 } from "@/lib/collector/collectConfirmedPolicy";
 import {
   countInProgressScanJobs,
-  findAnyCompletedScanByCacheKey,
-  findRunningScanByCacheKey,
+  findScanJobsByCacheKeys,
 } from "@/lib/jobs/scanJobQueue";
 import { startUrlScanJob } from "@/lib/jobs/startUrlScanJob";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -195,6 +195,11 @@ export function filterAndSortEligible(
   return out;
 }
 
+/** DB page size: limit=3 → 20, limit=20 → 60. */
+export function candidateFetchPageSize(limit: number): number {
+  return Math.min(80, Math.max(20, limit * 3));
+}
+
 /** Prefer platform diversity when taking the first N. */
 export function pickWithPlatformDiversity(
   candidates: EligibleCandidate[],
@@ -227,61 +232,71 @@ export function pickWithPlatformDiversity(
   return picked;
 }
 
-async function loadActiveCandidatesFromDb(
-  fetchLimit: number,
-): Promise<EligibleCandidate[]> {
+type LinkRow = {
+  id: unknown;
+  canonical_url: unknown;
+  platform: unknown;
+  title: unknown;
+  status: unknown;
+  freshness?: unknown;
+};
+
+type SourceRow = {
+  survey_link_id: unknown;
+  source_url: unknown;
+  source_title: unknown;
+  search_query: unknown;
+  source_published_at: unknown;
+  source_type: unknown;
+};
+
+async function fetchActiveSurveyPage(
+  pageSize: number,
+  offset: number,
+): Promise<LinkRow[]> {
   const supabase = createSupabaseServerClient();
-  // Deep enough to burn through recent already-diagnosed actives and still
-  // reach the undiagnosed collect_confirmed backlog for each wave.
-  const fetchSize = Math.min(Math.max(fetchLimit * 50, 400), 1500);
-  type LinkRow = {
-    id: unknown;
-    canonical_url: unknown;
-    platform: unknown;
-    title: unknown;
-    status: unknown;
-    freshness?: unknown;
-  };
-  let links: LinkRow[] | null = null;
-  let error: { message: string } | null = null;
-  {
-    const first = await supabase
-      .from("survey_links")
-      .select("id, canonical_url, platform, title, status, freshness")
-      .eq("status", "active")
-      .order("last_discovered_at", { ascending: false })
-      .limit(fetchSize);
-    links = (first.data as LinkRow[] | null) || null;
-    error = first.error;
-  }
+  const first = await supabase
+    .from("survey_links")
+    .select("id, canonical_url, platform, title, status, freshness")
+    .eq("status", "active")
+    .order("last_discovered_at", { ascending: false })
+    .range(offset, offset + pageSize - 1);
   if (
-    error &&
-    /freshness/i.test(error.message) &&
-    /column|schema|does not exist/i.test(error.message)
+    first.error &&
+    /freshness/i.test(first.error.message) &&
+    /column|schema|does not exist/i.test(first.error.message)
   ) {
     const fallback = await supabase
       .from("survey_links")
       .select("id, canonical_url, platform, title, status")
       .eq("status", "active")
       .order("last_discovered_at", { ascending: false })
-      .limit(fetchSize);
-    links = (fallback.data as LinkRow[] | null) || null;
-    error = fallback.error;
+      .range(offset, offset + pageSize - 1);
+    if (fallback.error) {
+      throw new Error(`load active survey_links: ${fallback.error.message}`);
+    }
+    return (fallback.data as LinkRow[] | null) || [];
   }
+  if (first.error) {
+    throw new Error(`load active survey_links: ${first.error.message}`);
+  }
+  return (first.data as LinkRow[] | null) || [];
+}
 
-  if (error) throw new Error(`load active survey_links: ${error.message}`);
-  const rows = links || [];
+async function attachTriage(rows: LinkRow[]): Promise<
+  Array<{
+    id: string;
+    canonicalUrl: string;
+    platform: CollectorPlatform;
+    title: string | null;
+    status: string;
+    triage: TriageResult;
+    freshness: SurveyLinkFreshness | null;
+  }>
+> {
   if (rows.length === 0) return [];
-
+  const supabase = createSupabaseServerClient();
   const ids = rows.map((r) => String(r.id));
-  type SourceRow = {
-    survey_link_id: unknown;
-    source_url: unknown;
-    source_title: unknown;
-    search_query: unknown;
-    source_published_at: unknown;
-    source_type: unknown;
-  };
   const sources: SourceRow[] = [];
   const sourceChunk = 150;
   for (let i = 0; i < ids.length; i += sourceChunk) {
@@ -295,16 +310,14 @@ async function loadActiveCandidatesFromDb(
     if (sErr) throw new Error(`load survey_sources: ${sErr.message}`);
     sources.push(...((data as SourceRow[] | null) || []));
   }
-
-  const byLink = new Map<string, typeof sources>();
-  for (const s of sources || []) {
+  const byLink = new Map<string, SourceRow[]>();
+  for (const s of sources) {
     const id = String(s.survey_link_id);
     const cur = byLink.get(id) || [];
     cur.push(s);
     byLink.set(id, cur);
   }
-
-  const mapped = rows.map((row) => {
+  return rows.map((row) => {
     const srcs = byLink.get(String(row.id)) || [];
     const triage = bestTriageAcrossSources(
       srcs.map((s) => ({
@@ -328,8 +341,6 @@ async function loadActiveCandidatesFromDb(
       freshness: (row.freshness as SurveyLinkFreshness | null) || null,
     };
   });
-
-  return filterAndSortEligible(mapped);
 }
 
 async function filterOpenForEnqueue(
@@ -339,21 +350,51 @@ async function filterOpenForEnqueue(
   const blockedIds = await findSurveyIdsWithBlockingDiagnosis(
     candidates.map((c) => c.surveyLinkId),
   );
+  const { runningByKey, completedByKey } = await findScanJobsByCacheKeys(
+    candidates.map((c) => c.scanCacheKey),
+  );
   const neverScanned: EligibleCandidate[] = [];
   const alreadyCompleted: EligibleCandidate[] = [];
   for (const c of candidates) {
     if (blockedIds.has(c.surveyLinkId)) continue;
-    const running = await findRunningScanByCacheKey(c.scanCacheKey);
-    if (running?.external_scan_id) continue;
-    const completed = await findAnyCompletedScanByCacheKey(c.scanCacheKey);
-    if (completed?.job.external_scan_id) {
+    if (runningByKey.get(c.scanCacheKey)?.external_scan_id) continue;
+    if (completedByKey.get(c.scanCacheKey)?.external_scan_id) {
       alreadyCompleted.push(c);
       continue;
     }
     neverScanned.push(c);
   }
-  // Prefer URLs with no completed scan so missing diagnosis drains first.
   return neverScanned.concat(alreadyCompleted);
+}
+
+/**
+ * Page through recent active surveys until `needed` open candidates exist.
+ * Stops early instead of scanning hundreds of already-diagnosed rows.
+ */
+async function loadOpenCandidatesForDispatch(needed: number): Promise<{
+  eligible: EligibleCandidate[];
+  open: EligibleCandidate[];
+}> {
+  const pageSize = candidateFetchPageSize(needed);
+  const maxRows = Math.max(80, pageSize * 6);
+  const eligible: EligibleCandidate[] = [];
+  const open: EligibleCandidate[] = [];
+  let offset = 0;
+  while (offset < maxRows && open.length < needed) {
+    const rows = await fetchActiveSurveyPage(pageSize, offset);
+    if (rows.length === 0) break;
+    offset += rows.length;
+    const pageEligible = filterAndSortEligible(await attachTriage(rows));
+    eligible.push(...pageEligible);
+    const pageOpen = await filterOpenForEnqueue(pageEligible);
+    for (const c of pageOpen) {
+      if (open.some((x) => x.surveyLinkId === c.surveyLinkId)) continue;
+      open.push(c);
+      if (open.length >= needed) break;
+    }
+    if (rows.length < pageSize) break;
+  }
+  return { eligible, open };
 }
 
 function emptyCounts() {
@@ -427,9 +468,13 @@ export async function dispatchCollectorDiagnoses(input?: {
     ? requestedLimit
     : Math.min(requestedLimit, dailyRemaining);
 
-  const eligible = await loadActiveCandidatesFromDb(limit);
-  const openEligible = await filterOpenForEnqueue(eligible);
+  const loaded = await loadOpenCandidatesForDispatch(limit);
+  const eligible = loaded.eligible;
+  const openEligible = loaded.open;
   const selectedPool = pickWithPlatformDiversity(openEligible, limit);
+  const existingBySurvey = await findDiagnosisLinksBySurveyIds(
+    selectedPool.map((c) => c.surveyLinkId),
+  );
 
   const orgDist: Record<string, number> = {};
   const platDist: Record<string, number> = {};
@@ -444,6 +489,7 @@ export async function dispatchCollectorDiagnoses(input?: {
   const counts = emptyCounts();
   /** Rows actually inserted into survey_diagnosis_links this wave. */
   let linkageCreated = 0;
+  const pendingLinkRows: Parameters<typeof insertDiagnosisLinks>[0] = [];
 
   let remainingSlots = Math.max(0, backpressureCap - inProgress);
   let remainingDaily = dailyRemaining;
@@ -478,8 +524,8 @@ export async function dispatchCollectorDiagnoses(input?: {
       continue;
     }
 
-    const existing = await findActiveDiagnosisLinkForSurvey(c.surveyLinkId);
-    if (existing) {
+    const existing = existingBySurvey.get(c.surveyLinkId);
+    if (existing && DIAGNOSIS_LINK_BLOCKING_STATUSES.includes(existing.status)) {
       outcomes.push({
         ...base,
         outcome: "skipped_duplicate",
@@ -492,19 +538,9 @@ export async function dispatchCollectorDiagnoses(input?: {
     }
 
     if (dryRun) {
-      const running = await findRunningScanByCacheKey(c.scanCacheKey);
-      if (running?.external_scan_id) {
-        outcomes.push({
-          ...base,
-          outcome: "skipped_duplicate",
-          diagnosisJobId: running.external_scan_id,
-          skipReason: "scan_job_running_or_pending",
-        });
-        counts.skippedDuplicate += 1;
-        continue;
-      }
       outcomes.push({ ...base, outcome: "would_enqueue" });
       counts.wouldEnqueue += 1;
+      if (counts.wouldEnqueue >= limit) break;
       continue;
     }
 
@@ -517,7 +553,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     });
 
     if (!started.ok) {
-      await insertDiagnosisLink({
+      pendingLinkRows.push({
         surveyLinkId: c.surveyLinkId,
         diagnosisJobId: null,
         canonicalUrl: c.canonicalUrl,
@@ -538,7 +574,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     }
 
     if (started.alreadyCompleted || started.reusedRunningJob) {
-      await insertDiagnosisLink({
+      pendingLinkRows.push({
         surveyLinkId: c.surveyLinkId,
         diagnosisJobId: started.scanId,
         reportId: started.reportId,
@@ -564,7 +600,7 @@ export async function dispatchCollectorDiagnoses(input?: {
       continue;
     }
 
-    const link = await insertDiagnosisLink({
+    pendingLinkRows.push({
       surveyLinkId: c.surveyLinkId,
       diagnosisJobId: started.scanId,
       canonicalUrl: c.canonicalUrl,
@@ -577,11 +613,16 @@ export async function dispatchCollectorDiagnoses(input?: {
       ...base,
       outcome: "queued",
       diagnosisJobId: started.scanId,
-      reportId: link?.report_id ?? null,
+      reportId: null,
     });
     counts.queued += 1;
     remainingSlots -= 1;
     remainingDaily -= 1;
+    if (counts.queued >= limit) break;
+  }
+
+  if (!dryRun && pendingLinkRows.length > 0) {
+    await insertDiagnosisLinks(pendingLinkRows);
   }
 
   const usedAfter = day.total + (dryRun ? 0 : linkageCreated);

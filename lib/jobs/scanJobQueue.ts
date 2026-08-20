@@ -65,7 +65,8 @@ export function isInProgressScanStale(
 }
 
 /**
- * Mark zombie pending/running rows failed so they stop blocking reuse and concurrency.
+ * Mark zombie running rows failed so they stop blocking reuse and concurrency.
+ * Pending jobs waiting for a worker cron must not be expired here.
  */
 export async function recoverStaleScanJobs(
   staleSecondsOverride?: number,
@@ -92,7 +93,7 @@ export async function recoverStaleScanJobs(
       updated_at: now,
       step_label: "완료",
     })
-    .in("status", ["pending", "running", "idle"])
+    .eq("status", "running")
     .lt("updated_at", cutoff)
     .select("id, external_scan_id");
   if (error) {
@@ -265,6 +266,55 @@ export async function findAnyCompletedScanByCacheKey(
     job: job as QueuedScanJobRow,
     reportId: reportRow?.id ? String(reportRow.id) : null,
   };
+}
+
+const SCAN_JOB_SELECT =
+  "id, external_scan_id, form_url, form_url_hash, cache_key, status, current_step, total_steps, step_label, error_message, monitoring_saved, evidence_stored, completed_at, created_at, updated_at";
+
+/**
+ * Bulk lookup of pending/running/completed scan_jobs by cache_key.
+ * Does not recover stale jobs — call recoverStaleScanJobs once per wave.
+ */
+export async function findScanJobsByCacheKeys(cacheKeys: string[]): Promise<{
+  runningByKey: Map<string, QueuedScanJobRow>;
+  completedByKey: Map<string, QueuedScanJobRow>;
+}> {
+  const runningByKey = new Map<string, QueuedScanJobRow>();
+  const completedByKey = new Map<string, QueuedScanJobRow>();
+  const unique = [...new Set(cacheKeys.filter(Boolean))];
+  if (!isMonitoringConfigured() || unique.length === 0) {
+    return { runningByKey, completedByKey };
+  }
+  const supabase = createSupabaseServerClient();
+  const chunk = 100;
+  for (let i = 0; i < unique.length; i += chunk) {
+    const slice = unique.slice(i, i + chunk);
+    const { data, error } = await supabase
+      .from("scan_jobs")
+      .select(SCAN_JOB_SELECT)
+      .in("cache_key", slice)
+      .in("status", ["pending", "idle", "running", "completed"]);
+    if (error) throw new Error(`findScanJobsByCacheKeys: ${error.message}`);
+    for (const raw of data || []) {
+      const row = raw as QueuedScanJobRow;
+      const key = String(row.cache_key || "");
+      if (!key) continue;
+      if (row.status === "pending" || row.status === "idle" || row.status === "running") {
+        const prev = runningByKey.get(key);
+        if (!prev || Date.parse(row.created_at) > Date.parse(prev.created_at)) {
+          runningByKey.set(key, row);
+        }
+        continue;
+      }
+      if (row.status === "completed") {
+        const prev = completedByKey.get(key);
+        const rowAt = Date.parse(row.completed_at || row.created_at);
+        const prevAt = prev ? Date.parse(prev.completed_at || prev.created_at) : 0;
+        if (!prev || rowAt > prevAt) completedByKey.set(key, row);
+      }
+    }
+  }
+  return { runningByKey, completedByKey };
 }
 
 /** Count pending+running scan jobs for dispatcher backpressure. */

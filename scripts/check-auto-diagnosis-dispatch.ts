@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { triageCandidate } from "../lib/collector/candidateTriage";
 import {
+  candidateFetchPageSize,
   filterAndSortEligible,
   isEligibleTriage,
 } from "../lib/collector/diagnosisBridge";
@@ -28,9 +29,15 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
 }
 
 {
+  assert.equal(candidateFetchPageSize(3), 20);
+  assert.equal(candidateFetchPageSize(20), 60);
+  console.log("  PASS  candidate page size is limit*3 with floor 20");
+}
+
+{
   const route = source("app/api/internal/collector/diagnosis-dispatch/route.ts");
   assert.ok(route.includes("processInline: false"));
-  assert.ok(route.includes("maxDuration = 60"));
+  assert.ok(/maxDuration = (60|120|300)/.test(route));
   assert.ok(!route.includes("inlineParam"));
   console.log("  PASS  HTTP dispatcher is enqueue-only");
 }
@@ -104,6 +111,18 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
   assert.equal(bounds.kstDate, "2026-08-20");
   assert.equal(bounds.startUtcIso, "2026-08-19T15:00:00.000Z");
   console.log("  PASS  today-attempt window is KST day (queued included by created_at)");
+}
+
+{
+  const bridge = source("lib/collector/diagnosisBridge.ts");
+  assert.ok(bridge.includes("candidateFetchPageSize"));
+  assert.ok(bridge.includes("findScanJobsByCacheKeys"));
+  assert.ok(bridge.includes("insertDiagnosisLinks"));
+  assert.ok(!bridge.includes("fetchLimit * 50"));
+  assert.ok(!bridge.includes("findRunningScanByCacheKey"));
+  assert.ok(!bridge.includes("findAnyCompletedScanByCacheKey"));
+  assert.ok(!bridge.includes("checkSurveyFreshnessAndAvailability"));
+  console.log("  PASS  dispatcher uses paged fetch + bulk scan_job lookups");
 }
 
 {

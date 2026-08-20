@@ -286,6 +286,68 @@ export async function insertDiagnosisLink(input: {
   return data as SurveyDiagnosisLinkRow;
 }
 
+type DiagnosisLinkInsertInput = {
+  surveyLinkId: string;
+  diagnosisJobId: string | null;
+  reportId?: string | null;
+  canonicalUrl: string;
+  scanCacheKey: string;
+  status: SurveyDiagnosisLinkStatus;
+  skipReason?: string | null;
+  extractorKey?: string | null;
+  lastError?: string | null;
+  attempts?: number;
+};
+
+function toDiagnosisLinkInsertRow(
+  input: DiagnosisLinkInsertInput,
+  now: string,
+): Record<string, unknown> {
+  return {
+    survey_link_id: input.surveyLinkId,
+    diagnosis_job_id: input.diagnosisJobId,
+    report_id: input.reportId ?? null,
+    canonical_url: input.canonicalUrl,
+    scan_cache_key: input.scanCacheKey,
+    status: input.status,
+    skip_reason: input.skipReason ?? null,
+    extractor_key: input.extractorKey ?? null,
+    diagnosis_version: "sure-check-v1",
+    queued_at:
+      input.status === "queued" || isTerminalLinkageStatus(input.status)
+        ? now
+        : null,
+    started_at: null,
+    completed_at: isTerminalLinkageStatus(input.status) ? now : null,
+    attempts: input.attempts ?? (input.status === "queued" ? 1 : 0),
+    last_error: input.lastError ?? null,
+  };
+}
+
+export async function insertDiagnosisLinks(
+  rows: DiagnosisLinkInsertInput[],
+): Promise<SurveyDiagnosisLinkRow[]> {
+  if (rows.length === 0) return [];
+  if (rows.length === 1) {
+    const one = await insertDiagnosisLink(rows[0]!);
+    return one ? [one] : [];
+  }
+  const supabase = createSupabaseServerClient();
+  const now = new Date().toISOString();
+  const payload = rows.map((row) => toDiagnosisLinkInsertRow(row, now));
+  const { data, error } = await supabase
+    .from("survey_diagnosis_links")
+    .insert(payload)
+    .select("*");
+  if (!error && data) return data as SurveyDiagnosisLinkRow[];
+  const out: SurveyDiagnosisLinkRow[] = [];
+  for (const row of rows) {
+    const inserted = await insertDiagnosisLink(row);
+    if (inserted) out.push(inserted);
+  }
+  return out;
+}
+
 export async function updateDiagnosisLinkStatus(input: {
   id: string;
   status: SurveyDiagnosisLinkStatus;

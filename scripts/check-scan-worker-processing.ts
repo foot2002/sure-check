@@ -75,7 +75,13 @@ console.log("  PASS  processNextScanJob / recoverStaleScanJobs exported");
   const queue = source("lib/jobs/scanJobQueue.ts");
   assert.ok(queue.includes("recoverStaleScanJobs"));
   assert.ok(queue.includes("syncDiagnosisLinksByExternalScanIds"));
-  console.log("  PASS  stale running jobs recover and sync linkage (timeout)");
+  const recoverFn = queue.slice(
+    queue.indexOf("export async function recoverStaleScanJobs"),
+    queue.indexOf("export async function markScanJobClientTimeout"),
+  );
+  assert.ok(recoverFn.includes('.eq("status", "running")'));
+  assert.ok(!recoverFn.includes("pending"));
+  console.log("  PASS  stale recover only expires running jobs, not queued pending");
 }
 
 console.log("\nresult: PASS");
