@@ -12,14 +12,19 @@ import {
   countDiagnosisLinksCreatedInKstDay,
   findDiagnosisLinksBySurveyIds,
   findSurveyIdsWithBlockingDiagnosis,
+  getKstDayBounds,
   type SurveyDiagnosisLinkRow,
 } from "@/lib/collector/diagnosisLinkRepository";
 import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import { listImprovementCandidates } from "@/lib/report/improvementCandidates";
 import {
   countOfficialInstitutionSites,
+  countOfficialSiteDiagnosisQueuedToday,
+  countOfficialSiteFreshnessStats,
+  countOfficialSiteNeedsReview,
   countOfficialSitesCrawledToday,
   countOfficialSiteSurveysFoundToday,
+  countOfficialSiteSurveysTotal,
 } from "@/lib/collector/officialSiteRepository";
 import type {
   CollectorPlatform,
@@ -375,9 +380,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     maxBacklogDays: getAutoDiagnosisMaxBacklogDays(),
   };
 
-  const officialSite = await loadOfficialSiteAdminStats(
-    (diagnosis.queued || 0) + (diagnosis.running || 0),
-  );
+  const officialSite = await loadOfficialSiteAdminStats();
 
   return {
     totalSurveys,
@@ -436,14 +439,20 @@ async function countFreshnessReason(reason: string): Promise<number> {
   }
 }
 
-async function loadOfficialSiteAdminStats(diagnosisQueued: number): Promise<
+async function loadOfficialSiteAdminStats(): Promise<
   NonNullable<CollectorSummary["officialSite"]>
 > {
+  const today = new Date();
+  const bounds = getKstDayBounds(today);
   const [
     institutionCount,
     crawledToday,
     surveysFoundToday,
-    recentEligible,
+    todayFreshness,
+    totalFreshness,
+    totalSurveysFound,
+    todayDiagnosisQueued,
+    needsReviewCount,
     staleYear,
     staleTopic,
     previousYear,
@@ -452,21 +461,16 @@ async function loadOfficialSiteAdminStats(diagnosisQueued: number): Promise<
     activeUnknown,
   ] = await Promise.all([
     countOfficialInstitutionSites(),
-    countOfficialSitesCrawledToday(),
-    countOfficialSiteSurveysFoundToday(),
-    (async () => {
-      try {
-        const supabase = createSupabaseServerClient();
-        const { count, error } = await supabase
-          .from("survey_links")
-          .select("id", { count: "exact", head: true })
-          .eq("freshness->>diagnosis_eligible_recent", "true");
-        if (error) return 0;
-        return count ?? 0;
-      } catch {
-        return 0;
-      }
-    })(),
+    countOfficialSitesCrawledToday(today),
+    countOfficialSiteSurveysFoundToday(today),
+    countOfficialSiteFreshnessStats({
+      sinceIso: bounds.startUtcIso,
+      untilIso: bounds.endUtcIso,
+    }),
+    countOfficialSiteFreshnessStats(),
+    countOfficialSiteSurveysTotal(),
+    countOfficialSiteDiagnosisQueuedToday(today),
+    countOfficialSiteNeedsReview(),
     countFreshnessReason("stale_year"),
     countFreshnessReason("stale_topic_year"),
     countFreshnessReason("previous_year_phrase"),
@@ -474,14 +478,27 @@ async function loadOfficialSiteAdminStats(diagnosisQueued: number): Promise<
     countFreshnessReason("unknown_no_signal"),
     countFreshnessReason("active_unknown_date"),
   ]);
+  const totalOldYearExcluded = staleYear + staleTopic + previousYear;
+  const totalDateUnknownHold =
+    dateUnknownHold + unknownNoSignal + activeUnknown;
   return {
     institutionCount,
     crawledToday,
     surveysFoundToday,
-    recentEligible,
-    oldYearExcluded: staleYear + staleTopic + previousYear,
-    dateUnknownHold: dateUnknownHold + unknownNoSignal + activeUnknown,
-    diagnosisQueued,
+    todayRecentEligible: todayFreshness.recentEligible,
+    todayOldYearExcluded: todayFreshness.oldYearExcluded,
+    todayDateUnknownHold: todayFreshness.dateUnknownHold,
+    todayRestrictedExcluded: todayFreshness.restrictedExcluded,
+    todayDiagnosisQueued,
+    recentEligible: todayFreshness.recentEligible,
+    oldYearExcluded: todayFreshness.oldYearExcluded,
+    dateUnknownHold: todayFreshness.dateUnknownHold,
+    diagnosisQueued: todayDiagnosisQueued,
+    totalSurveysFound,
+    totalRecentEligible: totalFreshness.recentEligible,
+    totalOldYearExcluded,
+    totalDateUnknownHold,
+    needsReviewCount,
   };
 }
 

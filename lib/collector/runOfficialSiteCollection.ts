@@ -33,7 +33,7 @@ export async function runOfficialSiteCollection(input?: {
   );
   const started = Date.now();
   const seeds = loadOfficialInstitutionSeeds();
-  const sync = await syncOfficialInstitutionSites(seeds);
+  const sync = await syncOfficialInstitutionSites(seeds, now);
   if (sync.skipped) {
     return {
       ok: false,
@@ -47,13 +47,15 @@ export async function runOfficialSiteCollection(input?: {
     };
   }
 
-  const due = await listDueOfficialInstitutionSites(limit, now);
+  const dueNow = new Date(Math.max(Date.now(), now.getTime()));
+  const due = await listDueOfficialInstitutionSites(limit, dueNow);
   const errors: string[] = [];
   let crawled = 0;
   let surveysSaved = 0;
   let pagesFetched = 0;
 
   for (const row of due) {
+    if (row.seed_review_status === "needs_review") continue;
     if (Date.now() - started > OFFICIAL_SITE_RUN_BUDGET_MS) break;
     await markOfficialSiteRunning(row.id);
     try {
@@ -68,7 +70,7 @@ export async function runOfficialSiteCollection(input?: {
         pagesFetched: result.pagesFetched,
         surveysFound: result.surveysSaved,
         error: result.errors[0] || null,
-        now,
+        now: new Date(),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -79,7 +81,7 @@ export async function runOfficialSiteCollection(input?: {
         pagesFetched: 0,
         surveysFound: 0,
         error: message,
-        now,
+        now: new Date(),
       });
     }
   }

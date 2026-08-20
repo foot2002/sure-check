@@ -100,6 +100,7 @@ console.log("[Official Site Collector Check]\n");
   const crawler = source("lib/collector/officialSiteCrawler.ts");
   assert.ok(crawler.includes("sameOriginOnly"));
   assert.ok(crawler.includes("OFFICIAL_SITE_MAX_DEPTH"));
+  assert.ok(crawler.includes("sourcePageUrl"));
   assert.ok(!crawler.includes("scanBatch"));
   const route = source("app/api/internal/collector/official-sites/route.ts");
   assert.ok(route.includes("runOfficialSiteCollection"));

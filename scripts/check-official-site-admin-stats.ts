@@ -1,0 +1,43 @@
+/**
+ * Admin collector stats must separate today official-site vs accumulated totals.
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+function source(path: string): string {
+  return readFileSync(resolve(process.cwd(), path), "utf8");
+}
+
+console.log("[Official Site Admin Stats Check]\n");
+
+{
+  const types = source("lib/collector/types.ts");
+  assert.ok(types.includes("todayDateUnknownHold"));
+  assert.ok(types.includes("totalDateUnknownHold"));
+  assert.ok(types.includes("todayRecentEligible"));
+  assert.ok(types.includes("totalRecentEligible"));
+  assert.ok(types.includes("needsReviewCount"));
+  console.log("  PASS  summary type has today vs total official-site fields");
+}
+
+{
+  const queries = source("lib/collector/queries.ts");
+  assert.ok(queries.includes("countOfficialSiteFreshnessStats"));
+  assert.ok(queries.includes("todayDateUnknownHold"));
+  assert.ok(queries.includes("totalDateUnknownHold"));
+  assert.ok(queries.includes("countOfficialSiteDiagnosisQueuedToday"));
+  console.log("  PASS  admin loader uses official-site-scoped freshness counts");
+}
+
+{
+  const view = source("components/report/admin/CollectorConsoleView.tsx");
+  assert.ok(view.includes("오늘 공식 사이트 날짜 불명 보류"));
+  assert.ok(view.includes("전체 날짜 불명 보류"));
+  assert.ok(view.includes("오늘 공식 사이트 최근 60일 적격"));
+  assert.ok(view.includes("전체 공식 사이트 적격 설문"));
+  assert.ok(view.includes("전체 누적 통계"));
+  console.log("  PASS  admin labels separate today official-site and totals");
+}
+
+console.log("\nofficial-site-admin-stats-check: ok");

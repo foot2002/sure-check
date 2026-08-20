@@ -32,6 +32,11 @@ export const PUBLIC_REPORT_FORBIDDEN_KEYS = [
   "seedUrls",
   "homepage_url",
   "source_url",
+  "source_page_url",
+  "source_page_title",
+  "source_anchor_text",
+  "source_context_excerpt",
+  "source_institution_homepage",
   "canonical_url",
   "original_url",
 ] as const;

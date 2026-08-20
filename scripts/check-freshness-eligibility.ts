@@ -113,4 +113,34 @@ const year = kst.year;
   console.log("  PASS  published > 60 days excluded");
 }
 
+{
+  const future = evaluateSurveyFreshness({
+    title: "2045년 미래사회 의견수렴",
+    snippet: "아래 링크에서 응답해 주세요",
+    url: "https://forms.gle/future2045",
+    mode: "page",
+    confirmedLive: true,
+  });
+  assert.equal(future.shouldDiagnose, false);
+  assert.equal(future.reasonCode, "date_unknown_hold");
+  assert.notEqual(future.reasonCode, "stale_year");
+  console.log("  PASS  2045 future year without period → date_unknown_hold");
+}
+
+{
+  const postedYmd = ymdOffset(-10);
+  const dotted = postedYmd.replace(/-/g, ".");
+  const posted = evaluateSurveyFreshness({
+    title: "구청 설문",
+    snippet: `등록일 ${dotted} 안내입니다`,
+    pageText: `등록일: ${dotted} 생활 의견 수렴`,
+    url: "https://forms.gle/posted",
+    mode: "page",
+    confirmedLive: true,
+  });
+  assert.equal(posted.shouldDiagnose, true);
+  assert.equal(posted.reasonCode, "published_recent");
+  console.log("  PASS  source-page 등록일 within 60 days → eligible");
+}
+
 console.log("\nfreshness-eligibility-check: ok");

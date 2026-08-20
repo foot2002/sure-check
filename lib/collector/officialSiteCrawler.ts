@@ -7,6 +7,16 @@ import {
   looksLikeSurveyDomainUrl,
 } from "@/lib/collector/platformDetect";
 import {
+  extractAnchorContext,
+  extractOfficialPageDates,
+  extractPageTitle,
+  extractVisiblePageText,
+  pickBetterOfficialSource,
+  postedYmdToIso,
+  withOfficialSiteFreshnessMeta,
+  type OfficialSiteSurveyFind,
+} from "@/lib/collector/officialSiteEvidence";
+import {
   isPriorityOfficialPath,
   OFFICIAL_SITE_MAX_DEPTH,
   OFFICIAL_SITE_MAX_PAGES,
@@ -17,6 +27,8 @@ import type { OfficialInstitutionSiteRow } from "@/lib/collector/officialSiteRep
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { insertSurveySource, upsertSurveyLink } from "@/lib/collector/repository";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
+import { evaluateSurveyFreshness } from "@/lib/collector/surveyFreshness";
+import type { SurveyLinkFreshness } from "@/lib/collector/types";
 
 export type OfficialSiteOrgCrawlResult = {
   organizationName: string;
@@ -102,14 +114,33 @@ async function fetchHtml(
   }
 }
 
-function collectLinks(
+function collectPageFinds(
   html: string,
   pageUrl: string,
   seedOrigin: URL,
-): { nextPages: QueueItem[]; surveyUrls: string[] } {
+): { nextPages: QueueItem[]; finds: OfficialSiteSurveyFind[] } {
   const $ = cheerio.load(html);
   const nextPages: QueueItem[] = [];
-  const surveyUrls = new Set<string>(extractSurveyUrlsFromText(html, pageUrl));
+  const pageTitle = extractPageTitle(html);
+  const pageText = extractVisiblePageText(html);
+  const dates = extractOfficialPageDates(html, pageText);
+  const finds: OfficialSiteSurveyFind[] = [];
+  const seenSurvey = new Set<string>();
+
+  const pushFind = (surveyUrl: string, anchorText: string, excerpt: string) => {
+    const key = surveyUrl.replace(/\/$/, "").toLowerCase();
+    if (seenSurvey.has(key)) return;
+    seenSurvey.add(key);
+    finds.push({
+      surveyUrl,
+      sourcePageUrl: pageUrl,
+      sourcePageTitle: pageTitle,
+      sourceAnchorText: anchorText.slice(0, 200),
+      sourceContextExcerpt: excerpt,
+      sourcePageText: pageText,
+      dates,
+    });
+  };
 
   $("a[href]").each((_, el) => {
     const href = String($(el).attr("href") || "").trim();
@@ -117,7 +148,7 @@ function collectLinks(
     const abs = absoluteUrl(pageUrl, href);
     if (!abs) return;
     if (looksLikeSurveyDomainUrl(abs) || isShortenerUrl(abs) || /wiseon/i.test(abs)) {
-      surveyUrls.add(abs);
+      pushFind(abs, text, extractAnchorContext(html, href, text));
       return;
     }
     try {
@@ -134,7 +165,13 @@ function collectLinks(
     }
   });
 
-  return { nextPages, surveyUrls: [...surveyUrls] };
+  for (const surveyUrl of extractSurveyUrlsFromText(html, pageUrl)) {
+    const key = surveyUrl.replace(/\/$/, "").toLowerCase();
+    if (seenSurvey.has(key)) continue;
+    pushFind(surveyUrl, "", extractAnchorContext(html, surveyUrl, surveyUrl));
+  }
+
+  return { nextPages, finds };
 }
 
 export async function crawlOfficialInstitutionSite(
@@ -149,7 +186,7 @@ export async function crawlOfficialInstitutionSite(
   for (const seed of [row.homepage_url, ...row.seed_urls]) {
     queue.push({ url: seed, depth: 0, score: 20 });
   }
-  const surveyFound = new Set<string>();
+  const findsBySurvey = new Map<string, OfficialSiteSurveyFind>();
   const errors: string[] = [];
   let pagesFetched = 0;
   let surveysSaved = 0;
@@ -170,8 +207,15 @@ export async function crawlOfficialInstitutionSite(
       continue;
     }
 
-    const found = collectLinks(page.html, page.finalUrl || item.url, seedOrigin);
-    for (const surveyUrl of found.surveyUrls) surveyFound.add(surveyUrl);
+    const pageUrl = page.finalUrl || item.url;
+    const found = collectPageFinds(page.html, pageUrl, seedOrigin);
+    for (const find of found.finds) {
+      const surveyKey = find.surveyUrl.replace(/\/$/, "").toLowerCase();
+      findsBySurvey.set(
+        surveyKey,
+        pickBetterOfficialSource(findsBySurvey.get(surveyKey), find, row.homepage_url),
+      );
+    }
     if (item.depth < OFFICIAL_SITE_MAX_DEPTH) {
       for (const next of found.nextPages) {
         const nextKey = next.url.replace(/\/$/, "").toLowerCase();
@@ -181,39 +225,81 @@ export async function crawlOfficialInstitutionSite(
     }
   }
 
-  for (const surveyUrl of surveyFound) {
+  for (const find of findsBySurvey.values()) {
     try {
       const processed = await processSurveyCandidate({
-        rawUrl: surveyUrl,
-        searchTitle: `${row.organization_name} 공식 사이트 설문`,
+        rawUrl: find.surveyUrl,
+        searchTitle:
+          find.sourcePageTitle ||
+          find.sourceAnchorText ||
+          `${row.organization_name} 공식 사이트 설문`,
       });
       if (!processed.ok || !processed.canonicalUrl || !processed.platform) continue;
+
+      const dates = find.dates;
+      const formBlocked =
+        processed.status === "closed" ||
+        processed.status === "restricted" ||
+        processed.status === "invalid" ||
+        processed.status === "unreachable";
+      const sourceFreshness = formBlocked
+        ? processed.freshness
+        : evaluateSurveyFreshness({
+            title: find.sourcePageTitle || processed.title,
+            snippet: `${find.sourceAnchorText}\n${find.sourceContextExcerpt}`,
+            pageText: find.sourcePageText,
+            publishedAt: postedYmdToIso(dates.postedYmd) || undefined,
+            url: processed.canonicalUrl,
+            mode: "page",
+            confirmedLive: processed.status === "active",
+            now: options?.now,
+          }).record;
+      const freshness = withOfficialSiteFreshnessMeta(
+        (sourceFreshness || processed.freshness || {}) as Record<string, unknown>,
+        dates,
+      ) as SurveyLinkFreshness;
+      if (formBlocked && processed.freshness) {
+        freshness.diagnosis_eligible_recent = false;
+        freshness.should_diagnose = false;
+        freshness.diagnosis_exclusion_reason =
+          processed.freshness.diagnosis_exclusion_reason ||
+          processed.freshness.reason_code ||
+          processed.status;
+      }
+
       const saved = await upsertSurveyLink({
         canonicalUrl: processed.canonicalUrl,
-        originalUrl: processed.originalUrl || surveyUrl,
+        originalUrl: processed.originalUrl || find.surveyUrl,
         platform: processed.platform,
-        title: processed.title,
+        title: find.sourcePageTitle || processed.title,
         status: processed.status,
-        freshness: {
-          ...(processed.freshness || {}),
-          discovery_channel: "official_site",
-        },
+        freshness,
       });
+      const sourcePayload = {
+        surveyLinkId: saved.link.id,
+        sourceType: "official_site" as const,
+        sourceUrl: find.sourcePageUrl,
+        sourceTitle: find.sourcePageTitle || row.organization_name,
+        searchQuery: `official_site:${row.organization_name}`,
+        sourcePublishedAt: postedYmdToIso(dates.postedYmd),
+        sourcePageUrl: find.sourcePageUrl,
+        sourcePageTitle: find.sourcePageTitle || null,
+        sourceAnchorText: find.sourceAnchorText || null,
+        sourceContextExcerpt: find.sourceContextExcerpt || null,
+        sourceOrganizationName: row.organization_name,
+        sourceInstitutionHomepage: row.homepage_url,
+        sourcePostedDate: dates.postedYmd,
+        sourcePeriodStart: dates.periodStart,
+        sourcePeriodEnd: dates.periodEnd,
+        sourceDeadline: dates.deadline,
+        sourceDateText: dates.dateText,
+      };
       try {
-        await insertSurveySource({
-          surveyLinkId: saved.link.id,
-          sourceType: "official_site",
-          sourceUrl: row.homepage_url,
-          sourceTitle: row.organization_name,
-          searchQuery: `official_site:${row.organization_name}`,
-        });
+        await insertSurveySource(sourcePayload);
       } catch {
         await insertSurveySource({
-          surveyLinkId: saved.link.id,
+          ...sourcePayload,
           sourceType: "web",
-          sourceUrl: row.homepage_url,
-          sourceTitle: row.organization_name,
-          searchQuery: `official_site:${row.organization_name}`,
         });
       }
       surveysSaved += 1;
@@ -225,7 +311,7 @@ export async function crawlOfficialInstitutionSite(
   return {
     organizationName: row.organization_name,
     pagesFetched,
-    surveyUrlsFound: surveyFound.size,
+    surveyUrlsFound: findsBySurvey.size,
     surveysSaved,
     errors: errors.slice(0, 8),
     ok: errors.length === 0 || surveysSaved > 0 || pagesFetched > 0,

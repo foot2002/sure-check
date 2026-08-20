@@ -9,6 +9,10 @@ import {
   type OfficialSiteCrawlStatus,
 } from "@/lib/collector/officialSiteCrawlPolicy";
 import type { OfficialInstitutionSeed } from "@/lib/collector/officialSiteSeeds";
+import {
+  reviewOfficialSiteSeeds,
+  type OfficialSiteSeedReview,
+} from "@/lib/collector/officialSiteSeedReview";
 import { getKstDayBounds } from "@/lib/collector/diagnosisLinkRepository";
 
 export type OfficialInstitutionSiteRow = {
@@ -29,6 +33,8 @@ export type OfficialInstitutionSiteRow = {
   last_error: string | null;
   last_pages_fetched: number;
   last_surveys_found: number;
+  seed_review_status: "ok" | "needs_review";
+  seed_review_reason: string | null;
 };
 
 function client() {
@@ -59,19 +65,30 @@ function mapRow(row: Record<string, unknown>): OfficialInstitutionSiteRow {
     last_error: (row.last_error as string | null) || null,
     last_pages_fetched: Number(row.last_pages_fetched || 0),
     last_surveys_found: Number(row.last_surveys_found || 0),
+    seed_review_status:
+      row.seed_review_status === "needs_review" ? "needs_review" : "ok",
+    seed_review_reason: (row.seed_review_reason as string | null) || null,
   };
 }
 
 export async function syncOfficialInstitutionSites(
   seeds: OfficialInstitutionSeed[],
-): Promise<{ upserted: number; skipped: boolean }> {
+  now: Date = new Date(),
+): Promise<{ upserted: number; skipped: boolean; needsReview: number }> {
   const supabase = client();
-  const now = new Date();
+  const reviews = reviewOfficialSiteSeeds(seeds);
+  const reviewByKey = new Map<string, OfficialSiteSeedReview>();
+  for (const seed of seeds) {
+    const review = reviews.find((item) => item.organizationName === seed.organizationName);
+    if (review) reviewByKey.set(seedKey(seed), review);
+  }
   const chunkSize = 80;
   let upserted = 0;
   for (let i = 0; i < seeds.length; i += chunkSize) {
     const slice = seeds.slice(i, i + chunkSize).map((seed) => {
       const priority = crawlPriorityForType(seed.organizationType);
+      const review = reviewByKey.get(seedKey(seed));
+      const needsReview = review?.status === "needs_review";
       return {
         seed_key: seedKey(seed),
         organization_name: seed.organizationName,
@@ -79,9 +96,12 @@ export async function syncOfficialInstitutionSites(
         homepage_url: seed.homepageUrl,
         seed_urls: seed.seedUrls,
         source: seed.source,
-        crawl_priority: priority,
-        crawl_interval_days: crawlIntervalDaysForPriority(priority),
+        crawl_priority: needsReview ? "C" : priority,
+        crawl_interval_days: crawlIntervalDaysForPriority(needsReview ? "C" : priority),
         next_crawl_at: now.toISOString(),
+        seed_review_status: needsReview ? "needs_review" : "ok",
+        seed_review_reason: review?.reason || null,
+        last_error: needsReview ? "seed_domain_mismatch" : null,
       };
     });
     const { error } = await supabase.from("official_institution_sites").upsert(slice, {
@@ -89,14 +109,102 @@ export async function syncOfficialInstitutionSites(
       ignoreDuplicates: true,
     });
     if (error) {
-      if (/does not exist|schema cache/i.test(error.message)) {
-        return { upserted: 0, skipped: true };
+      const missingReviewCol =
+        /seed_review_status|seed_review_reason/i.test(error.message);
+      const missingTable =
+        /schema cache/i.test(error.message) ||
+        /relation .* does not exist/i.test(error.message);
+      if (missingReviewCol) {
+        const stripped = slice.map((row) => {
+          const copy = { ...row } as Record<string, unknown>;
+          delete copy.seed_review_status;
+          delete copy.seed_review_reason;
+          return copy;
+        });
+        const retry = await supabase.from("official_institution_sites").upsert(stripped, {
+          onConflict: "seed_key",
+          ignoreDuplicates: true,
+        });
+        if (retry.error) {
+          throw new Error(`official_institution_sites upsert 실패: ${retry.error.message}`);
+        }
+      } else if (missingTable) {
+        return { upserted: 0, skipped: true, needsReview: 0 };
+      } else {
+        throw new Error(`official_institution_sites upsert 실패: ${error.message}`);
       }
-      throw new Error(`official_institution_sites upsert 실패: ${error.message}`);
     }
     upserted += slice.length;
   }
-  return { upserted, skipped: false };
+  const needsReview = await applyOfficialSiteSeedReviews(reviews, seeds, now);
+  return { upserted, skipped: false, needsReview };
+}
+
+export async function applyOfficialSiteSeedReviews(
+  reviews: OfficialSiteSeedReview[],
+  seeds: OfficialInstitutionSeed[],
+  now: Date = new Date(),
+): Promise<number> {
+  const supabase = client();
+  const byName = new Map(seeds.map((seed) => [seed.organizationName, seed]));
+  const holdByReason = new Map<string, string[]>();
+  const holdSet = new Set<string>();
+  for (const review of reviews) {
+    const seed = byName.get(review.organizationName);
+    if (!seed || review.status !== "needs_review") continue;
+    const key = seedKey(seed);
+    holdSet.add(key);
+    const reason = review.reason || "domain_mismatch";
+    const list = holdByReason.get(reason) || [];
+    list.push(key);
+    holdByReason.set(reason, list);
+  }
+  const far = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString();
+  const updateChunk = async (keys: string[], patch: Record<string, unknown>) => {
+    for (let i = 0; i < keys.length; i += 80) {
+      const slice = keys.slice(i, i + 80);
+      const { error } = await supabase
+        .from("official_institution_sites")
+        .update(patch)
+        .in("seed_key", slice);
+      if (error && /seed_review_status|column|does not exist/i.test(error.message)) {
+        return false;
+      }
+      if (error) {
+        throw new Error(`seed review 갱신 실패: ${error.message}`);
+      }
+    }
+    return true;
+  };
+
+  for (const [reason, keys] of holdByReason) {
+    const ok = await updateChunk(keys, {
+      seed_review_status: "needs_review",
+      seed_review_reason: reason,
+      crawl_priority: "C",
+      last_error: reason === "domain_mismatch" ? "seed_domain_mismatch" : reason,
+      next_crawl_at: far,
+    });
+    if (!ok) return 0;
+  }
+
+  const existing = await supabase
+    .from("official_institution_sites")
+    .select("seed_key")
+    .eq("seed_review_status", "needs_review");
+  if (!existing.error) {
+    const clearKeys = (existing.data || [])
+      .map((row) => String(row.seed_key))
+      .filter((key) => !holdSet.has(key));
+    if (clearKeys.length > 0) {
+      await updateChunk(clearKeys, {
+        seed_review_status: "ok",
+        seed_review_reason: null,
+        last_error: null,
+      });
+    }
+  }
+  return holdSet.size;
 }
 
 export async function listDueOfficialInstitutionSites(
@@ -109,11 +217,28 @@ export async function listDueOfficialInstitutionSites(
     .select("*")
     .lte("next_crawl_at", now.toISOString())
     .neq("crawl_status", "running")
+    .or("seed_review_status.eq.ok,seed_review_status.is.null")
     .order("crawl_priority", { ascending: true })
     .order("next_crawl_at", { ascending: true })
     .limit(Math.max(1, Math.min(20, limit)));
   if (error) {
-    if (/does not exist|schema cache/i.test(error.message)) return [];
+    if (/seed_review_status/i.test(error.message)) {
+      const fallback = await supabase
+        .from("official_institution_sites")
+        .select("*")
+        .lte("next_crawl_at", now.toISOString())
+        .neq("crawl_status", "running")
+        .order("crawl_priority", { ascending: true })
+        .order("next_crawl_at", { ascending: true })
+        .limit(Math.max(1, Math.min(20, limit)));
+      if (fallback.error) {
+        throw new Error(`due official sites 조회 실패: ${fallback.error.message}`);
+      }
+      return (fallback.data || []).map((row) => mapRow(row as Record<string, unknown>));
+    }
+    if (/schema cache/i.test(error.message) || /relation .* does not exist/i.test(error.message)) {
+      return [];
+    }
     throw new Error(`due official sites 조회 실패: ${error.message}`);
   }
   return (data || []).map((row) => mapRow(row as Record<string, unknown>));
@@ -216,4 +341,144 @@ export async function countOfficialSiteSurveysFoundToday(
     return fallback.count ?? 0;
   }
   return count ?? 0;
+}
+
+export async function countOfficialSiteNeedsReview(): Promise<number> {
+  const supabase = client();
+  const { count, error } = await supabase
+    .from("official_institution_sites")
+    .select("id", { count: "exact", head: true })
+    .eq("seed_review_status", "needs_review");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+async function officialSiteLinkIds(options?: {
+  sinceIso?: string;
+  untilIso?: string;
+}): Promise<string[]> {
+  const supabase = client();
+  let query = supabase
+    .from("survey_sources")
+    .select("survey_link_id")
+    .eq("source_type", "official_site");
+  if (options?.sinceIso) query = query.gte("discovered_at", options.sinceIso);
+  if (options?.untilIso) query = query.lt("discovered_at", options.untilIso);
+  const { data, error } = await query.limit(5000);
+  if (error) return [];
+  return [...new Set((data || []).map((row) => String(row.survey_link_id)))];
+}
+
+async function countLinksMatching(
+  ids: string[],
+  filters: Record<string, string>,
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const supabase = client();
+  let total = 0;
+  for (let i = 0; i < ids.length; i += 80) {
+    const slice = ids.slice(i, i + 80);
+    let query = supabase
+      .from("survey_links")
+      .select("id", { count: "exact", head: true })
+      .in("id", slice);
+    for (const [key, value] of Object.entries(filters)) {
+      query = query.eq(key, value);
+    }
+    const { count, error } = await query;
+    if (error) continue;
+    total += count ?? 0;
+  }
+  return total;
+}
+
+export async function countOfficialSiteSurveysTotal(): Promise<number> {
+  const supabase = client();
+  const { count, error } = await supabase
+    .from("survey_sources")
+    .select("id", { count: "exact", head: true })
+    .eq("source_type", "official_site");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+const OLD_YEAR_REASONS = [
+  "stale_year",
+  "stale_topic_year",
+  "previous_year_phrase",
+] as const;
+const UNKNOWN_REASONS = [
+  "date_unknown_hold",
+  "active_unknown_date",
+  "unknown_no_signal",
+] as const;
+
+export async function countOfficialSiteFreshnessStats(input?: {
+  sinceIso?: string;
+  untilIso?: string;
+}): Promise<{
+  recentEligible: number;
+  oldYearExcluded: number;
+  dateUnknownHold: number;
+  restrictedExcluded: number;
+}> {
+  const ids = await officialSiteLinkIds(input);
+  if (ids.length === 0) {
+    return {
+      recentEligible: 0,
+      oldYearExcluded: 0,
+      dateUnknownHold: 0,
+      restrictedExcluded: 0,
+    };
+  }
+  const recentEligible = await countLinksMatching(ids, {
+    "freshness->>diagnosis_eligible_recent": "true",
+  });
+  let oldYearExcluded = 0;
+  for (const reason of OLD_YEAR_REASONS) {
+    oldYearExcluded += await countLinksMatching(ids, {
+      "freshness->>reason_code": reason,
+    });
+  }
+  const flaggedOld = await countLinksMatching(ids, {
+    "freshness->>old_year_signal": "true",
+  });
+  oldYearExcluded = Math.max(oldYearExcluded, flaggedOld);
+  let dateUnknownHold = 0;
+  for (const reason of UNKNOWN_REASONS) {
+    dateUnknownHold += await countLinksMatching(ids, {
+      "freshness->>diagnosis_exclusion_reason": reason,
+    });
+  }
+  const restrictedExcluded = await countLinksMatching(ids, {
+    status: "restricted",
+  });
+  return {
+    recentEligible,
+    oldYearExcluded,
+    dateUnknownHold,
+    restrictedExcluded,
+  };
+}
+
+export async function countOfficialSiteDiagnosisQueuedToday(
+  now: Date = new Date(),
+): Promise<number> {
+  const bounds = getKstDayBounds(now);
+  const ids = await officialSiteLinkIds();
+  if (ids.length === 0) return 0;
+  const supabase = client();
+  let total = 0;
+  for (let i = 0; i < ids.length; i += 80) {
+    const slice = ids.slice(i, i + 80);
+    const { count, error } = await supabase
+      .from("survey_diagnosis_links")
+      .select("id", { count: "exact", head: true })
+      .in("survey_link_id", slice)
+      .gte("created_at", bounds.startUtcIso)
+      .lt("created_at", bounds.endUtcIso);
+    if (error) continue;
+    total += count ?? 0;
+  }
+  return total;
 }

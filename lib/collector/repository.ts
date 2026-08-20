@@ -427,21 +427,55 @@ export async function insertSurveySource(input: {
   sourceTitle?: string | null;
   searchQuery?: string | null;
   sourcePublishedAt?: string | null;
+  sourcePageUrl?: string | null;
+  sourcePageTitle?: string | null;
+  sourceAnchorText?: string | null;
+  sourceContextExcerpt?: string | null;
+  sourceOrganizationName?: string | null;
+  sourceInstitutionHomepage?: string | null;
+  sourcePostedDate?: string | null;
+  sourcePeriodStart?: string | null;
+  sourcePeriodEnd?: string | null;
+  sourceDeadline?: string | null;
+  sourceDateText?: string | null;
 }): Promise<{ inserted: boolean; source?: SurveySourceRow }> {
   const supabase = getClient();
-  const { data, error } = await supabase
-    .from("survey_sources")
-    .insert({
-      survey_link_id: input.surveyLinkId,
-      source_type: input.sourceType,
-      source_url: input.sourceUrl,
-      source_title: input.sourceTitle?.trim() || null,
-      search_query: input.searchQuery?.trim() || null,
-      source_published_at: input.sourcePublishedAt || null,
-      discovered_at: new Date().toISOString(),
-    })
-    .select("*")
-    .maybeSingle();
+  const base = {
+    survey_link_id: input.surveyLinkId,
+    source_type: input.sourceType,
+    source_url: input.sourceUrl,
+    source_title: input.sourceTitle?.trim() || null,
+    search_query: input.searchQuery?.trim() || null,
+    source_published_at: input.sourcePublishedAt || null,
+    discovered_at: new Date().toISOString(),
+  };
+  const evidence = {
+    source_page_url: input.sourcePageUrl || input.sourceUrl,
+    source_page_title: input.sourcePageTitle?.trim() || null,
+    source_anchor_text: input.sourceAnchorText?.trim() || null,
+    source_context_excerpt: input.sourceContextExcerpt?.trim() || null,
+    source_organization_name: input.sourceOrganizationName?.trim() || null,
+    source_institution_homepage: input.sourceInstitutionHomepage || null,
+    source_posted_date: input.sourcePostedDate || null,
+    source_period_start: input.sourcePeriodStart || null,
+    source_period_end: input.sourcePeriodEnd || null,
+    source_deadline: input.sourceDeadline || null,
+    source_date_text: input.sourceDateText?.trim() || null,
+  };
+
+  const attempt = async (body: Record<string, unknown>) =>
+    supabase.from("survey_sources").insert(body).select("*").maybeSingle();
+
+  let { data, error } = await attempt({ ...base, ...evidence });
+  if (
+    error &&
+    (/source_page_url|source_page_title|source_anchor_text|source_context_excerpt|source_organization_name|source_institution_homepage|source_posted_date|source_period_start|source_period_end|source_deadline|source_date_text/i.test(
+      error.message,
+    ) ||
+      looksLikeMissingColumn(error.message, "source_page_url"))
+  ) {
+    ({ data, error } = await attempt(base));
+  }
 
   if (error) {
     if (error.code === "23505") {

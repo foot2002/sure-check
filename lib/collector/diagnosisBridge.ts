@@ -36,7 +36,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hashNormalizedUrl } from "@/lib/utils/hash";
 import { normalizeUrl } from "@/lib/utils/normalizeUrl";
 
-import type { CollectorPlatform, SurveyLinkFreshness } from "@/lib/collector/types";
+import type { CollectorPlatform, CollectorSourceType, SurveyLinkFreshness } from "@/lib/collector/types";
 
 /** Default batch size (env AUTO_DIAGNOSIS_BATCH_SIZE overrides at runtime). */
 export const COLLECTOR_DIAGNOSIS_DISPATCH_MAX = AUTO_DIAGNOSIS_BATCH_SIZE_DEFAULT;
@@ -154,10 +154,20 @@ export function filterAndSortEligible(
     status: string;
     triage: TriageResult;
     freshness?: SurveyLinkFreshness | null;
+    sourceTypes?: string[];
   }>,
+  options?: { sourceType?: CollectorSourceType | "all" },
 ): EligibleCandidate[] {
+  const required =
+    options?.sourceType && options.sourceType !== "all"
+      ? options.sourceType
+      : null;
   const out: EligibleCandidate[] = [];
   for (const row of rows) {
+    if (required) {
+      const types = row.sourceTypes || [];
+      if (!types.includes(required)) continue;
+    }
     if (
       !isAutoDiagnosisTarget({
         status: row.status,
@@ -292,6 +302,7 @@ async function attachTriage(rows: LinkRow[]): Promise<
     status: string;
     triage: TriageResult;
     freshness: SurveyLinkFreshness | null;
+    sourceTypes: string[];
   }>
 > {
   if (rows.length === 0) return [];
@@ -327,7 +338,8 @@ async function attachTriage(rows: LinkRow[]): Promise<
         searchQuery: (s.search_query as string) || undefined,
         sourcePublishedAt: (s.source_published_at as string) || undefined,
         sourceType:
-          (s.source_type as "web" | "blog" | "cafe" | "unknown") || "unknown",
+          (s.source_type as "web" | "blog" | "cafe" | "unknown" | "official_site") ||
+          "unknown",
         firstSeenThisRun: false,
       })),
     );
@@ -339,6 +351,7 @@ async function attachTriage(rows: LinkRow[]): Promise<
       status: String(row.status),
       triage,
       freshness: (row.freshness as SurveyLinkFreshness | null) || null,
+      sourceTypes: srcs.map((s) => String(s.source_type || "unknown")),
     };
   });
 }
@@ -371,7 +384,43 @@ async function filterOpenForEnqueue(
  * Page through recent active surveys until `needed` open candidates exist.
  * Stops early instead of scanning hundreds of already-diagnosed rows.
  */
-async function loadOpenCandidatesForDispatch(needed: number): Promise<{
+async function fetchOfficialSiteSurveyPage(
+  pageSize: number,
+  offset: number,
+): Promise<LinkRow[]> {
+  const supabase = createSupabaseServerClient();
+  const sources = await supabase
+    .from("survey_sources")
+    .select("survey_link_id")
+    .eq("source_type", "official_site")
+    .order("discovered_at", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  if (sources.error) {
+    throw new Error(`load official_site sources: ${sources.error.message}`);
+  }
+  const ids = [
+    ...new Set(
+      ((sources.data as Array<{ survey_link_id: unknown }> | null) || []).map(
+        (row) => String(row.survey_link_id),
+      ),
+    ),
+  ];
+  if (ids.length === 0) return [];
+  const first = await supabase
+    .from("survey_links")
+    .select("id, canonical_url, platform, title, status, freshness")
+    .in("id", ids)
+    .eq("status", "active");
+  if (first.error) {
+    throw new Error(`load official_site survey_links: ${first.error.message}`);
+  }
+  return (first.data as LinkRow[] | null) || [];
+}
+
+async function loadOpenCandidatesForDispatch(
+  needed: number,
+  sourceType?: CollectorSourceType | "all",
+): Promise<{
   eligible: EligibleCandidate[];
   open: EligibleCandidate[];
 }> {
@@ -381,10 +430,15 @@ async function loadOpenCandidatesForDispatch(needed: number): Promise<{
   const open: EligibleCandidate[] = [];
   let offset = 0;
   while (offset < maxRows && open.length < needed) {
-    const rows = await fetchActiveSurveyPage(pageSize, offset);
+    const rows =
+      sourceType === "official_site"
+        ? await fetchOfficialSiteSurveyPage(pageSize, offset)
+        : await fetchActiveSurveyPage(pageSize, offset);
     if (rows.length === 0) break;
     offset += rows.length;
-    const pageEligible = filterAndSortEligible(await attachTriage(rows));
+    const pageEligible = filterAndSortEligible(await attachTriage(rows), {
+      sourceType,
+    });
     eligible.push(...pageEligible);
     const pageOpen = await filterOpenForEnqueue(pageEligible);
     for (const c of pageOpen) {
@@ -416,9 +470,11 @@ export async function dispatchCollectorDiagnoses(input?: {
   limit?: number;
   dryRun?: boolean;
   processInline?: boolean;
+  sourceType?: CollectorSourceType | "all";
 }): Promise<DispatchResult> {
   void input?.processInline;
   const dryRun = Boolean(input?.dryRun);
+  const sourceType = input?.sourceType === "official_site" ? "official_site" : "all";
   const batchSize = getAutoDiagnosisBatchSize();
   const dailyMax = getAutoDiagnosisDailyLimit();
   const backpressureCap = batchSize;
@@ -468,7 +524,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     ? requestedLimit
     : Math.min(requestedLimit, dailyRemaining);
 
-  const loaded = await loadOpenCandidatesForDispatch(limit);
+  const loaded = await loadOpenCandidatesForDispatch(limit, sourceType);
   const eligible = loaded.eligible;
   const openEligible = loaded.open;
   const selectedPool = pickWithPlatformDiversity(openEligible, limit);

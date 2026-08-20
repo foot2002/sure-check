@@ -113,6 +113,7 @@ function freshnessShouldDiagnose(
   if (!freshness) return true;
   if (freshness.diagnosis_eligible_recent === false) return false;
   if (freshness.should_diagnose === false) return false;
+  if (freshness.old_year_signal === true) return false;
   const reason = String(freshness.diagnosis_exclusion_reason || freshness.reason_code || "");
   if (
     reason === "date_unknown_hold" ||
@@ -120,7 +121,12 @@ function freshnessShouldDiagnose(
     reason === "stale_year" ||
     reason === "stale_topic_year" ||
     reason === "previous_year_phrase" ||
-    reason === "published_too_old"
+    reason === "published_too_old" ||
+    reason === "old_year_2024" ||
+    reason === "old_year_2025" ||
+    reason === "stale_period" ||
+    reason === "restricted" ||
+    reason === "closed"
   ) {
     return false;
   }

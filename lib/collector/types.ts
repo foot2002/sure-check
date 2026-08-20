@@ -46,6 +46,14 @@ export interface SurveyLinkFreshness {
   diagnosis_eligible_recent?: boolean;
   diagnosis_exclusion_reason?: string | null;
   discovery_channel?: string;
+  freshness_basis?: "source_page" | "survey_page" | "unknown";
+  freshness_confidence?: "high" | "medium" | "low";
+  old_year_signal?: boolean;
+  source_posted_date?: string | null;
+  source_period_start?: string | null;
+  source_period_end?: string | null;
+  source_deadline?: string | null;
+  source_date_text?: string | null;
 }
 
 export interface SurveyLinkRow {
@@ -73,6 +81,17 @@ export interface SurveySourceRow {
   source_published_at: string | null;
   discovered_at: string;
   created_at: string;
+  source_page_url?: string | null;
+  source_page_title?: string | null;
+  source_anchor_text?: string | null;
+  source_context_excerpt?: string | null;
+  source_organization_name?: string | null;
+  source_institution_homepage?: string | null;
+  source_posted_date?: string | null;
+  source_period_start?: string | null;
+  source_period_end?: string | null;
+  source_deadline?: string | null;
+  source_date_text?: string | null;
 }
 
 export interface CollectionRunRow {
@@ -327,10 +346,24 @@ export interface CollectorSummary {
     institutionCount: number;
     crawledToday: number;
     surveysFoundToday: number;
+    todayRecentEligible: number;
+    todayOldYearExcluded: number;
+    todayDateUnknownHold: number;
+    todayRestrictedExcluded: number;
+    todayDiagnosisQueued: number;
+    /** @deprecated use todayRecentEligible */
     recentEligible: number;
+    /** @deprecated use todayOldYearExcluded */
     oldYearExcluded: number;
+    /** @deprecated use todayDateUnknownHold */
     dateUnknownHold: number;
+    /** @deprecated use todayDiagnosisQueued */
     diagnosisQueued: number;
+    totalSurveysFound: number;
+    totalRecentEligible: number;
+    totalOldYearExcluded: number;
+    totalDateUnknownHold: number;
+    needsReviewCount: number;
   };
   improvementCandidates?: Array<{
     id: string;

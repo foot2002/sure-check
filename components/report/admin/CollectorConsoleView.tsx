@@ -372,36 +372,6 @@ export function CollectorConsoleView({
               "개선안내 후보",
               summary.opsFunnel?.improvementCandidateCount ?? 0,
             ],
-            [
-              "공식 사이트 수집 대상 기관",
-              summary.officialSite?.institutionCount ?? 0,
-            ],
-            [
-              "오늘 공식 사이트 탐색 기관",
-              summary.officialSite?.crawledToday ?? 0,
-            ],
-            [
-              "오늘 발견한 설문 링크",
-              summary.officialSite?.surveysFoundToday ?? 0,
-            ],
-            [
-              "최근 60일 적격 설문",
-              summary.officialSite?.recentEligible ?? 0,
-            ],
-            [
-              "과거 연도 제외",
-              summary.officialSite?.oldYearExcluded ?? 0,
-            ],
-            [
-              "날짜 불명 보류",
-              summary.officialSite?.dateUnknownHold ?? 0,
-            ],
-            [
-              "오늘 자동진단 큐 등록",
-              summary.officialSite?.diagnosisQueued ??
-                (summary.diagnosis?.queued ?? 0) +
-                  (summary.diagnosis?.running ?? 0),
-            ],
           ].map(([label, value]) => (
             <div
               key={String(label)}
@@ -417,6 +387,80 @@ export function CollectorConsoleView({
               </p>
             </div>
           ))}
+        </section>
+      ) : null}
+      {summary?.officialSite ? (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold text-slate-900">
+            오늘 공식 사이트 수집
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(
+              [
+                ["오늘 공식 사이트 탐색 기관", summary.officialSite.crawledToday],
+                ["오늘 공식 사이트 발견 설문", summary.officialSite.surveysFoundToday],
+                [
+                  "오늘 공식 사이트 최근 60일 적격",
+                  summary.officialSite.todayRecentEligible,
+                ],
+                [
+                  "오늘 공식 사이트 과거 연도 제외",
+                  summary.officialSite.todayOldYearExcluded,
+                ],
+                [
+                  "오늘 공식 사이트 날짜 불명 보류",
+                  summary.officialSite.todayDateUnknownHold,
+                ],
+                [
+                  "오늘 공식 사이트 접근제한 제외",
+                  summary.officialSite.todayRestrictedExcluded,
+                ],
+                [
+                  "오늘 공식 사이트 자동진단 큐 등록",
+                  summary.officialSite.todayDiagnosisQueued,
+                ],
+                ["시드 오매핑 검토", summary.officialSite.needsReviewCount],
+              ] as const
+            ).map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-teal-200 bg-teal-50/40 p-3"
+              >
+                <p className="text-[11px] font-semibold tracking-wide text-teal-800">
+                  {label}
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                  {value.toLocaleString("ko-KR")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <h2 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
+            전체 누적 통계
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                ["전체 공식 사이트 대상 기관", summary.officialSite.institutionCount],
+                ["전체 공식 사이트 발견 설문", summary.officialSite.totalSurveysFound],
+                ["전체 공식 사이트 적격 설문", summary.officialSite.totalRecentEligible],
+                ["전체 과거 연도 제외", summary.officialSite.totalOldYearExcluded],
+                ["전체 날짜 불명 보류", summary.officialSite.totalDateUnknownHold],
+              ] as const
+            ).map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-slate-200 bg-white p-3"
+              >
+                <p className="text-[11px] font-semibold tracking-wide text-slate-500">
+                  {label}
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                  {value.toLocaleString("ko-KR")}
+                </p>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
       {summary ? (
@@ -1174,17 +1218,40 @@ export function CollectorConsoleView({
                               {source.source_type}
                             </span>
                             <a
-                              href={source.source_url}
+                              href={source.source_page_url || source.source_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-teal-800 hover:underline"
                             >
-                              {source.source_title || source.source_url}
+                              {source.source_page_title ||
+                                source.source_title ||
+                                source.source_page_url ||
+                                source.source_url}
                             </a>
+                            {source.source_organization_name ? (
+                              <span className="ml-2 text-slate-500">
+                                · {source.source_organization_name}
+                              </span>
+                            ) : null}
                             {source.search_query ? (
                               <span className="ml-2 text-slate-500">
                                 · {source.search_query}
                               </span>
+                            ) : null}
+                            {source.source_anchor_text ? (
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                앵커: {source.source_anchor_text}
+                              </p>
+                            ) : null}
+                            {source.source_context_excerpt ? (
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                {source.source_context_excerpt}
+                              </p>
+                            ) : null}
+                            {source.source_date_text ? (
+                              <p className="mt-1 text-[11px] text-amber-800">
+                                {source.source_date_text}
+                              </p>
                             ) : null}
                           </li>
                         ))}

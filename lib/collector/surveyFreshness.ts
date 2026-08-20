@@ -228,9 +228,11 @@ function extractSurveyDates(text: string, currentYear: number): ExtractedDates {
   }
 
   // Single labelled end date: 마감일 2026.8.31 / 종료일: 2026-08-01
-  if (!end && RANGE_LABEL_RE.test(text)) {
-    const single =
-      /(?:종료|마감|까지)[^\d]{0,8}((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]?\s*(\d{1,2})?/;
+  if (!end) {
+    const labelledRange = RANGE_LABEL_RE.test(text);
+    const single = labelledRange
+      ? /(?:종료|마감|까지)[^\d]{0,8}((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]?\s*(\d{1,2})?/
+      : /(?:마감일|종료일|접수\s*마감|응답\s*마감)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/;
     const sm = text.match(single);
     if (sm) {
       end = parseYmd(
@@ -243,6 +245,19 @@ function extractSurveyDates(text: string, currentYear: number): ExtractedDates {
 
   void currentYear;
   return { start, end, years };
+}
+
+export function extractSurveyDateSignals(text: string): ExtractedDates {
+  return extractSurveyDates(text, getKstParts().year);
+}
+
+const POSTED_DATE_RE =
+  /(?:등록일|작성일|게시일|공지일|게재일|작성일자|등록일자)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/;
+
+export function extractPostedDateYmd(text: string): string | null {
+  const match = text.match(POSTED_DATE_RE);
+  if (!match) return null;
+  return parseYmd(Number(match[1]), Number(match[2]), Number(match[3]));
 }
 
 function koreanReason(
@@ -461,6 +476,9 @@ export function evaluateSurveyFreshness(
   let publishedYmd: string | null = null;
   if (input.publishedAt) {
     publishedYmd = ymdFromPublishedAt(input.publishedAt);
+  }
+  if (!publishedYmd) {
+    publishedYmd = extractPostedDateYmd(blob);
   }
   if (publishedYmd) {
     const age = daysBetweenYmd(publishedYmd, kst.ymd);

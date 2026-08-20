@@ -14,6 +14,7 @@ export const maxDuration = 300;
 function parseParams(request: Request): {
   limit: number;
   dryRun: boolean;
+  sourceType: "official_site" | "all";
 } {
   const url = new URL(request.url);
   const limit = Number(
@@ -22,10 +23,12 @@ function parseParams(request: Request): {
   const dryRun =
     url.searchParams.get("dryRun") === "1" ||
     url.searchParams.get("dryRun") === "true";
+  const sourceTypeRaw = (url.searchParams.get("sourceType") || "").trim();
 
   return {
     limit: Number.isFinite(limit) ? limit : getAutoDiagnosisBatchSize(),
     dryRun,
+    sourceType: sourceTypeRaw === "official_site" ? "official_site" : "all",
   };
 }
 
@@ -44,15 +47,17 @@ async function handle(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let { limit, dryRun } = parseParams(request);
+  let { limit, dryRun, sourceType } = parseParams(request);
   if (request.method === "POST") {
     try {
       const body = (await request.json().catch(() => ({}))) as {
         limit?: number;
         dryRun?: boolean;
+        sourceType?: string;
       };
       if (typeof body.limit === "number") limit = body.limit;
       if (typeof body.dryRun === "boolean") dryRun = body.dryRun;
+      if (body.sourceType === "official_site") sourceType = "official_site";
     } catch {
       /* empty */
     }
@@ -62,9 +67,11 @@ async function handle(request: Request): Promise<Response> {
     limit,
     dryRun,
     processInline: false,
+    sourceType,
   });
   return NextResponse.json({
     ok: true,
+    sourceType,
     ...result,
     reason: result.reason ?? null,
   });
