@@ -5,10 +5,10 @@
 
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 
-/** One vercel.json cron entry; fires four times/day (UTC hours 0/6/12/18). */
+/** One vercel.json cron entry; once per day until the 32/day scale-up is retried. */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
-export const OFFICIAL_SITE_CRON_SCHEDULE = "0 0,6,12,18 * * *";
-export const OFFICIAL_SITE_WAVES_PER_DAY = 4;
+export const OFFICIAL_SITE_CRON_SCHEDULE = "30 16 * * *";
+export const OFFICIAL_SITE_WAVES_PER_DAY = 1;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
   OFFICIAL_SITE_MAX_ORGS_PER_RUN * OFFICIAL_SITE_WAVES_PER_DAY;
 

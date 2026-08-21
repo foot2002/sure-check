@@ -1,5 +1,5 @@
 /**
- * Official-site daily capacity: 8 orgs/run × 4 waves = 32/day, one cron entry.
+ * Official-site daily capacity: 8 orgs/run × 1 wave = 8/day until scale-up retry.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,10 +24,10 @@ console.log("[Official Site Daily Capacity Check]\n");
 
 {
   assert.equal(OFFICIAL_SITE_MAX_ORGS_PER_RUN, 8);
-  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 4);
-  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 32);
-  assert.equal(estimatedOfficialSiteOrgsPerDay(), 32);
-  console.log("  PASS  8 orgs/run × 4 waves = 32 orgs/day");
+  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 1);
+  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 8);
+  assert.equal(estimatedOfficialSiteOrgsPerDay(), 8);
+  console.log("  PASS  8 orgs/run × 1 wave = 8 orgs/day");
 }
 
 {
@@ -39,9 +39,9 @@ console.log("[Official Site Daily Capacity Check]\n");
   assert.equal(countCronJobsForPath(crons, OFFICIAL_SITE_CRON_PATH), 1);
   const job = crons.find((c) => c.path === OFFICIAL_SITE_CRON_PATH);
   assert.equal(job?.schedule, OFFICIAL_SITE_CRON_SCHEDULE);
-  assert.equal(cronScheduleDailyFires(job?.schedule || ""), 4);
-  assert.equal(officialSiteWavesPerDayFromCrons(crons), 4);
-  console.log("  PASS  one official-site cron fires 4 times/day (no extra cron entries)");
+  assert.equal(cronScheduleDailyFires(job?.schedule || ""), 1);
+  assert.equal(officialSiteWavesPerDayFromCrons(crons), 1);
+  console.log("  PASS  one official-site cron fires once/day (scale-up deferred)");
 }
 
 {
