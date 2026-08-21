@@ -72,6 +72,7 @@
     "check:notice-facts": "tsx scripts/check-notice-facts.ts",
     "check:survey-liveness": "tsx scripts/check-survey-liveness-precheck.ts",
     "report:public-safety": "tsx scripts/check-public-report-safety.ts",
+    "cases:public-safety": "tsx scripts/check-public-cases-safety.ts",
     "admin:outreach-actions-check": "tsx scripts/check-admin-outreach-actions.ts",
     "queue:schema-check": "tsx scripts/check-queue-schema.ts",
     "jobs:stuck-check": "tsx scripts/check-stuck-jobs.ts",

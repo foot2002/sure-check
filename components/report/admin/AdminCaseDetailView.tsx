@@ -19,6 +19,7 @@ import {
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
 import { AdminCaseActionBar } from "@/components/report/admin/AdminCaseActionBar";
+import { publicCaseStatusKo } from "@/lib/report/publicCasePolicy";
 
 const TABS = ["요약", "증거", "검토·조치"] as const;
 
@@ -207,6 +208,7 @@ export function AdminCaseDetailView({
               screenshotIds={s.screenshotFileIds}
               screenshotMeta={detail.evidenceFiles}
               showIndividualCaptures
+              publicCaseStatus={s.publicCaseStatus}
               onMessage={setMessage}
             />
           </div>
@@ -238,6 +240,10 @@ export function AdminCaseDetailView({
                 ),
               }),
             )}
+          </p>
+          <p>
+            공개 사례: {publicCaseStatusKo(s.publicCaseStatus)}
+            {s.publicId ? ` · ${s.publicId}` : ""}
           </p>
         </div>
       </div>

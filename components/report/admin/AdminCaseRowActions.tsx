@@ -5,6 +5,8 @@ import type { AdminCaseListItem } from "@/lib/report/adminCases";
 import { evidenceDownloadFilename } from "@/lib/report/adminOutreach";
 import {
   downloadAdminBlob,
+  detailReportDownloadUrl,
+  detailReportFilename,
   evidenceProxyDownloadUrl,
   reviewReportDownloadUrl,
   reviewReportFilename,
@@ -13,10 +15,12 @@ import {
 export function AdminCaseRowActions({
   row,
   onReview,
+  onPublish,
   onMessage,
 }: {
   row: AdminCaseListItem;
   onReview: () => void;
+  onPublish: () => void;
   onMessage?: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -93,7 +97,22 @@ export function AdminCaseRowActions({
           })
         }
       >
-        리포트
+        요약리포트
+      </button>
+      <button
+        type="button"
+        className={ghost}
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
+            await downloadAdminBlob(
+              detailReportDownloadUrl(row.id),
+              detailReportFilename(row.id),
+            );
+          })
+        }
+      >
+        상세리포트
       </button>
       <button
         type="button"
@@ -125,6 +144,9 @@ export function AdminCaseRowActions({
         }
       >
         {hasZip || hasShots ? "증빙" : evidenceLabel}
+      </button>
+      <button type="button" className={ghost} onClick={onPublish}>
+        공개 사례
       </button>
       <div className="relative" ref={menuRef}>
         <button

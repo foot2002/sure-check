@@ -151,31 +151,45 @@ function main() {
     "components/report/admin/AdminCaseActionBar.tsx",
     "components/report/admin/AdminCaseRowActions.tsx",
   ];
+  const outreachUi = [
+    "components/report/admin/AdminOutreachSections.tsx",
+    "components/report/admin/AdminEvidenceDownloads.tsx",
+  ]
+    .map((f) => read(f))
+    .join("\n");
   const ui = uiFiles.map((f) => read(f)).join("\n");
   const forbiddenUi = [
     "공개 후보",
     "공개 상태",
-    "공개검토",
     "비공개",
     "publication status",
   ];
   for (const label of forbiddenUi) {
-    check(`UI omits "${label}"`, !ui.includes(label));
+    check(`outreach UI omits "${label}"`, !outreachUi.includes(label));
   }
+  check(
+    "console keeps 개선안내 상태 separate from 공개 사례 상태",
+    read("components/report/admin/AdminConsoleView.tsx").includes("개선안내 상태") &&
+      read("components/report/admin/AdminConsoleView.tsx").includes("공개 사례 상태"),
+  );
   check("list shows 검토 button", ui.includes(">검토<") || ui.includes("검토"));
   check("list shows 원본 action", /원본/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
-  check("list shows 리포트 action", /리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 요약리포트 action", /요약리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 상세리포트 action", /상세리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 증빙 action", /증빙/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 공개 사례 action", /공개 사례/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows URL 복사 overflow", /URL 복사/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   const bar = read("components/report/admin/AdminCaseActionBar.tsx");
   for (const label of [
     "원본 설문 열기",
     "설문 URL 복사",
-    "검토 리포트 다운로드",
+    "요약리포트",
+    "상세리포트",
     "신고용 ZIP 다운로드",
     "캡처 이미지 전체 다운로드",
     "새 탭에서 전체 상세 보기",
     "개별 캡처 다운로드",
+    "공개 사례 등록",
   ]) {
     check(`action bar exposes ${label}`, bar.includes(label));
   }

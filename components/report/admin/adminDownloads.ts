@@ -30,3 +30,11 @@ export function reviewReportFilename(caseId: string): string {
 export function evidenceProxyDownloadUrl(fileId: string, caseId: string): string {
   return `/api/report/admin/evidence/${fileId}/download?caseId=${encodeURIComponent(caseId)}`;
 }
+
+export function detailReportDownloadUrl(caseId: string): string {
+  return `/api/report/admin/cases/${caseId}/detail-report`;
+}
+
+export function detailReportFilename(caseId: string): string {
+  return `sure-check-detail-report-${caseId}.html`;
+}

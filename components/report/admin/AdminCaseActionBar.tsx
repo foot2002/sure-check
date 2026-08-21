@@ -5,10 +5,15 @@ import { useState } from "react";
 import { evidenceDownloadFilename } from "@/lib/report/adminOutreach";
 import {
   downloadAdminBlob,
+  detailReportDownloadUrl,
+  detailReportFilename,
   evidenceProxyDownloadUrl,
   reviewReportDownloadUrl,
   reviewReportFilename,
 } from "@/components/report/admin/adminDownloads";
+import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
+import { publicCaseStatusKo } from "@/lib/report/publicCasePolicy";
+import type { PublicCaseStatus } from "@/lib/db/types";
 
 export function AdminCaseActionBar({
   caseId,
@@ -18,6 +23,7 @@ export function AdminCaseActionBar({
   screenshotMeta,
   showFullDetailLink = false,
   showIndividualCaptures = false,
+  publicCaseStatus = "private",
   onMessage,
 }: {
   caseId: string;
@@ -32,9 +38,11 @@ export function AdminCaseActionBar({
   }>;
   showFullDetailLink?: boolean;
   showIndividualCaptures?: boolean;
+  publicCaseStatus?: PublicCaseStatus;
   onMessage?: (text: string) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
   const shots = screenshotIds || [];
   const hasUrl = Boolean(surveyUrl);
   const btn =
@@ -61,6 +69,10 @@ export function AdminCaseActionBar({
 
   async function downloadReport() {
     await downloadAdminBlob(reviewReportDownloadUrl(caseId), reviewReportFilename(caseId));
+  }
+
+  async function downloadDetailReport() {
+    await downloadAdminBlob(detailReportDownloadUrl(caseId), detailReportFilename(caseId));
   }
 
   async function downloadZip() {
@@ -123,7 +135,15 @@ export function AdminCaseActionBar({
         disabled={busy === "report"}
         onClick={() => void run("report", downloadReport)}
       >
-        검토 리포트 다운로드
+        요약리포트
+      </button>
+      <button
+        type="button"
+        className={btn}
+        disabled={busy === "detail"}
+        onClick={() => void run("detail", downloadDetailReport)}
+      >
+        상세리포트
       </button>
       <button
         type="button"
@@ -183,6 +203,53 @@ export function AdminCaseActionBar({
         >
           새 탭에서 전체 상세 보기
         </Link>
+      ) : null}
+      {publicCaseStatus === "private" || publicCaseStatus === "archived" ? (
+        <button type="button" className={btn} onClick={() => setPublishOpen(true)}>
+          공개 사례 등록
+        </button>
+      ) : null}
+      {publicCaseStatus === "reviewing" || publicCaseStatus === "published" ? (
+        <>
+          <button type="button" className={btn} onClick={() => setPublishOpen(true)}>
+            공개 사례 수정
+          </button>
+          <button
+            type="button"
+            className={ghost}
+            disabled={busy === "pause"}
+            onClick={() =>
+              void run("pause", async () => {
+                if (!window.confirm("이 공개 사례를 중지할까요?")) return;
+                const res = await fetch(`/api/report/admin/cases/${caseId}/public-case`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "pause" }),
+                });
+                const data = (await res.json().catch(() => null)) as { error?: string } | null;
+                if (!res.ok) throw new Error(data?.error || "중지 실패");
+                onMessage?.("공개 사례를 중지했습니다.");
+              })
+            }
+          >
+            공개 중지
+          </button>
+        </>
+      ) : null}
+      {publicCaseStatus === "paused" ? (
+        <button type="button" className={btn} onClick={() => setPublishOpen(true)}>
+          다시 공개
+        </button>
+      ) : null}
+      <span className="text-[11px] text-slate-500">
+        공개 사례 상태 {publicCaseStatusKo(publicCaseStatus)}
+      </span>
+      {publishOpen ? (
+        <AdminPublishCaseModal
+          caseId={caseId}
+          onClose={() => setPublishOpen(false)}
+          onSaved={(text) => onMessage?.(text)}
+        />
       ) : null}
     </div>
   );

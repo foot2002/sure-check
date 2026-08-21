@@ -144,6 +144,7 @@ export function AdminCaseDrawer({
               screenshotIds={s?.screenshotFileIds}
               screenshotMeta={current?.evidenceFiles}
               showFullDetailLink
+              publicCaseStatus={s?.publicCaseStatus || "private"}
               onMessage={setMessage}
             />
           </div>

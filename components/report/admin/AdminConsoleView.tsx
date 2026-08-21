@@ -13,6 +13,8 @@ import {
   reviewStatusKo,
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
+import { publicCaseStatusKo } from "@/lib/report/publicCasePolicy";
+import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
 
 type Filters = {
   range: string;
@@ -80,6 +82,7 @@ export function AdminConsoleView({
     to: filters.to || "",
   });
   const [openId, setOpenId] = useState<string | null>(null);
+  const [publishId, setPublishId] = useState<string | null>(null);
   const [clientPayload, setClientPayload] = useState<AdminCaseListPayload | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -491,6 +494,7 @@ export function AdminConsoleView({
                 "증거 상태",
                 "검토 상태",
                 "개선안내 상태",
+                "공개 사례 상태",
                 "조치",
               ].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-2.5">
@@ -561,10 +565,14 @@ export function AdminConsoleView({
                 <td className="whitespace-nowrap px-3 py-3 text-slate-500">
                   {outreachUiStatusKo(row.outreachUiStatus)}
                 </td>
-                <td className="min-w-[16rem] whitespace-nowrap px-3 py-3">
+                <td className="whitespace-nowrap px-3 py-3 text-slate-500">
+                  {publicCaseStatusKo(row.publicCaseStatus)}
+                </td>
+                <td className="min-w-[22rem] whitespace-nowrap px-3 py-3">
                   <AdminCaseRowActions
                     row={row}
                     onReview={() => setOpenId(row.id)}
+                    onPublish={() => setPublishId(row.id)}
                     onMessage={setToast}
                   />
                 </td>
@@ -572,7 +580,7 @@ export function AdminConsoleView({
             ))}
             {payload && payload.cases.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.
                 </td>
               </tr>
@@ -582,6 +590,14 @@ export function AdminConsoleView({
       </section>
 
       <AdminCaseDrawer caseId={openId} onClose={() => setOpenId(null)} />
+      <AdminPublishCaseModal
+        caseId={publishId}
+        onClose={() => setPublishId(null)}
+        onSaved={(text) => {
+          setToast(text);
+          void apply(form);
+        }}
+      />
     </div>
   );
 }

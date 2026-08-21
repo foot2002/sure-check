@@ -174,13 +174,23 @@ export type ReviewOutcome =
   | "no_action"
   | "dismissed";
 
-/** publication_records.publish_status — public disclosure policy */
+/** publication_records.publish_status — outreach / 개선안내 disclosure policy */
 export type PublicationStatus =
   | "private"
   | "aggregate_only"
   | "public_anonymized"
   | "public_named"
   | "archived";
+
+/** publication_records.public_case_status — /cases public diagnosis cases */
+export type PublicCaseStatus =
+  | "private"
+  | "reviewing"
+  | "published"
+  | "paused"
+  | "archived";
+
+export type UrlVisibility = "full" | "hidden" | "domain_only";
 
 export interface OrganizationRow {
   id: string;
@@ -548,6 +558,26 @@ export interface PublicationRecordRow {
   observed_date_kst: string;
   created_at: string;
   updated_at: string;
+  public_id: string | null;
+  public_case_status: PublicCaseStatus;
+  public_display_name: string | null;
+  public_survey_title: string | null;
+  public_summary: string | null;
+  public_problem_summary: string | null;
+  public_improvement_summary: string | null;
+  url_visibility: UrlVisibility;
+  public_survey_url: string | null;
+  public_url_host: string | null;
+  selected_evidence_file_ids: string[];
+  public_risk_level: string | null;
+  public_score: number | null;
+  public_platform: string | null;
+  public_private_type: string | null;
+  public_data_summary: string | null;
+  public_notice_gaps: string[];
+  public_issue_badges: string[];
+  public_case_published_at: string | null;
+  public_case_published_by: string | null;
 }
 
 /** Dashboard view rows */

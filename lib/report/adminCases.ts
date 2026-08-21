@@ -22,9 +22,11 @@ import type {
   OverallRiskLevel,
   Platform,
   PublicationStatus,
+  PublicCaseStatus,
   PublishStatus,
   ReviewStatus,
 } from "@/lib/db/types";
+import { normalizePublicCaseStatus } from "@/lib/report/publicCasePolicy";
 
 export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -127,6 +129,8 @@ export interface AdminCaseListItem {
   hasScreenshots: boolean;
   screenshotFileIds: string[];
   downloadableEvidenceTypes: string[];
+  publicCaseStatus: PublicCaseStatus;
+  publicId: string | null;
 }
 
 export interface AdminRecentCollectItem {
@@ -352,7 +356,7 @@ export async function listAdminCases(
     .map((r) => r.scan_job_id as string | null | undefined)
     .filter((id): id is string => Boolean(id));
 
-  const [scoresRes, evidenceRes, evidenceByScanRes, pubsRes, reportsRes, capturesRes] =
+  const [scoresRes, evidenceRes, evidenceByScanRes, pubsQuery, reportsRes, capturesRes] =
     await Promise.all([
       ids.length
         ? supabase
@@ -375,7 +379,9 @@ export async function listAdminCases(
       ids.length
         ? supabase
             .from("publication_records")
-            .select("survey_record_id, publish_status, updated_at")
+            .select(
+              "survey_record_id, publish_status, public_case_status, public_id, updated_at",
+            )
             .in("survey_record_id", ids)
             .order("updated_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
@@ -405,7 +411,35 @@ export async function listAdminCases(
   if (evidenceByScanRes.error) {
     throw new Error(`evidence by scan: ${evidenceByScanRes.error.message}`);
   }
-  if (pubsRes.error) throw new Error(`publications: ${pubsRes.error.message}`);
+  let pubsRes: { data: Array<Record<string, unknown>> | null; error: { message: string } | null } =
+    pubsQuery as {
+      data: Array<Record<string, unknown>> | null;
+      error: { message: string } | null;
+    };
+  if (pubsRes.error) {
+    const missingPublicCase =
+      /public_case_status|public_id|schema cache|does not exist/i.test(
+        pubsRes.error.message,
+      );
+    if (!missingPublicCase) {
+      throw new Error(`publications: ${pubsRes.error.message}`);
+    }
+    console.warn(
+      "[admin] publication_records public case columns missing — apply db/migrations/013_public_cases.sql",
+    );
+    const fallback = ids.length
+      ? await supabase
+          .from("publication_records")
+          .select("survey_record_id, publish_status, updated_at")
+          .in("survey_record_id", ids)
+          .order("updated_at", { ascending: false })
+      : { data: [], error: null };
+    if (fallback.error) throw new Error(`publications: ${fallback.error.message}`);
+    pubsRes = {
+      data: (fallback.data as Array<Record<string, unknown>>) || [],
+      error: fallback.error,
+    };
+  }
   if (reportsRes.error) throw new Error(`reports: ${reportsRes.error.message}`);
   if (capturesRes.error) throw new Error(`captures: ${capturesRes.error.message}`);
 
@@ -449,12 +483,20 @@ export async function listAdminCases(
     }
   }
   const publicationMap = new Map<string, PublicationStatus>();
+  const publicCaseMap = new Map<
+    string,
+    { status: PublicCaseStatus; publicId: string | null }
+  >();
   for (const row of pubsRes.data || []) {
-    if (publicationMap.has(row.survey_record_id)) continue;
-    publicationMap.set(
-      row.survey_record_id,
-      row.publish_status as PublicationStatus,
-    );
+    const surveyId = String(row.survey_record_id || "");
+    if (!surveyId || publicationMap.has(surveyId)) continue;
+    publicationMap.set(surveyId, row.publish_status as PublicationStatus);
+    publicCaseMap.set(surveyId, {
+      status: normalizePublicCaseStatus(
+        row.public_case_status as string | null | undefined,
+      ),
+      publicId: (row.public_id as string | null) || null,
+    });
   }
   const reportMap = new Map<
     string,
@@ -631,6 +673,8 @@ export async function listAdminCases(
       hasScreenshots: evidenceSummary.hasScreenshots,
       screenshotFileIds: evidenceSummary.screenshotFileIds.slice(0, 12),
       downloadableEvidenceTypes: evidenceSummary.downloadableEvidenceTypes,
+      publicCaseStatus: publicCaseMap.get(row.id as string)?.status || "private",
+      publicId: publicCaseMap.get(row.id as string)?.publicId || null,
     };
   });
 

@@ -13,9 +13,13 @@ import {
 import { summarizeEvidenceFiles } from "@/lib/report/adminOutreach";
 import type {
   PublicationStatus,
+  PublicCaseStatus,
   ReviewOutcome,
   ReviewStatus,
+  UrlVisibility,
 } from "@/lib/db/types";
+import { normalizePublicCaseStatus } from "@/lib/report/publicCasePolicy";
+import { normalizeUrlVisibility } from "@/lib/report/publicDisplayName";
 
 export interface AdminCaseDetail {
   id: string;
@@ -55,7 +59,22 @@ export interface AdminCaseDetail {
     downloadableEvidenceTypes: string[];
     temporaryZipId: string | null;
     screenshotFileIds: string[];
+    publicCaseStatus: PublicCaseStatus;
+    publicId: string | null;
   };
+  publicCase: {
+    publicId: string | null;
+    status: PublicCaseStatus;
+    publicDisplayName: string | null;
+    publicSurveyTitle: string | null;
+    publicSummary: string | null;
+    publicProblemSummary: string | null;
+    publicImprovementSummary: string | null;
+    urlVisibility: UrlVisibility;
+    publicSurveyUrl: string | null;
+    publicUrlHost: string | null;
+    selectedEvidenceFileIds: string[];
+  } | null;
   performance: {
     extractionMode: string | null;
     browserUsed: boolean;
@@ -184,7 +203,7 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
     questionsRes,
     reportRes,
     reviewRes,
-    pubsRes,
+    pubsQuery,
   ] = await Promise.all([
     supabase
       .from("survey_findings")
@@ -232,7 +251,9 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       .maybeSingle(),
     supabase
       .from("publication_records")
-      .select("publish_status, updated_at")
+      .select(
+        "publish_status, public_id, public_case_status, public_display_name, public_survey_title, public_summary, public_problem_summary, public_improvement_summary, url_visibility, public_survey_url, public_url_host, selected_evidence_file_ids, updated_at",
+      )
       .eq("survey_record_id", id)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -257,6 +278,35 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
   if (scoresRes.error) throw new Error(scoresRes.error.message);
   if (questionsRes.error) throw new Error(questionsRes.error.message);
 
+  let pubsRes: {
+    data: Record<string, unknown> | null;
+    error: { message: string } | null;
+  } = pubsQuery as {
+    data: Record<string, unknown> | null;
+    error: { message: string } | null;
+  };
+  if (pubsRes.error) {
+    const missingPublicCase =
+      /public_case_status|public_id|schema cache|does not exist/i.test(
+        pubsRes.error.message,
+      );
+    if (!missingPublicCase) throw new Error(pubsRes.error.message);
+    console.warn(
+      "[admin] publication_records public case columns missing — apply db/migrations/013_public_cases.sql",
+    );
+    const fallback = await supabase
+      .from("publication_records")
+      .select("publish_status, updated_at")
+      .eq("survey_record_id", id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback.error) throw new Error(fallback.error.message);
+    pubsRes = {
+      data: (fallback.data as Record<string, unknown> | null) || null,
+      error: fallback.error,
+    };
+  }
   let scanJobPerf: Record<string, unknown> | null = null;
   if (survey.scan_job_id) {
     const { data: jobRow } = await supabase
@@ -273,7 +323,6 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
   )?.debug;
   if (reportRes.error) throw new Error(reportRes.error.message);
   if (reviewRes.error) throw new Error(reviewRes.error.message);
-  if (pubsRes.error) throw new Error(pubsRes.error.message);
 
   const questions = questionsRes.data || [];
   const questionIds = questions.map((q) => q.id as string);
@@ -313,6 +362,35 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
     survey.publish_status,
     pubsRes.data?.publish_status as PublicationStatus | undefined,
   );
+  const publicCaseStatus = normalizePublicCaseStatus(
+    pubsRes.data?.public_case_status as string | undefined,
+  );
+  const publicCase = pubsRes.data
+    ? {
+        publicId: (pubsRes.data.public_id as string | null) || null,
+        status: publicCaseStatus,
+        publicDisplayName:
+          (pubsRes.data.public_display_name as string | null) || null,
+        publicSurveyTitle:
+          (pubsRes.data.public_survey_title as string | null) || null,
+        publicSummary: (pubsRes.data.public_summary as string | null) || null,
+        publicProblemSummary:
+          (pubsRes.data.public_problem_summary as string | null) || null,
+        publicImprovementSummary:
+          (pubsRes.data.public_improvement_summary as string | null) || null,
+        urlVisibility: normalizeUrlVisibility(
+          pubsRes.data.url_visibility as string | null,
+        ),
+        publicSurveyUrl:
+          (pubsRes.data.public_survey_url as string | null) || null,
+        publicUrlHost: (pubsRes.data.public_url_host as string | null) || null,
+        selectedEvidenceFileIds: Array.isArray(
+          pubsRes.data.selected_evidence_file_ids,
+        )
+          ? (pubsRes.data.selected_evidence_file_ids as string[])
+          : [],
+      }
+    : null;
   const evidenceEmptyState = buildEvidenceEmptyState({
     captureJobCount: captureRows.length,
     evidenceFileCount: evidenceRows.length,
@@ -364,7 +442,10 @@ export async function getAdminCaseDetail(id: string): Promise<AdminCaseDetail> {
       downloadableEvidenceTypes: evidenceSummary.downloadableEvidenceTypes,
       temporaryZipId: evidenceSummary.temporaryZipId,
       screenshotFileIds: evidenceSummary.screenshotFileIds,
+      publicCaseStatus,
+      publicId: publicCase?.publicId || null,
     },
+    publicCase,
     performance: {
       extractionMode:
         (scanJobPerf?.extraction_mode as string | null) ||
