@@ -583,6 +583,30 @@ export function CollectorConsoleView({
               공식 출처 기반의 품질 높은 공공기관 설문 수집 채널입니다. 출처
               페이지와 게시일 근거를 확보할 수 있습니다. 네이버 검색과 별도로 동작합니다.
             </p>
+            <div className="mt-3 rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
+              <p>
+                공식 사이트 수집: 하루 4회, 회당 최대 8기관, 예상 32기관/일
+                (21:30 · 00:30 · 03:30 · 06:30 KST)
+              </p>
+              <p>
+                현재 전체 seed: {formatCount(summary.officialSite?.institutionCount)}기관.
+                현재 속도 기준 전체 1회 순환 예상: 약{" "}
+                {Math.max(
+                  1,
+                  Math.round(
+                    (summary.officialSite?.institutionCount || 0) /
+                      Math.max(1, summary.capacity?.officialSiteOrgsPerDayTarget || 32),
+                  ),
+                )}
+                일. 목표: 2주 1회 순환. 다음 확대 후보: 하루 8회 또는 12회.
+              </p>
+              <p>
+                자동진단 처리량: 현재 scanBatch {summary.capacity?.scanBatch ?? 3},
+                worker 실행 기준 최대 처리량 약{" "}
+                {formatCount(summary.capacity?.estimatedMaxPerDay)}건/일.
+                100건/일 목표에는 scanBatch 상향 또는 worker 횟수 증가 필요.
+              </p>
+            </div>
             {summary.officialSite ? (
               <>
                 <h3 className="mb-2 mt-4 text-sm font-semibold text-slate-900">오늘 공식 사이트 수집</h3>

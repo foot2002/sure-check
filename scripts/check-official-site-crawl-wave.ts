@@ -8,6 +8,7 @@ import { OFFICIAL_SITE_MAX_CONCURRENCY } from "../lib/collector/officialSiteCraw
 import {
   countCronJobsForPath,
   OFFICIAL_SITE_CRON_PATH,
+  scheduleIsOnceDaily,
 } from "../lib/collector/opsCapacityPolicy";
 
 function source(path: string): string {
@@ -37,8 +38,13 @@ console.log("[Official Site Crawl Wave Check]\n");
   const vercel = JSON.parse(source("vercel.json")) as {
     crons?: Array<{ path?: string; schedule?: string }>;
   };
-  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 1);
-  console.log("  PASS  waves share one cron path (not 4 parallel jobs)");
+  const jobs = (vercel.crons || []).filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
+  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 4);
+  for (const job of jobs) {
+    assert.equal(scheduleIsOnceDaily(job.schedule || ""), true, job.schedule);
+    assert.equal((job.schedule || "").includes(","), false);
+  }
+  console.log("  PASS  four staggered once-daily official-site crons (not one multi-hour job)");
 }
 
 {

@@ -202,7 +202,19 @@
     },
     {
       "path": "/api/internal/collector/official-sites",
-      "schedule": "30 16 * * *"
+      "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 21 * * *"
     }
   ]
 }

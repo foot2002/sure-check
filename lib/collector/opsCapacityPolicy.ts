@@ -5,10 +5,16 @@
 
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 
-/** One vercel.json cron entry; once per day until the 32/day scale-up is retried. */
+/** Four once-daily vercel.json entries (KST 21:30 / 00:30 / 03:30 / 06:30). */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
-export const OFFICIAL_SITE_CRON_SCHEDULE = "30 16 * * *";
-export const OFFICIAL_SITE_WAVES_PER_DAY = 1;
+export const OFFICIAL_SITE_CRON_SCHEDULES = [
+  "30 12 * * *",
+  "30 15 * * *",
+  "30 18 * * *",
+  "30 21 * * *",
+] as const;
+export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
+export const OFFICIAL_SITE_WAVES_PER_DAY = 4;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
   OFFICIAL_SITE_MAX_ORGS_PER_RUN * OFFICIAL_SITE_WAVES_PER_DAY;
 
@@ -50,6 +56,14 @@ export function cronScheduleDailyFires(schedule: string): number {
   const parts = schedule.trim().split(/\s+/);
   if (parts.length < 5) return 0;
   return cronFieldHits(parts[0], 0, 59) * cronFieldHits(parts[1], 0, 23);
+}
+
+export function scheduleIsOnceDaily(schedule: string): boolean {
+  return cronScheduleDailyFires(schedule) === 1 && !/,/.test(schedule);
+}
+
+export function hasMultiHourCronExpression(crons: VercelCronEntry[]): boolean {
+  return crons.some((job) => /,/.test(job.schedule || ""));
 }
 
 export function countCronJobsForPath(

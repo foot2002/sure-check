@@ -40,7 +40,7 @@ export const COLLECTOR_STALE_RUNNING_MS = 15 * 60 * 1000;
  * - Collect A: 0 17 * * * → 02:00 KST  /api/internal/collector/run/a
  * - Collect B: 0 19 * * * → 04:00 KST  /api/internal/collector/run/b
  * - Revalidate ×4: 0 23 / 0 3 / 0 7 / 0 13 UTC → 08:00 / 12:00 / 16:00 / 22:00 KST
- * - Official site ×1: 30 16 * * * UTC → 01:30 KST, 8 orgs/run (32/day scale-up deferred)
+ * - Official site ×4 once-daily: 30 12/15/18/21 UTC → 21:30 / 00:30 / 03:30 / 06:30 KST, 8 orgs/run
  * Legacy single /api/internal/collector/run Cron removed (endpoint kept for manual).
  * Diagnosis worker stays scanBatch=3; Diagnosis Cron schedules unchanged.
  */

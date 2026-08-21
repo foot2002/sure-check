@@ -43,6 +43,8 @@ console.log("[Official Site Admin Stats Check]\n");
   assert.ok(view.includes("전체 누적 통계"));
   assert.ok(view.includes("source_page_url 저장률"));
   assert.ok(view.includes("seed 오매핑 의심"));
+  assert.ok(view.includes("하루 4회"));
+  assert.ok(view.includes("회당 최대 8기관"));
   assert.ok(view.includes("cross-origin seed URL"));
   assert.ok(view.includes("needs_review 기관"));
   assert.ok(view.includes("자동 크롤 제외 기관"));
