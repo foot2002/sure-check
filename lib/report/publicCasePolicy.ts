@@ -160,3 +160,20 @@ export function publicCaseStatusKo(
 ): string {
   return PUBLIC_CASE_STATUS_KO[normalizePublicCaseStatus(status)];
 }
+
+export function publicCaseStatusBadgeClass(
+  status: string | null | undefined,
+): string {
+  switch (normalizePublicCaseStatus(status)) {
+    case "published":
+      return "bg-teal-100 text-teal-900 border-teal-200";
+    case "paused":
+      return "bg-amber-100 text-amber-900 border-amber-200";
+    case "reviewing":
+      return "bg-sky-100 text-sky-900 border-sky-200";
+    case "archived":
+      return "bg-slate-200 text-slate-700 border-slate-300";
+    default:
+      return "bg-slate-100 text-slate-600 border-slate-200";
+  }
+}

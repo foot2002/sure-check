@@ -48,6 +48,7 @@ export interface AdminCaseListQuery {
   noticeGap?: string | null;
   reportReview?: string | null;
   outreachStatus?: string | null;
+  publicCaseStatus?: string | null;
   from?: string | null;
   to?: string | null;
 }
@@ -64,6 +65,8 @@ export interface AdminKpi {
   /** Non-reportable limited outcomes (ops reference, not a primary KPI). */
   limitedAnalysisCount: number;
   publicationCandidateCount: number;
+  /** Individual public cases currently listed on /cases. */
+  publishedCaseCount: number;
   /** Outcome split for ops — extraction_limited is not a primary card. */
   outcomeBuckets: {
     normalDiagnosis: number;
@@ -288,6 +291,24 @@ function parseBoolFlag(value: string | null | undefined): boolean | null {
   return null;
 }
 
+function parsePublicCaseStatusFilter(
+  value: string | null | undefined,
+): PublicCaseStatus | "all" {
+  if (
+    value === "private" ||
+    value === "reviewing" ||
+    value === "published" ||
+    value === "paused" ||
+    value === "archived"
+  ) {
+    return value;
+  }
+  return "all";
+}
+
+const ADMIN_SURVEY_SELECT =
+  "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count";
+
 export async function listAdminCases(
   query: AdminCaseListQuery = {},
 ): Promise<AdminCaseListPayload> {
@@ -296,9 +317,7 @@ export async function listAdminCases(
 
   let surveyQuery = supabase
     .from("survey_records")
-    .select(
-      "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count",
-    )
+    .select(ADMIN_SURVEY_SELECT)
     .order("observed_at", { ascending: false })
     .limit(range === "all" ? 3000 : 1500);
 
@@ -346,7 +365,45 @@ export async function listAdminCases(
   const { data: surveys, error } = await surveyQuery;
   if (error) throw new Error(`survey_records: ${error.message}`);
 
-  const rows = surveys || [];
+  let rows = surveys || [];
+  const publicCaseFilter = parsePublicCaseStatusFilter(query.publicCaseStatus);
+  if (publicCaseFilter !== "all" && publicCaseFilter !== "private") {
+    const { data: pubRows, error: pubFilterErr } = await supabase
+      .from("publication_records")
+      .select("survey_record_id")
+      .eq("public_case_status", publicCaseFilter)
+      .not("survey_record_id", "is", null)
+      .limit(500);
+    if (pubFilterErr) {
+      const missingPublicCase =
+        /public_case_status|public_id|schema cache|does not exist/i.test(
+          pubFilterErr.message,
+        );
+      if (!missingPublicCase) {
+        throw new Error(`publications filter: ${pubFilterErr.message}`);
+      }
+    } else {
+      const have = new Set(rows.map((r) => r.id as string));
+      const missing = [
+        ...new Set(
+          (pubRows || [])
+            .map((r) => String(r.survey_record_id || ""))
+            .filter(Boolean),
+        ),
+      ].filter((id) => !have.has(id));
+      if (missing.length) {
+        const extra = await supabase
+          .from("survey_records")
+          .select(ADMIN_SURVEY_SELECT)
+          .in("id", missing);
+        if (extra.error) {
+          throw new Error(`survey_records public cases: ${extra.error.message}`);
+        }
+        rows = [...rows, ...(extra.data || [])];
+      }
+    }
+  }
+
   const ids = rows.map((r) => r.id as string);
   const reportIds = rows
     .map((r) => r.scan_report_id as string | null)
@@ -709,6 +766,9 @@ export async function listAdminCases(
   if (query.outreachStatus && query.outreachStatus !== "all") {
     cases = cases.filter((c) => c.outreachUiStatus === query.outreachStatus);
   }
+  if (publicCaseFilter !== "all") {
+    cases = cases.filter((c) => c.publicCaseStatus === publicCaseFilter);
+  }
 
   const PRIORITY_RANK: Record<string, number> = { A: 0, B: 1, C: 2 };
   cases.sort((a, b) => {
@@ -813,6 +873,8 @@ export async function listAdminCases(
     publicationCandidateCount: cases.filter(
       (c) => c.outreachUiStatus === "send" || c.outreachUiStatus === "candidate",
     ).length,
+    publishedCaseCount: cases.filter((c) => c.publicCaseStatus === "published")
+      .length,
     outcomeBuckets,
     excludedFromReporting,
   };

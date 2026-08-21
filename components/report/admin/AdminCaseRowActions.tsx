@@ -16,11 +16,13 @@ export function AdminCaseRowActions({
   row,
   onReview,
   onPublish,
+  onChanged,
   onMessage,
 }: {
   row: AdminCaseListItem;
   onReview: () => void;
   onPublish: () => void;
+  onChanged?: () => void;
   onMessage?: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -35,6 +37,11 @@ export function AdminCaseRowActions({
         ? "캡처 필요"
         : "증빙 없음"
       : "증빙";
+  const isPublished =
+    row.publicCaseStatus === "published" || row.publicCaseStatus === "reviewing";
+  const isPaused = row.publicCaseStatus === "paused";
+  const canOpenPublicPage =
+    row.publicCaseStatus === "published" && Boolean(row.publicId);
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +70,28 @@ export function AdminCaseRowActions({
     }
   }
 
+  async function pausePublicCase() {
+    if (!window.confirm("이 공개 사례를 중지할까요? 공개 목록에서 내려갑니다.")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/report/admin/cases/${row.id}/public-case`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pause" }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(data?.error || "중지 실패");
+      onMessage?.("공개 사례를 중지했습니다.");
+      onChanged?.();
+    } catch {
+      onMessage?.("공개 중지에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       className="flex flex-nowrap items-center justify-end gap-1"
@@ -72,7 +101,15 @@ export function AdminCaseRowActions({
       <button type="button" className={btn} onClick={onReview}>
         검토
       </button>
-      {hasUrl ? (
+      {isPublished ? (
+        <button type="button" className={ghost} onClick={onPublish}>
+          수정
+        </button>
+      ) : isPaused ? (
+        <button type="button" className={ghost} onClick={onPublish}>
+          재공개
+        </button>
+      ) : hasUrl ? (
         <a
           href={row.surveyUrl || undefined}
           target="_blank"
@@ -161,16 +198,75 @@ export function AdminCaseRowActions({
             >
               {hasZip || hasShots ? "증빙" : evidenceLabel}
             </button>
-            <button
-              type="button"
-              className={menuItem}
-              onClick={() => {
-                setOpen(false);
-                onPublish();
-              }}
-            >
-              공개 사례
-            </button>
+            {isPublished ? (
+              <>
+                <button
+                  type="button"
+                  className={menuItem}
+                  onClick={() => {
+                    setOpen(false);
+                    onPublish();
+                  }}
+                >
+                  공개 사례 수정
+                </button>
+                <button
+                  type="button"
+                  className={menuItem}
+                  disabled={busy}
+                  onClick={() => {
+                    setOpen(false);
+                    void pausePublicCase();
+                  }}
+                >
+                  공개 중지
+                </button>
+              </>
+            ) : isPaused ? (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setOpen(false);
+                  onPublish();
+                }}
+              >
+                다시 공개
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setOpen(false);
+                  onPublish();
+                }}
+              >
+                공개 사례 등록
+              </button>
+            )}
+            {canOpenPublicPage ? (
+              <a
+                href={`/cases/${row.publicId}`}
+                target="_blank"
+                rel="noreferrer"
+                className={menuItem}
+                onClick={() => setOpen(false)}
+              >
+                공개 페이지 열기
+              </a>
+            ) : null}
+            {(isPublished || isPaused) && hasUrl ? (
+              <a
+                href={row.surveyUrl || undefined}
+                target="_blank"
+                rel="noreferrer"
+                className={menuItem}
+                onClick={() => setOpen(false)}
+              >
+                원본
+              </a>
+            ) : null}
             <button
               type="button"
               className={menuItem}

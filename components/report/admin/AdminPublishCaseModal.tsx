@@ -137,9 +137,15 @@ export function AdminPublishCaseModal({
         publicId?: string;
       } | null;
       if (!res.ok) throw new Error(data?.error || "공개 등록에 실패했습니다.");
+      const editing =
+        draft?.status === "published" ||
+        draft?.status === "paused" ||
+        draft?.status === "reviewing";
       onSaved?.(
         data?.publicId
-          ? `공개 사례로 등록했습니다. /cases/${data.publicId}`
+          ? editing
+            ? `공개 사례를 저장했습니다. /cases/${data.publicId}`
+            : `공개 사례로 등록했습니다. /cases/${data.publicId}`
           : "공개 사례를 저장했습니다.",
       );
       onClose();
@@ -150,6 +156,22 @@ export function AdminPublishCaseModal({
     }
   }
 
+  const isEdit =
+    draft?.status === "published" ||
+    draft?.status === "reviewing" ||
+    draft?.status === "paused";
+  const modalTitle =
+    draft?.status === "paused"
+      ? "공개 진단 사례 다시 공개"
+      : isEdit
+        ? "공개 진단 사례 수정"
+        : "공개 진단 사례 등록";
+  const submitLabel =
+    draft?.status === "paused"
+      ? "다시 공개"
+      : draft?.status === "published" || draft?.status === "reviewing"
+        ? "저장"
+        : "공개 등록";
   const input =
     "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900";
 
@@ -164,11 +186,12 @@ export function AdminPublishCaseModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="public-case-modal-title" className="text-lg font-bold text-slate-900">
-              공개 진단 사례 등록
+              {modalTitle}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              이 사례는 외부에 공개됩니다. 기관명, 설문 제목, URL, 캡처 이미지에
-              민감한 정보가 포함되어 있지 않은지 확인한 뒤 공개하세요.
+              {isEdit
+                ? "공개 문구, URL 공개 범위, 캡처 선택을 수정하거나 공개 중지할 수 있습니다."
+                : "이 사례는 외부에 공개됩니다. 기관명, 설문 제목, URL, 캡처 이미지에 민감한 정보가 포함되어 있지 않은지 확인한 뒤 공개하세요."}
             </p>
           </div>
           <button
@@ -367,6 +390,41 @@ export function AdminPublishCaseModal({
             </div>
 
             <div className="flex justify-end gap-2">
+              {draft.status === "published" || draft.status === "reviewing" ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm("이 공개 사례를 중지할까요? 공개 목록에서 내려갑니다.")) {
+                      return;
+                    }
+                    setBusy(true);
+                    setError(null);
+                    void fetch(`/api/report/admin/cases/${caseId}/public-case`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "pause" }),
+                    })
+                      .then(async (res) => {
+                        const data = (await res.json().catch(() => null)) as {
+                          error?: string;
+                        } | null;
+                        if (!res.ok) throw new Error(data?.error || "중지 실패");
+                        onSaved?.("공개 사례를 중지했습니다.");
+                        onClose();
+                      })
+                      .catch((err: unknown) => {
+                        setError(
+                          err instanceof Error ? err.message : "공개 중지에 실패했습니다.",
+                        );
+                      })
+                      .finally(() => setBusy(false));
+                  }}
+                  className="mr-auto rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-45"
+                >
+                  공개 중지
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onClose}
@@ -380,7 +438,7 @@ export function AdminPublishCaseModal({
                 onClick={() => void submit()}
                 className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                공개 등록
+                {submitLabel}
               </button>
             </div>
           </div>

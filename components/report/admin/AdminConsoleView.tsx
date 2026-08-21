@@ -13,7 +13,10 @@ import {
   reviewStatusKo,
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
-import { publicCaseStatusKo } from "@/lib/report/publicCasePolicy";
+import {
+  publicCaseStatusBadgeClass,
+  publicCaseStatusKo,
+} from "@/lib/report/publicCasePolicy";
 import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
 
 type Filters = {
@@ -33,6 +36,7 @@ type Filters = {
   noticeGap: string;
   reportReview: string;
   outreachStatus: string;
+  publicCaseStatus: string;
   q: string;
   from: string;
   to: string;
@@ -162,7 +166,19 @@ export function AdminConsoleView({
   }
 
   function setQuick(patch: Partial<Filters>) {
-    void apply({ ...form, ...patch });
+    const next = { ...form, ...patch };
+    if (
+      (patch.publicCaseStatus === "published" ||
+        patch.publicCaseStatus === "paused" ||
+        patch.publicCaseStatus === "reviewing") &&
+      next.range !== "all" &&
+      next.range !== "custom"
+    ) {
+      next.range = "all";
+      next.from = "";
+      next.to = "";
+    }
+    void apply(next);
   }
 
   async function logout() {
@@ -193,6 +209,13 @@ export function AdminConsoleView({
             className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
           >
             수집함
+          </Link>
+          <Link
+            href="/cases"
+            target="_blank"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            공개 사례 /cases
           </Link>
           <Link
             href="/report"
@@ -228,7 +251,7 @@ export function AdminConsoleView({
           {" · "}목록 {payload.cases.length.toLocaleString("ko-KR")}건
           {loading ? " · 갱신 중…" : ""}
         </p>
-        <section className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <section className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           {[
             ["분석 가능 진단", payload.kpi.totalScans],
             ["미검토", payload.kpi.reviewPendingCount],
@@ -249,6 +272,27 @@ export function AdminConsoleView({
               </p>
             </div>
           ))}
+          <button
+            type="button"
+            onClick={() =>
+              setQuick({
+                publicCaseStatus:
+                  form.publicCaseStatus === "published" ? "all" : "published",
+              })
+            }
+            className={`rounded-xl border p-3 text-left shadow-sm ${
+              form.publicCaseStatus === "published"
+                ? "border-teal-700 bg-teal-50"
+                : "border-slate-200 bg-white hover:border-teal-300"
+            }`}
+          >
+            <p className="text-[11px] font-semibold tracking-wide text-slate-500">
+              공개중
+            </p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {payload.kpi.publishedCaseCount.toLocaleString("ko-KR")}
+            </p>
+          </button>
         </section>
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
@@ -290,6 +334,9 @@ export function AdminConsoleView({
             ["민감정보 포함", form.hasSensitiveInfo === "true", { hasSensitiveInfo: form.hasSensitiveInfo === "true" ? "all" : "true" }],
             ["고지 미흡", form.noticeGap === "true", { noticeGap: form.noticeGap === "true" ? "all" : "true" }],
             ["신고검토", form.reportReview === "true", { reportReview: form.reportReview === "true" ? "all" : "true" }],
+            ["공개중", form.publicCaseStatus === "published", { publicCaseStatus: form.publicCaseStatus === "published" ? "all" : "published" }],
+            ["공개중지", form.publicCaseStatus === "paused", { publicCaseStatus: form.publicCaseStatus === "paused" ? "all" : "paused" }],
+            ["공개검토", form.publicCaseStatus === "reviewing", { publicCaseStatus: form.publicCaseStatus === "reviewing" ? "all" : "reviewing" }],
           ] as Array<[string, boolean, Partial<Filters>]>
         ).map(([label, active, patch]) => (
           <button
@@ -375,6 +422,18 @@ export function AdminConsoleView({
               ["private", "민간"],
             ],
           },
+          {
+            key: "publicCaseStatus",
+            label: "공개 사례 상태",
+            options: [
+              ["all", "전체"],
+              ["published", "공개중"],
+              ["paused", "공개중지"],
+              ["reviewing", "공개검토"],
+              ["private", "미등록"],
+              ["archived", "보관"],
+            ],
+          },
         ].map((field) => (
           <label key={field.key} className="text-xs text-slate-500">
             {field.label}
@@ -398,7 +457,17 @@ export function AdminConsoleView({
                   return;
                 }
                 const next = { ...form, [field.key]: e.target.value };
-                if (field.key === "outreachStatus" || field.key === "priority" || field.key === "risk" || field.key === "hasEvidence" || field.key === "publicPrivate") {
+                if (field.key === "outreachStatus" || field.key === "priority" || field.key === "risk" || field.key === "hasEvidence" || field.key === "publicPrivate" || field.key === "publicCaseStatus") {
+                  if (
+                    field.key === "publicCaseStatus" &&
+                    (value === "published" || value === "paused" || value === "reviewing") &&
+                    next.range !== "all" &&
+                    next.range !== "custom"
+                  ) {
+                    next.range = "all";
+                    next.from = "";
+                    next.to = "";
+                  }
                   void apply(next);
                 } else {
                   setForm(next);
@@ -514,7 +583,13 @@ export function AdminConsoleView({
               <tr
                 key={row.id}
                 className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50/60 ${
-                  openId === row.id ? "bg-teal-50" : ""
+                  openId === row.id
+                    ? "bg-teal-50"
+                    : row.publicCaseStatus === "published"
+                      ? "bg-teal-50/40"
+                      : row.publicCaseStatus === "paused"
+                        ? "bg-amber-50/50"
+                        : ""
                 }`}
                 onClick={() => setOpenId(row.id)}
               >
@@ -545,10 +620,19 @@ export function AdminConsoleView({
                   </span>
                 </td>
                 <td
-                  className="overflow-hidden truncate px-2 py-2 text-slate-800"
+                  className="overflow-hidden px-2 py-2 text-slate-800"
                   title={row.surveyTitle || undefined}
                 >
-                  {row.surveyTitle || "—"}
+                  {row.publicCaseStatus === "published" ||
+                  row.publicCaseStatus === "paused" ||
+                  row.publicCaseStatus === "reviewing" ? (
+                    <span
+                      className={`mb-0.5 mr-1 inline-block rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
+                    >
+                      {publicCaseStatusKo(row.publicCaseStatus)}
+                    </span>
+                  ) : null}
+                  <span className="truncate">{row.surveyTitle || "—"}</span>
                 </td>
                 <td className="overflow-hidden px-2 py-2">
                   {row.issueBadges.length > 0 ? (
@@ -588,7 +672,7 @@ export function AdminConsoleView({
                     {outreachUiStatusKo(row.outreachUiStatus)}
                   </div>
                   <div
-                    className="truncate"
+                    className={`mt-0.5 inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
                     title={`공개 사례 상태 ${publicCaseStatusKo(row.publicCaseStatus)}`}
                   >
                     {publicCaseStatusKo(row.publicCaseStatus)}
@@ -599,6 +683,7 @@ export function AdminConsoleView({
                     row={row}
                     onReview={() => setOpenId(row.id)}
                     onPublish={() => setPublishId(row.id)}
+                    onChanged={() => void apply(form)}
                     onMessage={setToast}
                   />
                 </td>
@@ -615,7 +700,11 @@ export function AdminConsoleView({
         </table>
       </section>
 
-      <AdminCaseDrawer caseId={openId} onClose={() => setOpenId(null)} />
+      <AdminCaseDrawer
+        caseId={openId}
+        onClose={() => setOpenId(null)}
+        onPublicCaseChanged={() => void apply(form)}
+      />
       <AdminPublishCaseModal
         caseId={publishId}
         onClose={() => setPublishId(null)}

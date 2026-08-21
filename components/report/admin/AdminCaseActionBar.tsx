@@ -24,7 +24,9 @@ export function AdminCaseActionBar({
   showFullDetailLink = false,
   showIndividualCaptures = false,
   publicCaseStatus = "private",
+  publicId = null,
   onMessage,
+  onPublicCaseChanged,
 }: {
   caseId: string;
   surveyUrl?: string | null;
@@ -39,7 +41,9 @@ export function AdminCaseActionBar({
   showFullDetailLink?: boolean;
   showIndividualCaptures?: boolean;
   publicCaseStatus?: PublicCaseStatus;
+  publicId?: string | null;
   onMessage?: (text: string) => void;
+  onPublicCaseChanged?: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -229,6 +233,7 @@ export function AdminCaseActionBar({
                 const data = (await res.json().catch(() => null)) as { error?: string } | null;
                 if (!res.ok) throw new Error(data?.error || "중지 실패");
                 onMessage?.("공개 사례를 중지했습니다.");
+                onPublicCaseChanged?.();
               })
             }
           >
@@ -244,11 +249,23 @@ export function AdminCaseActionBar({
       <span className="text-[11px] text-slate-500">
         공개 사례 상태 {publicCaseStatusKo(publicCaseStatus)}
       </span>
+      {publicCaseStatus === "published" && publicId ? (
+        <Link
+          href={`/cases/${publicId}`}
+          target="_blank"
+          className={`${ghost} inline-flex items-center`}
+        >
+          공개 페이지 열기
+        </Link>
+      ) : null}
       {publishOpen ? (
         <AdminPublishCaseModal
           caseId={caseId}
           onClose={() => setPublishOpen(false)}
-          onSaved={(text) => onMessage?.(text)}
+          onSaved={(text) => {
+            onMessage?.(text);
+            onPublicCaseChanged?.();
+          }}
         />
       ) : null}
     </div>

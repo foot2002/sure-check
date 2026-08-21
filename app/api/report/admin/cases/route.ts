@@ -31,6 +31,7 @@ export async function GET(request: Request) {
       noticeGap: searchParams.get("noticeGap"),
       reportReview: searchParams.get("reportReview"),
       outreachStatus: searchParams.get("outreachStatus"),
+      publicCaseStatus: searchParams.get("publicCaseStatus"),
       from: searchParams.get("from"),
       to: searchParams.get("to"),
       q: searchParams.get("q"),

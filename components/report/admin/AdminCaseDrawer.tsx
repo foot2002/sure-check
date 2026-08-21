@@ -15,13 +15,16 @@ import {
 export function AdminCaseDrawer({
   caseId,
   onClose,
+  onPublicCaseChanged,
 }: {
   caseId: string | null;
   onClose: () => void;
+  onPublicCaseChanged?: () => void;
 }) {
   const [detail, setDetail] = useState<AdminCaseDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!caseId) return;
@@ -64,7 +67,7 @@ export function AdminCaseDrawer({
     return () => {
       cancelled = true;
     };
-  }, [caseId]);
+  }, [caseId, reloadToken]);
 
   if (!caseId) return null;
   const current = detail?.id === caseId ? detail : null;
@@ -145,7 +148,12 @@ export function AdminCaseDrawer({
               screenshotMeta={current?.evidenceFiles}
               showFullDetailLink
               publicCaseStatus={s?.publicCaseStatus || "private"}
+              publicId={s?.publicId || null}
               onMessage={setMessage}
+              onPublicCaseChanged={() => {
+                setReloadToken((n) => n + 1);
+                onPublicCaseChanged?.();
+              }}
             />
           </div>
         </div>

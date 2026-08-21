@@ -209,6 +209,7 @@ export function AdminCaseDetailView({
               screenshotMeta={detail.evidenceFiles}
               showIndividualCaptures
               publicCaseStatus={s.publicCaseStatus}
+              publicId={s.publicId}
               onMessage={setMessage}
             />
           </div>

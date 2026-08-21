@@ -178,6 +178,9 @@ function main() {
   check("list shows 상세리포트 action", /상세리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 증빙 action", /증빙/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 공개 사례 action", /공개 사례/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 공개 사례 수정", /공개 사례 수정/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 공개 중지", /공개 중지/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 공개 페이지 열기", /공개 페이지 열기/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows URL 복사 overflow", /URL 복사/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   const bar = read("components/report/admin/AdminCaseActionBar.tsx");
   for (const label of [
@@ -198,6 +201,9 @@ function main() {
   check("custom range date inputs", /type="date"/.test(consoleView));
   check("from/to query for custom range", /params.set\("from"/.test(consoleView));
   check("improvement status filter", consoleView.includes("개선안내 상태"));
+  check("public case status filter", consoleView.includes("공개 사례 상태"));
+  check("published case chip", consoleView.includes('["공개중"'));
+  check("paused case chip", consoleView.includes('["공개중지"'));
   check("letter review chip", consoleView.includes("공문발송 검토"));
   check("row actions stopPropagation", /stopPropagation/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
 
