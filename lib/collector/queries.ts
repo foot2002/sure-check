@@ -23,9 +23,11 @@ import {
   countOfficialSiteFreshnessStats,
   countOfficialSiteNeedsReview,
   countOfficialSitesCrawledToday,
+  countOfficialSiteQualitySnapshot,
   countOfficialSiteSurveysFoundToday,
   countOfficialSiteSurveysTotal,
 } from "@/lib/collector/officialSiteRepository";
+import { matchesCollectorHoldReason } from "@/lib/collector/collectorDashboardLabels";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -453,6 +455,7 @@ async function loadOfficialSiteAdminStats(): Promise<
     totalSurveysFound,
     todayDiagnosisQueued,
     needsReviewCount,
+    quality,
     staleYear,
     staleTopic,
     previousYear,
@@ -471,6 +474,7 @@ async function loadOfficialSiteAdminStats(): Promise<
     countOfficialSiteSurveysTotal(),
     countOfficialSiteDiagnosisQueuedToday(today),
     countOfficialSiteNeedsReview(),
+    countOfficialSiteQualitySnapshot(today),
     countFreshnessReason("stale_year"),
     countFreshnessReason("stale_topic_year"),
     countFreshnessReason("previous_year_phrase"),
@@ -498,7 +502,18 @@ async function loadOfficialSiteAdminStats(): Promise<
     totalRecentEligible: totalFreshness.recentEligible,
     totalOldYearExcluded,
     totalDateUnknownHold,
+    totalRestrictedExcluded: totalFreshness.restrictedExcluded,
     needsReviewCount,
+    todayPagesFetched: quality.todayPagesFetched,
+    todayOrgsWithSurveys: quality.todayOrgsWithSurveys,
+    avgPagesPerOrg: quality.avgPagesPerOrg,
+    surveyDiscoveryRate: quality.surveyDiscoveryRate,
+    dateExtractSuccessRate:
+      totalSurveysFound > 0
+        ? Math.max(0, 1 - totalDateUnknownHold / totalSurveysFound)
+        : 0,
+    sourcePageUrlSaveRate: quality.sourcePageUrlSaveRate,
+    failedOrgCount: quality.failedOrgCount,
   };
 }
 
@@ -788,6 +803,11 @@ export async function listSurveyLinks(
 ): Promise<SurveyLinkListItem[]> {
   const supabase = createSupabaseServerClient();
   const limit = Math.min(Math.max(filters.limit ?? 100, 1), 300);
+  const holdReason = filters.holdReason && filters.holdReason !== "all" ? filters.holdReason : null;
+  const statusFilter =
+    holdReason && (!filters.status || filters.status === "default")
+      ? "all"
+      : filters.status;
   const triageFilter =
     filters.triageQueue && filters.triageQueue !== "all"
       ? filters.triageQueue
@@ -804,12 +824,12 @@ export async function listSurveyLinks(
   if (filters.platform && filters.platform !== "all") {
     query = query.eq("platform", filters.platform);
   }
-  if (!filters.status || filters.status === "default") {
+  if (!statusFilter || statusFilter === "default") {
     query = query.in("status", ["active", "discovered"]);
-  } else if (filters.status === "non_invalid") {
+  } else if (statusFilter === "non_invalid") {
     query = query.neq("status", "invalid");
-  } else if (filters.status !== "all") {
-    query = query.eq("status", filters.status);
+  } else if (statusFilter !== "all") {
+    query = query.eq("status", statusFilter);
   }
   if (filters.firstDiscoveredFrom) {
     query = query.gte("first_discovered_at", filters.firstDiscoveredFrom);
@@ -856,7 +876,11 @@ export async function listSurveyLinks(
       );
     }
     if (filters.sourceType && filters.sourceType !== "all") {
-      sourceQuery = sourceQuery.eq("source_type", filters.sourceType);
+      if (filters.sourceType === "naver") {
+        sourceQuery = sourceQuery.in("source_type", ["web", "blog", "cafe"]);
+      } else {
+        sourceQuery = sourceQuery.eq("source_type", filters.sourceType);
+      }
     }
 
     const { data: sources, error: sourceError } = await sourceQuery;
@@ -1055,7 +1079,24 @@ export async function listSurveyLinks(
         })
       : withDiagnosis;
 
-  return diagnosisFiltered.slice(0, limit);
+  const holdFiltered = holdReason
+    ? diagnosisFiltered.filter((row) =>
+        matchesCollectorHoldReason(
+          {
+            status: row.status,
+            title: row.title,
+            collectLane: row.collect_lane,
+            reasonCode: row.freshness?.reason_code,
+            exclusionReason: row.freshness?.diagnosis_exclusion_reason,
+            eligibleRecent: row.freshness?.diagnosis_eligible_recent,
+            autoDiagnosisTarget: row.auto_diagnosis_target,
+          },
+          holdReason,
+        ),
+      )
+    : diagnosisFiltered;
+
+  return holdFiltered.slice(0, limit);
 }
 
 export async function listSourcesForSurveyLink(

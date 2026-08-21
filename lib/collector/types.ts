@@ -363,7 +363,15 @@ export interface CollectorSummary {
     totalRecentEligible: number;
     totalOldYearExcluded: number;
     totalDateUnknownHold: number;
+    totalRestrictedExcluded: number;
     needsReviewCount: number;
+    todayPagesFetched?: number;
+    todayOrgsWithSurveys?: number;
+    avgPagesPerOrg?: number;
+    surveyDiscoveryRate?: number;
+    dateExtractSuccessRate?: number;
+    sourcePageUrlSaveRate?: number;
+    failedOrgCount?: number;
   };
   improvementCandidates?: Array<{
     id: string;
@@ -424,7 +432,17 @@ export interface SurveyLinkListFilters {
   firstDiscoveredTo?: string;
   searchQuery?: string;
   novelty?: "all" | "new" | "existing";
-  sourceType?: CollectorSourceType | "all";
+  sourceType?: CollectorSourceType | "all" | "naver";
+  holdReason?:
+    | "all"
+    | "date_unknown"
+    | "old_year"
+    | "closed"
+    | "restricted"
+    | "personal"
+    | "invalid"
+    | "eligible";
+  quickView?: string;
   /** Live triage queue from sources (A/B/C). C is not permanent. */
   triageQueue?: "A_PRIORITY" | "B_PRIORITY" | "C_ARCHIVE" | "all";
   diagnosisStatus?:

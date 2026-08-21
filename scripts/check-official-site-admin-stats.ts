@@ -37,6 +37,8 @@ console.log("[Official Site Admin Stats Check]\n");
   assert.ok(view.includes("오늘 공식 사이트 최근 60일 적격"));
   assert.ok(view.includes("전체 공식 사이트 적격 설문"));
   assert.ok(view.includes("전체 누적 통계"));
+  assert.ok(view.includes("source_page_url 저장률"));
+  assert.ok(view.includes("seed 오매핑 의심"));
   console.log("  PASS  admin labels separate today official-site and totals");
 }
 

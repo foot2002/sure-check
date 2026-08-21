@@ -14,7 +14,6 @@ import {
 import { CollectorConsoleView } from "@/components/report/admin/CollectorConsoleView";
 import type {
   CollectorPlatform,
-  CollectorSourceType,
   CollectorSurveyStatus,
 } from "@/lib/collector/types";
 
@@ -56,6 +55,8 @@ export default async function AdminCollectorPage({
     searchQuery: pick("searchQuery") || "",
     novelty: pick("novelty") || "all",
     sourceType: pick("sourceType") || "all",
+    holdReason: pick("holdReason") || "all",
+    quickView: pick("quickView") || "all",
     triageQueue: pick("triageQueue") || "all",
     diagnosisStatus: pick("diagnosisStatus") || "all",
     q: pick("q") || "",
@@ -91,7 +92,19 @@ export default async function AdminCollectorPage({
           firstDiscoveredTo: toIso,
           searchQuery: filters.searchQuery || undefined,
           novelty: filters.novelty as "all" | "new" | "existing",
-          sourceType: filters.sourceType as CollectorSourceType | "all",
+          sourceType: filters.sourceType as
+            | import("@/lib/collector/types").CollectorSourceType
+            | "all"
+            | "naver",
+          holdReason: filters.holdReason as
+            | "all"
+            | "date_unknown"
+            | "old_year"
+            | "closed"
+            | "restricted"
+            | "personal"
+            | "invalid"
+            | "eligible",
           triageQueue: filters.triageQueue as
             | "A_PRIORITY"
             | "B_PRIORITY"

@@ -306,6 +306,61 @@ export async function countOfficialInstitutionSites(): Promise<number> {
   return count ?? 0;
 }
 
+export async function countOfficialSiteQualitySnapshot(
+  now: Date = new Date(),
+): Promise<{
+  todayPagesFetched: number;
+  todayOrgsWithSurveys: number;
+  avgPagesPerOrg: number;
+  surveyDiscoveryRate: number;
+  sourcePageUrlSaveRate: number;
+  failedOrgCount: number;
+}> {
+  const bounds = getKstDayBounds(now);
+  const supabase = client();
+  const { data: todayRows } = await supabase
+    .from("official_institution_sites")
+    .select("last_pages_fetched, last_surveys_found")
+    .gte("last_crawled_at", bounds.startUtcIso)
+    .lt("last_crawled_at", bounds.endUtcIso)
+    .limit(400);
+  const crawled = todayRows || [];
+  const todayPagesFetched = crawled.reduce(
+    (sum, row) => sum + Number(row.last_pages_fetched || 0),
+    0,
+  );
+  const todayOrgsWithSurveys = crawled.filter(
+    (row) => Number(row.last_surveys_found || 0) > 0,
+  ).length;
+  const avgPagesPerOrg =
+    crawled.length > 0 ? todayPagesFetched / crawled.length : 0;
+  const surveyDiscoveryRate =
+    crawled.length > 0 ? todayOrgsWithSurveys / crawled.length : 0;
+
+  const { data: sources } = await supabase
+    .from("survey_sources")
+    .select("source_page_url")
+    .eq("source_type", "official_site")
+    .limit(400);
+  const sample = sources || [];
+  const withPage = sample.filter((row) => Boolean(row.source_page_url)).length;
+  const sourcePageUrlSaveRate = sample.length > 0 ? withPage / sample.length : 0;
+
+  const { count: failedOrgCount } = await supabase
+    .from("official_institution_sites")
+    .select("id", { count: "exact", head: true })
+    .eq("crawl_status", "failed");
+
+  return {
+    todayPagesFetched,
+    todayOrgsWithSurveys,
+    avgPagesPerOrg,
+    surveyDiscoveryRate,
+    sourcePageUrlSaveRate,
+    failedOrgCount: failedOrgCount ?? 0,
+  };
+}
+
 export async function countOfficialSitesCrawledToday(
   now: Date = new Date(),
 ): Promise<number> {
