@@ -68,6 +68,32 @@ function statusBadgeClass(status: string): string {
   return "border-slate-200 bg-slate-100 text-slate-700";
 }
 
+function formatCount(value: number | undefined | null): string {
+  return Number(value || 0).toLocaleString("ko-KR");
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  className = "border-slate-200 bg-white",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-xl border p-3 ${className}`}>
+      <p className="text-[12px] font-semibold leading-4 text-slate-800">{label}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</p>
+      {hint ? (
+        <p className="mt-1 text-[11px] leading-4 text-slate-500">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function CollectorConsoleView({
   summary,
   items,
@@ -171,28 +197,29 @@ export function CollectorConsoleView({
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-teal-800">
-            Admin Collector
+            수집함
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900 md:text-3xl">
             공개 설문 링크 수집함
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            네이버 검색으로 발견한 구글폼·네이버폼·모아폼 URL을 저장·조회합니다.
-            진단 파이프라인과는 연결되어 있지 않습니다.
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            공개된 설문 주소를 모아 두고, 자동진단이 얼마나 됐는지 보는
+            화면입니다. 설문을 찾는 방법은 두 가지입니다. 네이버 검색, 그리고
+            공공기관 홈페이지입니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/report/admin"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
-            진단 리포트
+            관리자 메인
           </Link>
           <button
             type="button"
             onClick={runCollection}
             disabled={running || Boolean(configError)}
-            className="rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running ? "수집 중…" : "수집 실행"}
           </button>
@@ -224,459 +251,321 @@ export function CollectorConsoleView({
         </div>
       ) : null}
 
-      {summary?.todayFunnel ? (
-        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">
-              오늘 자동화 퍼널 (KST)
+      {summary ? (
+        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <section className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4">
+            <h2 className="text-base font-bold text-slate-900">
+              네이버 검색으로 찾은 설문
             </h2>
-            <p className="text-[11px] text-slate-500">
-              단계별 모수가 다릅니다. 검색결과 ≠ 신규URL ≠ 검증 ≠ 진단 결과로
-              해석하세요.
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              네이버 검색(API)에서 구글폼·네이버폼·모아폼 주소를 찾아 모읍니다.
+              검색 결과 수와 실제 설문 수는 다릅니다.
             </p>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {(
-              [
-                ["검색결과", summary.todayFunnel.searchResults],
-                ["신규 URL", summary.todayFunnel.newUrls],
-                ["검증(후보)", summary.todayFunnel.validations],
-                ["active 전환", summary.todayFunnel.activeTransitions],
-                ["A급 추정", summary.todayFunnel.newAPriorityApprox],
-                ["discovered 잔여", summary.todayFunnel.discoveredBacklog],
-                ["진단 backlog", summary.todayFunnel.diagnosisBacklog],
-                ["진단 시도", summary.todayFunnel.diagnosisAttempted],
-                ["정상 진단", summary.todayFunnel.normalDiagnosis],
-                ["종료(오늘)", summary.todayFunnel.closedToday],
-                ["접근제한(오늘)", summary.todayFunnel.restrictedToday],
-                ["추출제한", summary.todayFunnel.extractionLimitedToday],
-                ["시스템실패", summary.todayFunnel.systemFailureToday],
-                ["진단 잔여", summary.todayFunnel.diagnosisRemaining],
-              ] as const
-            ).map(([label, value], index, arr) => (
-              <div
-                key={label}
-                className="flex shrink-0 items-center gap-2"
-              >
-                <div className="min-w-[5.5rem] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
-                  <p className="text-[10px] font-medium text-slate-500">
-                    {label}
-                  </p>
-                  <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
-                    {value.toLocaleString("ko-KR")}
-                  </p>
-                </div>
-                {index < arr.length - 1 ? (
-                  <span className="text-slate-600" aria-hidden>
-                    →
-                  </span>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {summary?.qualityKpis ? (
-        <section className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-slate-900">운영 품질</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-            {(
-              [
-                [
-                  "시스템 실패율",
-                  `${(summary.qualityKpis.systemFailureRateToday * 100).toFixed(1)}%`,
-                  "종료·접근제한 제외",
-                ],
-                [
-                  "Stuck 수집",
-                  summary.qualityKpis.stuckCollectionRuns.toLocaleString("ko-KR"),
-                  "running >30분",
-                ],
-                [
-                  "Stuck 스캔",
-                  summary.qualityKpis.stuckScanJobs.toLocaleString("ko-KR"),
-                  "queued/running >30분",
-                ],
-                [
-                  "추출 제한",
-                  summary.qualityKpis.extractionLimitedToday.toLocaleString(
-                    "ko-KR",
-                  ),
-                  "실패와 분리",
-                ],
-                [
-                  "discovered 잔여",
-                  summary.qualityKpis.discoveredBacklog.toLocaleString("ko-KR"),
-                  "미검증 backlog",
-                ],
-                [
-                  "진단 backlog",
-                  summary.qualityKpis.diagnosisBacklog.toLocaleString("ko-KR"),
-                  "최근 active 표본",
-                ],
-                [
-                  "진단 잔여 용량",
-                  `${summary.qualityKpis.dailyDiagnosisRemaining.toLocaleString("ko-KR")} / ${summary.qualityKpis.dailyDiagnosisCapacity.toLocaleString("ko-KR")}`,
-                  "일일 한도",
-                ],
-              ] as const
-            ).map(([label, value, hint]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-slate-200 bg-white p-3"
-              >
-                <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                  {label}
-                </p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">
-                  {value}
-                </p>
-                <p className="mt-1 text-[10px] text-slate-500">{hint}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {summary ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[
-            ["원시 발견 후보", summary.opsFunnel?.rawDiscovered ?? summary.monitoring?.totalDiscovered ?? summary.totalLinksAll],
-            ["수집 후보", summary.opsFunnel?.collectCandidate ?? summary.monitoring?.unverified ?? 0],
-            ["수집 확정", summary.opsFunnel?.collectConfirmed ?? summary.monitoring?.validActive ?? summary.byStatus?.active ?? 0],
-            ["자동진단 큐 등록", (summary.diagnosis?.queued ?? 0) + (summary.diagnosis?.running ?? 0) + (summary.diagnosis?.completed ?? 0) + (summary.diagnosis?.limited ?? 0) + (summary.diagnosis?.skipped ?? 0) + (summary.diagnosis?.skippedClosed ?? 0) + (summary.diagnosis?.skippedRestricted ?? 0) + (summary.diagnosis?.failed ?? 0) + (summary.diagnosis?.timeout ?? 0)],
-            ["자동진단 대기", summary.diagnosis?.queued ?? 0],
-            ["자동진단 진행 중", summary.diagnosis?.running ?? 0],
-            ["자동진단 완료", summary.diagnosis?.completed ?? 0],
-            ["종료로 제외", summary.diagnosis?.skippedClosed ?? 0],
-            ["접근제한 제외", summary.diagnosis?.skippedRestricted ?? 0],
-            ["실패", summary.diagnosis?.failed ?? 0],
-            ["미검증", summary.monitoring?.unverified ?? summary.verification.unverifiedDiscovered],
-            ["종료(closed)", summary.monitoring?.closed ?? summary.byStatus?.closed ?? 0],
-            ["과거 제외(stale)", summary.monitoring?.stale ?? summary.byStatus?.stale ?? 0],
-            ["접근 제한", summary.monitoring?.restricted ?? summary.byStatus?.restricted ?? 0],
-            ["개인연구 제외", summary.opsFunnel?.screenedPersonal ?? summary.byStatus?.ignored ?? 0],
-            [
-              "자동진단 대상",
-              summary.opsFunnel?.collectConfirmed ??
-                summary.monitoring?.diagnosisEligibleActive ??
-                summary.byStatus?.active ??
-                0,
-            ],
-            [
-              "자동진단 누락",
-              summary.opsFunnel?.diagnosisMissing ?? 0,
-            ],
-            [
-              "개선안내 후보",
-              summary.opsFunnel?.improvementCandidateCount ?? 0,
-            ],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-slate-200 bg-white p-3"
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                {label}
-              </p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">
-                {typeof value === "number"
-                  ? value.toLocaleString("ko-KR")
-                  : value}
-              </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <StatCard
+                label="오늘 네이버가 보여준 검색 결과"
+                value={formatCount(summary.todayFunnel?.searchResults)}
+                hint="검색 화면에 나온 글 수입니다. 설문이 아닐 수도 있습니다."
+                className="border-sky-200 bg-white"
+              />
+              <StatCard
+                label="오늘 새로 저장한 설문 주소"
+                value={formatCount(summary.todayFunnel?.newUrls)}
+                hint="오늘 처음 수집함에 들어온 주소입니다."
+                className="border-sky-200 bg-white"
+              />
+              <StatCard
+                label="오늘 설문으로 확인한 건"
+                value={formatCount(summary.todayFunnel?.validations)}
+                hint="주소가 실제 설문인지 확인해 본 건수입니다."
+                className="border-sky-200 bg-white"
+              />
+              <StatCard
+                label="지금 응답할 수 있는 설문"
+                value={formatCount(summary.todayFunnel?.activeTransitions)}
+                hint="오늘 기준으로 아직 열려 있다고 본 설문입니다."
+                className="border-sky-200 bg-white"
+              />
+              <StatCard
+                label="아직 확인하지 못한 주소"
+                value={formatCount(
+                  summary.todayFunnel?.discoveredBacklog ??
+                    summary.qualityKpis?.discoveredBacklog,
+                )}
+                hint="설문인지 아직 열어보지 못한 주소입니다."
+                className="border-sky-200 bg-white"
+              />
+              <StatCard
+                label="지금까지 설문으로 확정"
+                value={formatCount(
+                  summary.opsFunnel?.collectConfirmed ??
+                    summary.monitoring?.validActive ??
+                    summary.byStatus?.active,
+                )}
+                hint="검색으로 모아 설문이라고 확정한 전체 건수입니다."
+                className="border-sky-200 bg-white"
+              />
             </div>
-          ))}
-        </section>
+          </section>
+
+          <section className="rounded-2xl border border-teal-200 bg-teal-50/40 p-4">
+            <h2 className="text-base font-bold text-slate-900">
+              공공기관 홈페이지에서 찾은 설문
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              공공기관 공식 사이트에 직접 들어가 설문 링크를 찾습니다. 네이버
+              검색과는 별도입니다.
+            </p>
+            {summary.officialSite ? (
+              <>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <StatCard
+                    label="오늘 둘러본 기관"
+                    value={formatCount(summary.officialSite.crawledToday)}
+                    hint="오늘 공식 사이트 탐색 기관"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="오늘 발견한 설문"
+                    value={formatCount(summary.officialSite.surveysFoundToday)}
+                    hint="오늘 공식 사이트 발견 설문"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="최근 60일 안이라 진단할 설문"
+                    value={formatCount(summary.officialSite.todayRecentEligible)}
+                    hint="오늘 공식 사이트 최근 60일 적격"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="오래된 연도라 제외"
+                    value={formatCount(summary.officialSite.todayOldYearExcluded)}
+                    hint="오늘 공식 사이트 과거 연도 제외"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="날짜를 몰라 보류"
+                    value={formatCount(summary.officialSite.todayDateUnknownHold)}
+                    hint="오늘 공식 사이트 날짜 불명 보류"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="로그인이 필요해 제외"
+                    value={formatCount(
+                      summary.officialSite.todayRestrictedExcluded,
+                    )}
+                    hint="오늘 공식 사이트 접근제한 제외"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="오늘 자동진단에 올린 건"
+                    value={formatCount(summary.officialSite.todayDiagnosisQueued)}
+                    hint="오늘 공식 사이트 자동진단 큐 등록"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="주소가 잘못된 것 같아 확인 필요"
+                    value={formatCount(summary.officialSite.needsReviewCount)}
+                    hint="시드 오매핑 검토"
+                    className="border-amber-200 bg-amber-50"
+                  />
+                </div>
+                <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
+                  전체 누적 통계
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <StatCard
+                    label="모아둔 공공기관 수"
+                    value={formatCount(summary.officialSite.institutionCount)}
+                    hint="전체 공식 사이트 대상 기관"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="지금까지 발견한 설문"
+                    value={formatCount(summary.officialSite.totalSurveysFound)}
+                    hint="전체 공식 사이트 발견 설문"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="진단 대상이 된 설문"
+                    value={formatCount(summary.officialSite.totalRecentEligible)}
+                    hint="전체 공식 사이트 적격 설문"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="오래된 연도라 제외한 누적"
+                    value={formatCount(summary.officialSite.totalOldYearExcluded)}
+                    hint="전체 과거 연도 제외"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="날짜를 몰라 보류한 누적"
+                    value={formatCount(summary.officialSite.totalDateUnknownHold)}
+                    hint="전체 날짜 불명 보류"
+                    className="border-teal-200 bg-white"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">
+                공공기관 수집 숫자를 아직 불러오지 못했습니다.
+              </p>
+            )}
+          </section>
+        </div>
       ) : null}
-      {summary?.officialSite ? (
-        <section className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-slate-900">
-            오늘 공식 사이트 수집
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {(
-              [
-                ["오늘 공식 사이트 탐색 기관", summary.officialSite.crawledToday],
-                ["오늘 공식 사이트 발견 설문", summary.officialSite.surveysFoundToday],
-                [
-                  "오늘 공식 사이트 최근 60일 적격",
-                  summary.officialSite.todayRecentEligible,
-                ],
-                [
-                  "오늘 공식 사이트 과거 연도 제외",
-                  summary.officialSite.todayOldYearExcluded,
-                ],
-                [
-                  "오늘 공식 사이트 날짜 불명 보류",
-                  summary.officialSite.todayDateUnknownHold,
-                ],
-                [
-                  "오늘 공식 사이트 접근제한 제외",
-                  summary.officialSite.todayRestrictedExcluded,
-                ],
-                [
-                  "오늘 공식 사이트 자동진단 큐 등록",
-                  summary.officialSite.todayDiagnosisQueued,
-                ],
-                ["시드 오매핑 검토", summary.officialSite.needsReviewCount],
-              ] as const
-            ).map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-teal-200 bg-teal-50/40 p-3"
-              >
-                <p className="text-[11px] font-semibold tracking-wide text-teal-800">
-                  {label}
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                  {value.toLocaleString("ko-KR")}
-                </p>
-              </div>
-            ))}
-          </div>
-          <h2 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
-            전체 누적 통계
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {(
-              [
-                ["전체 공식 사이트 대상 기관", summary.officialSite.institutionCount],
-                ["전체 공식 사이트 발견 설문", summary.officialSite.totalSurveysFound],
-                ["전체 공식 사이트 적격 설문", summary.officialSite.totalRecentEligible],
-                ["전체 과거 연도 제외", summary.officialSite.totalOldYearExcluded],
-                ["전체 날짜 불명 보류", summary.officialSite.totalDateUnknownHold],
-              ] as const
-            ).map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-slate-200 bg-white p-3"
-              >
-                <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                  {label}
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                  {value.toLocaleString("ko-KR")}
-                </p>
-              </div>
-            ))}
+
+      {summary?.todayFunnel || summary?.diagnosis?.today ? (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-base font-bold text-slate-900">오늘 자동진단</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            모아 둔 설문을 오늘 얼마나 열어봤고, 그 결과가 어떤지 보여줍니다.
+            하루 동안 진단할 수 있는 횟수에는 한도가 있습니다.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <StatCard
+              label="오늘 진단해 본 설문"
+              value={formatCount(
+                summary?.diagnosis?.today?.attempted ??
+                  summary?.todayFunnel?.diagnosisAttempted,
+              )}
+              hint="오늘 자동진단을 시도한 횟수입니다."
+            />
+            <StatCard
+              label="정상적으로 진단된 설문"
+              value={formatCount(
+                summary?.diagnosis?.today?.completed ??
+                  summary?.todayFunnel?.normalDiagnosis,
+              )}
+              hint="문항을 읽어 결과를 낸 설문입니다."
+            />
+            <StatCard
+              label="이미 끝나 있어서 제외"
+              value={formatCount(
+                summary?.diagnosis?.today?.skippedClosed ??
+                  summary?.todayFunnel?.closedToday,
+              )}
+              hint="응답 기간이 지난 설문입니다."
+            />
+            <StatCard
+              label="로그인이 필요해 제외"
+              value={formatCount(
+                summary?.diagnosis?.today?.skippedRestricted ??
+                  summary?.todayFunnel?.restrictedToday,
+              )}
+              hint="권한이 있어야 열 수 있는 설문입니다."
+            />
+            <StatCard
+              label="내용은 열었지만 읽지 못함"
+              value={formatCount(
+                summary?.diagnosis?.today?.limited ??
+                  summary?.todayFunnel?.extractionLimitedToday,
+              )}
+              hint="화면은 열렸지만 문항을 충분히 읽지 못했습니다."
+            />
+            <StatCard
+              label="아직 진단하지 못한 설문"
+              value={formatCount(
+                summary?.todayFunnel?.diagnosisBacklog ??
+                  summary?.qualityKpis?.diagnosisBacklog,
+              )}
+              hint="응답 가능한데 자동진단이 아직 안 된 설문입니다."
+            />
+            <StatCard
+              label="오늘 더 진단할 수 있는 횟수"
+              value={`${formatCount(
+                summary?.diagnosis?.today?.remaining ??
+                  summary?.todayFunnel?.diagnosisRemaining ??
+                  summary?.qualityKpis?.dailyDiagnosisRemaining,
+              )} / ${formatCount(
+                summary?.diagnosis?.today?.dailyMax ??
+                  summary?.qualityKpis?.dailyDiagnosisCapacity ??
+                  summary?.opsFunnel?.dailyLimit ??
+                  300,
+              )}`}
+              hint="오늘 남은 자동진단 한도입니다."
+            />
+            <StatCard
+              label="개선안내가 필요해 보이는 설문"
+              value={formatCount(summary?.opsFunnel?.improvementCandidateCount)}
+              hint="위법 확정이 아닙니다. 확인·개선이 필요해 보이는 건수입니다."
+            />
           </div>
         </section>
-      ) : null}
-      {summary ? (
-        <p className="mb-4 text-[11px] text-slate-500">
-          수집건수는 수집 확정(collect_confirmed) 기준입니다. 원시 발견·수집 후보는 자동진단하지 않습니다.
-          종료·과거·비공개·개인연구 링크는 수집 확정에서 제외됩니다.
-          unreachable {summary.monitoring?.unreachable ?? 0} · invalid{" "}
-          {summary.monitoring?.invalid ?? 0} · 오늘 신규 {summary.todayNew}
-        </p>
       ) : null}
 
       {summary?.opsFunnel?.missingWarning ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          수집 확정 URL 중 자동진단 누락 {summary.opsFunnel.diagnosisMissing.toLocaleString("ko-KR")}건이
-          있습니다 (최근 활성 표본 {summary.opsFunnel.sampleSize.toLocaleString("ko-KR")}건 기준).
-          운영상 실패로 보고 다음 웨이브에서 이월 처리하세요. 하루 한도{" "}
-          {summary.opsFunnel.dailyLimit} / 배치 {summary.opsFunnel.batchSize} / 이월{" "}
-          {summary.opsFunnel.maxBacklogDays}일.
+          설문으로 확정됐는데 아직 자동진단이 안 된 건이{" "}
+          {formatCount(summary.opsFunnel.diagnosisMissing)}건 있습니다. 다음
+          자동진단 때 이어서 처리합니다.
         </div>
       ) : null}
 
-      {summary?.opsFunnel ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            [
-              "수집 확정률",
-              `${(summary.opsFunnel.collectConfirmedRate * 100).toFixed(1)}%`,
-            ],
-            [
-              "자동진단 완료율",
-              `${(summary.opsFunnel.diagnosisCoverageRate * 100).toFixed(1)}%`,
-            ],
-            [
-              "자동진단 누락률",
-              `${(summary.opsFunnel.diagnosisMissingRate * 100).toFixed(1)}%`,
-            ],
-            [
-              "제외율",
-              `${(summary.opsFunnel.screenedRate * 100).toFixed(1)}%`,
-            ],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-slate-200 bg-white p-3"
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                {label}
-              </p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{value}</p>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      {summary?.diagnosis ? (
-        <>
-          <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              [
-                "대기",
-                summary.diagnosis.queued,
-                "border-sky-200 text-sky-800",
-              ],
-              [
-                "진행",
-                summary.diagnosis.running,
-                "border-sky-200 text-sky-800",
-              ],
-              [
-                "완료",
-                summary.diagnosis.completed,
-                "border-emerald-200 text-emerald-800",
-              ],
-              [
-                "제한 진단",
-                summary.diagnosis.limited,
-                "border-amber-200 text-amber-800",
-              ],
-              [
-                "실패",
-                summary.diagnosis.failed,
-                "border-rose-200 text-rose-800",
-              ],
-            ].map(([label, value, tone]) => (
-              <div
-                key={String(label)}
-                className={`rounded-xl border bg-white p-3 ${String(tone).split(" ")[0]}`}
-              >
-                <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                  {label}
-                </p>
-                <p
-                  className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
-                >
-                  {Number(value).toLocaleString("ko-KR")}
-                </p>
-              </div>
-            ))}
-          </section>
-          {summary.diagnosis.today ? (
-            <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-              {[
-                [
-                  `오늘 시도(${summary.diagnosis.today.kstDate})`,
-                  summary.diagnosis.today.attempted,
-                  "border-violet-200 text-violet-800",
-                ],
-                [
-                  "오늘 대기",
-                  summary.diagnosis.today.queued ?? 0,
-                  "border-sky-200 text-sky-800",
-                ],
-                [
-                  "오늘 진행 중",
-                  summary.diagnosis.today.running ?? 0,
-                  "border-sky-200 text-sky-800",
-                ],
-                [
-                  "오늘 완료",
-                  summary.diagnosis.today.completed,
-                  "border-emerald-200 text-emerald-800",
-                ],
-                [
-                  "오늘 제한",
-                  summary.diagnosis.today.limited,
-                  "border-amber-200 text-amber-800",
-                ],
-                [
-                  "종료로 제외",
-                  summary.diagnosis.today.skippedClosed ?? 0,
-                  "border-slate-200 text-slate-800",
-                ],
-                [
-                  "접근제한 제외",
-                  summary.diagnosis.today.skippedRestricted ?? 0,
-                  "border-slate-200 text-slate-800",
-                ],
-                [
-                  "오늘 실패",
-                  summary.diagnosis.today.failed,
-                  "border-rose-200 text-rose-800",
-                ],
-                [
-                  "타임아웃",
-                  summary.diagnosis.today.timeout ?? 0,
-                  "border-rose-200 text-rose-800",
-                ],
-                [
-                  "오늘 남은 용량",
-                  summary.diagnosis.today.remaining,
-                  "border-cyan-200 text-cyan-800",
-                ],
-              ].map(([label, value, tone]) => (
-                <div
-                  key={String(label)}
-                  className={`rounded-xl border bg-white p-3 ${String(tone).split(" ")[0]}`}
-                >
-                  <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                    {label}
-                  </p>
-                  <p
-                    className={`mt-1 text-xl font-bold ${String(tone).split(" ").slice(1).join(" ")}`}
-                  >
-                    {Number(value).toLocaleString("ko-KR")}
-                    {String(label).includes("남은")
-                      ? ` / ${summary.diagnosis?.today?.dailyMax ?? summary.opsFunnel?.dailyLimit ?? 300}`
-                      : ""}
-                  </p>
-                </div>
-              ))}
-            </section>
-          ) : null}
-        </>
-      ) : null}
-
-      {summary ? (
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            [
-              "실제 설문 확인율",
-              `${(summary.verification.confirmedSurveyRate * 100).toFixed(1)}%`,
-            ],
-            [
-              "invalid 비율",
-              `${(summary.verification.invalidRate * 100).toFixed(1)}%`,
-            ],
-            [
-              "플랫폼 합(전체)",
-              `${summary.byPlatformAll.google_forms + summary.byPlatformAll.naver_form + summary.byPlatformAll.moaform}`,
-            ],
-            ["ignored", summary.verification.ignored],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-slate-200 bg-white p-3"
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                {label}
-              </p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{value}</p>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      {summary ? (
-        <p className="mb-4 text-[11px] text-slate-500">
-          {summary.verification.accuracySampleNote} 플랫폼 카드(Google/Naver/Moa)
-          기본값은 invalid·ignored 제외 집계이며, 위 「플랫폼 합(전체)」은 전체
-          상태 기준입니다.
-        </p>
+      {summary?.qualityKpis ? (
+        <details className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+            시스템이 잘 돌고 있는지 (접기/펼치기)
+          </summary>
+          <p className="mt-2 text-sm text-slate-600">
+            평소에는 닫아 두셔도 됩니다. 숫자가 갑자기 커지면 작업이 멈춘
+            것입니다.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="오늘 시스템 오류 비율"
+              value={`${(summary.qualityKpis.systemFailureRateToday * 100).toFixed(1)}%`}
+              hint="설문이 끝나거나 로그인이 필요한 경우는 오류가 아닙니다."
+            />
+            <StatCard
+              label="오래 멈춘 수집"
+              value={formatCount(summary.qualityKpis.stuckCollectionRuns)}
+              hint="30분 넘게 끝나지 않은 수집 작업입니다."
+            />
+            <StatCard
+              label="오래 멈춘 진단"
+              value={formatCount(summary.qualityKpis.stuckScanJobs)}
+              hint="30분 넘게 끝나지 않은 진단 작업입니다."
+            />
+            <StatCard
+              label="지금까지 모은 주소"
+              value={formatCount(
+                summary.opsFunnel?.rawDiscovered ??
+                  summary.monitoring?.totalDiscovered ??
+                  summary.totalLinksAll,
+              )}
+              hint="검색·공식 사이트에서 들어온 주소 전체입니다. 설문이 아닌 것도 포함됩니다."
+            />
+            <StatCard
+              label="응답이 끝난 설문"
+              value={formatCount(
+                summary.monitoring?.closed ?? summary.byStatus?.closed,
+              )}
+            />
+            <StatCard
+              label="오래된 설문"
+              value={formatCount(
+                summary.monitoring?.stale ?? summary.byStatus?.stale,
+              )}
+            />
+            <StatCard
+              label="설문으로 확정된 비율"
+              value={`${((summary.opsFunnel?.collectConfirmedRate ?? 0) * 100).toFixed(1)}%`}
+            />
+            <StatCard
+              label="자동진단이 끝난 비율"
+              value={`${((summary.opsFunnel?.diagnosisCoverageRate ?? 0) * 100).toFixed(1)}%`}
+            />
+          </div>
+        </details>
       ) : null}
 
       {summary?.lastRun ? (
-        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-          <p>
+        <details className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <summary className="cursor-pointer font-semibold text-slate-900">
+            최근 수집 실행 상세 (접기/펼치기)
+          </summary>
+          <p className="mt-3">
             <span className="text-slate-500">마지막 수집:</span>{" "}
             {formatDate(summary.lastRun.started_at)} ·{" "}
             <span className="font-semibold text-teal-800">
@@ -727,7 +616,7 @@ export function CollectorConsoleView({
               : {summary.lastRun.error_summary.slice(0, 600)}
             </p>
           ) : null}
-        </section>
+        </details>
       ) : null}
 
       {summary && summary.lastRunHasQueryStats ? (
@@ -987,10 +876,10 @@ export function CollectorConsoleView({
             onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
           >
             <option value="all">전체</option>
-            <option value="web">웹문서</option>
-            <option value="blog">블로그</option>
-            <option value="cafe">카페</option>
-            <option value="official_site">공식 사이트</option>
+            <option value="web">네이버 검색 · 웹문서</option>
+            <option value="blog">네이버 검색 · 블로그</option>
+            <option value="cafe">네이버 검색 · 카페</option>
+            <option value="official_site">공공기관 공식 사이트</option>
           </select>
         </label>
         <label className="text-xs text-slate-500">
