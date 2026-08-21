@@ -23,6 +23,7 @@ import {
   OFFICIAL_SITE_ORG_BUDGET_MS,
   OFFICIAL_SITE_TIMEOUT_PER_PAGE_MS,
 } from "@/lib/collector/officialSiteCrawlPolicy";
+import { officialSiteSameOrigin } from "@/lib/collector/officialSiteOrigin";
 import type { OfficialInstitutionSiteRow } from "@/lib/collector/officialSiteRepository";
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { insertSurveySource, upsertSurveyLink } from "@/lib/collector/repository";
@@ -35,6 +36,7 @@ export type OfficialSiteOrgCrawlResult = {
   pagesFetched: number;
   surveyUrlsFound: number;
   surveysSaved: number;
+  crossOriginSkipped: number;
   errors: string[];
   ok: boolean;
 };
@@ -43,12 +45,8 @@ type QueueItem = { url: string; depth: number; score: number };
 
 const originSafety = new Map<string, boolean>();
 
-function hostKey(hostname: string): string {
-  return hostname.replace(/^www\./i, "").toLowerCase();
-}
-
 function sameOriginOnly(seed: URL, candidate: URL): boolean {
-  return hostKey(seed.hostname) === hostKey(candidate.hostname);
+  return officialSiteSameOrigin(seed.toString(), candidate.toString());
 }
 
 function absoluteUrl(base: string, href: string): string | null {
@@ -178,13 +176,42 @@ export async function crawlOfficialInstitutionSite(
   row: OfficialInstitutionSiteRow,
   options?: { now?: Date; maxPages?: number },
 ): Promise<OfficialSiteOrgCrawlResult> {
+  const empty = (crossOriginSkipped = 0): OfficialSiteOrgCrawlResult => ({
+    organizationName: row.organization_name,
+    pagesFetched: 0,
+    surveyUrlsFound: 0,
+    surveysSaved: 0,
+    crossOriginSkipped,
+    errors: [],
+    ok: true,
+  });
+  if (
+    row.seed_review_status === "needs_review" ||
+    row.seed_review_status === "excluded"
+  ) {
+    return empty();
+  }
   const started = Date.now();
   const maxPages = options?.maxPages ?? OFFICIAL_SITE_MAX_PAGES;
-  const seedOrigin = new URL(row.homepage_url);
+  let seedOrigin: URL;
+  try {
+    seedOrigin = new URL(row.homepage_url);
+  } catch {
+    return empty();
+  }
   const seen = new Set<string>();
   const queue: QueueItem[] = [];
-  for (const seed of [row.homepage_url, ...row.seed_urls]) {
-    queue.push({ url: seed, depth: 0, score: 20 });
+  let crossOriginSkipped = 0;
+  const enqueueSeed = (url: string, depth: number, score: number) => {
+    if (!officialSiteSameOrigin(row.homepage_url, url)) {
+      crossOriginSkipped += 1;
+      return;
+    }
+    queue.push({ url, depth, score });
+  };
+  enqueueSeed(row.homepage_url, 0, 20);
+  for (const seed of row.seed_urls || []) {
+    enqueueSeed(seed, 0, 20);
   }
   const findsBySurvey = new Map<string, OfficialSiteSurveyFind>();
   const errors: string[] = [];
@@ -208,6 +235,10 @@ export async function crawlOfficialInstitutionSite(
     }
 
     const pageUrl = page.finalUrl || item.url;
+    if (!officialSiteSameOrigin(row.homepage_url, pageUrl)) {
+      crossOriginSkipped += 1;
+      continue;
+    }
     const found = collectPageFinds(page.html, pageUrl, seedOrigin);
     for (const find of found.finds) {
       const surveyKey = find.surveyUrl.replace(/\/$/, "").toLowerCase();
@@ -220,12 +251,20 @@ export async function crawlOfficialInstitutionSite(
       for (const next of found.nextPages) {
         const nextKey = next.url.replace(/\/$/, "").toLowerCase();
         if (seen.has(nextKey)) continue;
+        if (!officialSiteSameOrigin(row.homepage_url, next.url)) {
+          crossOriginSkipped += 1;
+          continue;
+        }
         queue.push({ ...next, depth: item.depth + 1 });
       }
     }
   }
 
   for (const find of findsBySurvey.values()) {
+    if (!officialSiteSameOrigin(row.homepage_url, find.sourcePageUrl)) {
+      crossOriginSkipped += 1;
+      continue;
+    }
     try {
       const processed = await processSurveyCandidate({
         rawUrl: find.surveyUrl,
@@ -313,6 +352,7 @@ export async function crawlOfficialInstitutionSite(
     pagesFetched,
     surveyUrlsFound: findsBySurvey.size,
     surveysSaved,
+    crossOriginSkipped,
     errors: errors.slice(0, 8),
     ok: errors.length === 0 || surveysSaved > 0 || pagesFetched > 0,
   };

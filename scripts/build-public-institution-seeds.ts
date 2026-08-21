@@ -13,12 +13,21 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import * as XLSX from "xlsx";
+import {
+  groupUrlsByHostname,
+  homepageFromHttpUrl,
+  officialSiteHostname,
+  partitionSeedUrlsByHomepageOrigin,
+  uniqueHttpUrls,
+} from "../lib/collector/officialSiteOrigin";
+import { splitOfficialInstitutionSeedsByHost } from "../lib/collector/officialSiteSeeds";
 
 export type OfficialInstitutionSeed = {
   organizationName: string;
   organizationType: string;
   homepageUrl: string;
   seedUrls: string[];
+  rejectedSeedUrls?: string[];
   source: "wiseon_public_institution_list";
 };
 
@@ -81,28 +90,7 @@ export function normalizeHttpUrl(raw: string): string | null {
 export function homepageFromUrl(raw: string): string | null {
   const normalized = normalizeHttpUrl(raw);
   if (!normalized) return null;
-  try {
-    const parsed = new URL(normalized);
-    parsed.pathname = "/";
-    parsed.search = "";
-    parsed.hash = "";
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-function uniqueUrls(urls: Array<string | null>): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const url of urls) {
-    if (!url) continue;
-    const key = url.replace(/\/$/, "").toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(url);
-  }
-  return out;
+  return homepageFromHttpUrl(normalized);
 }
 
 export function buildOfficialInstitutionSeeds(
@@ -112,10 +100,7 @@ export function buildOfficialInstitutionSeeds(
   invalidUrlsExcluded: number;
   unnamedExcluded: number;
 } {
-  const byName = new Map<
-    string,
-    { organizationType: string; urls: string[] }
-  >();
+  const drafts: OfficialInstitutionSeed[] = [];
   let unnamedExcluded = 0;
 
   for (const row of rows) {
@@ -125,45 +110,43 @@ export function buildOfficialInstitutionSeeds(
       continue;
     }
     const organizationType = cell(row, TYPE_KEYS);
-    const urls = uniqueUrls([
+    const urls = uniqueHttpUrls([
       normalizeHttpUrl(cell(row, HOME_URL_KEYS)),
       normalizeHttpUrl(cell(row, ORG_URL_KEYS)),
       normalizeHttpUrl(cell(row, RELATED_URL_KEYS)),
       homepageFromUrl(cell(row, ORG_URL_KEYS)),
     ]);
-    const current = byName.get(organizationName);
-    if (!current) {
-      byName.set(organizationName, { organizationType, urls });
-      continue;
+    if (urls.length === 0) continue;
+    const groups = groupUrlsByHostname(urls);
+    for (const [host, hostUrls] of groups) {
+      const homepageUrl =
+        hostUrls.map((url) => homepageFromHttpUrl(url)).find(Boolean) || null;
+      if (!homepageUrl || officialSiteHostname(homepageUrl) !== host) continue;
+      const partitioned = partitionSeedUrlsByHomepageOrigin(homepageUrl, hostUrls);
+      drafts.push({
+        organizationName,
+        organizationType,
+        homepageUrl,
+        seedUrls: partitioned.validSeedUrls,
+        rejectedSeedUrls: partitioned.rejectedSeedUrls,
+        source: "wiseon_public_institution_list",
+      });
     }
-    if (!current.organizationType && organizationType) {
-      current.organizationType = organizationType;
-    }
-    current.urls = uniqueUrls([...current.urls, ...urls]);
   }
 
-  const seeds: OfficialInstitutionSeed[] = [];
-  let invalidUrlsExcluded = 0;
-  for (const [organizationName, value] of byName) {
-    const homepageUrl =
-      value.urls.map((url) => homepageFromUrl(url)).find(Boolean) || null;
-    if (!homepageUrl) {
-      invalidUrlsExcluded += 1;
-      continue;
-    }
-    const seedUrls = uniqueUrls([homepageUrl, ...value.urls]);
-    seeds.push({
-      organizationName,
-      organizationType: value.organizationType || "공공기관",
-      homepageUrl,
-      seedUrls,
-      source: "wiseon_public_institution_list",
-    });
-  }
+  const seeds = splitOfficialInstitutionSeedsByHost(drafts);
+  const invalidUrlsExcluded = rows.filter((row) => {
+    const organizationName = cell(row, NAME_KEYS);
+    if (!organizationName) return false;
+    const urls = uniqueHttpUrls([
+      normalizeHttpUrl(cell(row, HOME_URL_KEYS)),
+      normalizeHttpUrl(cell(row, ORG_URL_KEYS)),
+      normalizeHttpUrl(cell(row, RELATED_URL_KEYS)),
+      homepageFromUrl(cell(row, ORG_URL_KEYS)),
+    ]);
+    return urls.length === 0;
+  }).length;
 
-  seeds.sort((a, b) =>
-    a.organizationName.localeCompare(b.organizationName, "ko"),
-  );
   return { seeds, invalidUrlsExcluded, unnamedExcluded };
 }
 

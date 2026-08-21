@@ -21,6 +21,8 @@ export type OfficialSiteCollectionResult = {
   crawled: number;
   surveysSaved: number;
   pagesFetched: number;
+  crossOriginSkipped?: number;
+  organizations?: string[];
   errors: string[];
   reason?: string;
   skippedParallel?: boolean;
@@ -71,7 +73,9 @@ export async function runOfficialSiteCollection(input?: {
 
   const dueNow = new Date(Math.max(Date.now(), now.getTime()));
   const due = (await listDueOfficialInstitutionSites(limit, dueNow)).filter(
-    (row) => row.seed_review_status !== "needs_review",
+    (row) =>
+      row.seed_review_status !== "needs_review" &&
+      row.seed_review_status !== "excluded",
   );
   const claimedIds = new Set(await claimOfficialSiteCrawl(due.map((row) => row.id)));
   const claimed = due.filter((row) => claimedIds.has(row.id));
@@ -89,6 +93,8 @@ export async function runOfficialSiteCollection(input?: {
   let crawled = 0;
   let surveysSaved = 0;
   let pagesFetched = 0;
+  let crossOriginSkipped = 0;
+  const organizations: string[] = [];
 
   for (const row of claimed) {
     if (Date.now() - started > OFFICIAL_SITE_RUN_BUDGET_MS) {
@@ -107,6 +113,8 @@ export async function runOfficialSiteCollection(input?: {
       crawled += 1;
       surveysSaved += result.surveysSaved;
       pagesFetched += result.pagesFetched;
+      crossOriginSkipped += result.crossOriginSkipped;
+      organizations.push(row.organization_name);
       errors.push(...result.errors);
       await finishOfficialSiteCrawl({
         row,
@@ -137,6 +145,8 @@ export async function runOfficialSiteCollection(input?: {
     crawled,
     surveysSaved,
     pagesFetched,
+    crossOriginSkipped,
+    organizations,
     errors: errors.slice(0, 12),
     orgsPerRun: OFFICIAL_SITE_MAX_ORGS_PER_RUN,
   };

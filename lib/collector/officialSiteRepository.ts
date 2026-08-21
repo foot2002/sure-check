@@ -10,6 +10,7 @@ import {
   type OfficialSiteCrawlStatus,
 } from "@/lib/collector/officialSiteCrawlPolicy";
 import { OFFICIAL_SITE_STALE_RUNNING_MS } from "@/lib/collector/opsCapacityPolicy";
+import { officialSiteHostname, partitionSeedUrlsByHomepageOrigin } from "@/lib/collector/officialSiteOrigin";
 import type { OfficialInstitutionSeed } from "@/lib/collector/officialSiteSeeds";
 import {
   reviewOfficialSiteSeeds,
@@ -35,8 +36,10 @@ export type OfficialInstitutionSiteRow = {
   last_error: string | null;
   last_pages_fetched: number;
   last_surveys_found: number;
-  seed_review_status: "ok" | "needs_review";
+  seed_review_status: "ok" | "needs_review" | "excluded";
   seed_review_reason: string | null;
+  homepage_host: string | null;
+  rejected_seed_urls: string[];
 };
 
 function client() {
@@ -68,8 +71,13 @@ function mapRow(row: Record<string, unknown>): OfficialInstitutionSiteRow {
     last_pages_fetched: Number(row.last_pages_fetched || 0),
     last_surveys_found: Number(row.last_surveys_found || 0),
     seed_review_status:
-      row.seed_review_status === "needs_review" ? "needs_review" : "ok",
+      row.seed_review_status === "needs_review" ||
+      row.seed_review_status === "excluded"
+        ? row.seed_review_status
+        : "ok",
     seed_review_reason: (row.seed_review_reason as string | null) || null,
+    homepage_host: (row.homepage_host as string | null) || officialSiteHostname(String(row.homepage_url || "")),
+    rejected_seed_urls: asUrls(row.rejected_seed_urls),
   };
 }
 
@@ -81,8 +89,14 @@ export async function syncOfficialInstitutionSites(
   const reviews = reviewOfficialSiteSeeds(seeds);
   const reviewByKey = new Map<string, OfficialSiteSeedReview>();
   for (const seed of seeds) {
-    const review = reviews.find((item) => item.organizationName === seed.organizationName);
-    if (review) reviewByKey.set(seedKey(seed), review);
+    const key = seedKey(seed);
+    const review = reviews.find(
+      (item) => seedKey({
+        organizationName: item.organizationName,
+        homepageUrl: item.homepageUrl,
+      }) === key,
+    );
+    if (review) reviewByKey.set(key, review);
   }
   const chunkSize = 80;
   let upserted = 0;
@@ -90,20 +104,42 @@ export async function syncOfficialInstitutionSites(
     const slice = seeds.slice(i, i + chunkSize).map((seed) => {
       const priority = crawlPriorityForType(seed.organizationType);
       const review = reviewByKey.get(seedKey(seed));
-      const needsReview = review?.status === "needs_review";
+      const partitioned = partitionSeedUrlsByHomepageOrigin(
+        seed.homepageUrl,
+        seed.seedUrls,
+      );
+      const rejected = partitioned.rejectedSeedUrls.length > 0
+        ? partitioned.rejectedSeedUrls
+        : seed.rejectedSeedUrls || [];
+      const needsReview =
+        review?.status === "needs_review" ||
+        review?.status === "excluded" ||
+        rejected.length > 0;
+      const status =
+        review?.status === "excluded" ||
+        (rejected.length > 0 && partitioned.validSeedUrls.length === 0)
+          ? "excluded"
+          : needsReview
+            ? "needs_review"
+            : "ok";
+      const reason =
+        review?.reason ||
+        (rejected.length > 0 ? "cross_origin_seed_url" : null);
       return {
         seed_key: seedKey(seed),
         organization_name: seed.organizationName,
         organization_type: seed.organizationType,
         homepage_url: seed.homepageUrl,
-        seed_urls: seed.seedUrls,
+        homepage_host: partitioned.homepageHost,
+        seed_urls: partitioned.validSeedUrls,
+        rejected_seed_urls: rejected,
         source: seed.source,
-        crawl_priority: needsReview ? "C" : priority,
-        crawl_interval_days: crawlIntervalDaysForPriority(needsReview ? "C" : priority),
+        crawl_priority: status === "ok" ? priority : "C",
+        crawl_interval_days: crawlIntervalDaysForPriority(status === "ok" ? priority : "C"),
         next_crawl_at: now.toISOString(),
-        seed_review_status: needsReview ? "needs_review" : "ok",
-        seed_review_reason: review?.reason || null,
-        last_error: needsReview ? "seed_domain_mismatch" : null,
+        seed_review_status: status,
+        seed_review_reason: reason,
+        last_error: status === "ok" ? null : reason === "domain_mismatch" ? "seed_domain_mismatch" : reason,
       };
     });
     const { error } = await supabase.from("official_institution_sites").upsert(slice, {
@@ -112,15 +148,21 @@ export async function syncOfficialInstitutionSites(
     });
     if (error) {
       const missingReviewCol =
-        /seed_review_status|seed_review_reason/i.test(error.message);
+        /seed_review_status|seed_review_reason|homepage_host|rejected_seed_urls|seed_review_notes/i.test(error.message);
       const missingTable =
         /schema cache/i.test(error.message) ||
         /relation .* does not exist/i.test(error.message);
       if (missingReviewCol) {
+        console.warn(
+          "[collector] official-site seed quality columns missing — apply db/migrations/014_official_site_seed_quality.sql",
+        );
         const stripped = slice.map((row) => {
           const copy = { ...row } as Record<string, unknown>;
           delete copy.seed_review_status;
           delete copy.seed_review_reason;
+          delete copy.homepage_host;
+          delete copy.rejected_seed_urls;
+          delete copy.seed_review_notes;
           return copy;
         });
         const retry = await supabase.from("official_institution_sites").upsert(stripped, {
@@ -148,13 +190,16 @@ export async function applyOfficialSiteSeedReviews(
   now: Date = new Date(),
 ): Promise<number> {
   const supabase = client();
-  const byName = new Map(seeds.map((seed) => [seed.organizationName, seed]));
+  const seedKeys = new Set(seeds.map((seed) => seedKey(seed)));
   const holdByReason = new Map<string, string[]>();
   const holdSet = new Set<string>();
   for (const review of reviews) {
-    const seed = byName.get(review.organizationName);
-    if (!seed || review.status !== "needs_review") continue;
-    const key = seedKey(seed);
+    if (review.status !== "needs_review" && review.status !== "excluded") continue;
+    const key = seedKey({
+      organizationName: review.organizationName,
+      homepageUrl: review.homepageUrl,
+    });
+    if (!seedKeys.has(key)) continue;
     holdSet.add(key);
     const reason = review.reason || "domain_mismatch";
     const list = holdByReason.get(reason) || [];
@@ -169,7 +214,7 @@ export async function applyOfficialSiteSeedReviews(
         .from("official_institution_sites")
         .update(patch)
         .in("seed_key", slice);
-      if (error && /seed_review_status|column|does not exist/i.test(error.message)) {
+      if (error && /seed_review_status|column|does not exist|rejected_seed_urls|homepage_host/i.test(error.message)) {
         return false;
       }
       if (error) {
@@ -192,19 +237,33 @@ export async function applyOfficialSiteSeedReviews(
 
   const existing = await supabase
     .from("official_institution_sites")
-    .select("seed_key")
-    .eq("seed_review_status", "needs_review");
-  if (!existing.error) {
-    const clearKeys = (existing.data || [])
-      .map((row) => String(row.seed_key))
-      .filter((key) => !holdSet.has(key));
-    if (clearKeys.length > 0) {
-      await updateChunk(clearKeys, {
-        seed_review_status: "ok",
-        seed_review_reason: null,
-        last_error: null,
-      });
-    }
+    .select("seed_key, rejected_seed_urls")
+    .in("seed_review_status", ["needs_review", "excluded"]);
+  if (existing.error && /rejected_seed_urls|column|does not exist/i.test(existing.error.message)) {
+    return holdSet.size;
+  }
+  const existingRows = existing.error
+    ? (
+        await supabase
+          .from("official_institution_sites")
+          .select("seed_key")
+          .eq("seed_review_status", "needs_review")
+      ).data || []
+    : existing.data || [];
+  const rejectedKeys = new Set(
+    existingRows
+      .filter((row) => asUrls((row as { rejected_seed_urls?: unknown }).rejected_seed_urls).length > 0)
+      .map((row) => String(row.seed_key)),
+  );
+  const clearKeys = existingRows
+    .map((row) => String(row.seed_key))
+    .filter((key) => !holdSet.has(key) && !rejectedKeys.has(key));
+  if (clearKeys.length > 0) {
+    await updateChunk(clearKeys, {
+      seed_review_status: "ok",
+      seed_review_reason: null,
+      last_error: null,
+    });
   }
   return holdSet.size;
 }
@@ -236,14 +295,27 @@ export async function listDueOfficialInstitutionSites(
       if (fallback.error) {
         throw new Error(`due official sites 조회 실패: ${fallback.error.message}`);
       }
-      return (fallback.data || []).map((row) => mapRow(row as Record<string, unknown>));
+      return (fallback.data || [])
+        .map((row) => mapRow(row as Record<string, unknown>))
+        .filter((row) => {
+          if (row.seed_review_status === "needs_review") return false;
+          if (row.seed_review_status === "excluded") return false;
+          return Boolean(officialSiteHostname(row.homepage_url));
+        });
     }
     if (/schema cache/i.test(error.message) || /relation .* does not exist/i.test(error.message)) {
       return [];
     }
     throw new Error(`due official sites 조회 실패: ${error.message}`);
   }
-  return (data || []).map((row) => mapRow(row as Record<string, unknown>));
+  return (data || [])
+    .map((row) => mapRow(row as Record<string, unknown>))
+    .filter((row) => {
+      if (row.seed_review_status === "needs_review") return false;
+      if (row.seed_review_status === "excluded") return false;
+      if (row.crawl_status === "running") return false;
+      return Boolean(officialSiteHostname(row.homepage_url));
+    });
 }
 
 export async function recoverStaleOfficialSiteRunning(
@@ -512,6 +584,39 @@ export async function countOfficialSiteNeedsReview(): Promise<number> {
   return count ?? 0;
 }
 
+export async function countOfficialSiteExcluded(): Promise<number> {
+  const supabase = client();
+  const { count, error } = await supabase
+    .from("official_institution_sites")
+    .select("id", { count: "exact", head: true })
+    .eq("seed_review_status", "excluded");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function countOfficialSiteRejectedSeedRows(): Promise<number> {
+  const supabase = client();
+  const { data, error } = await supabase
+    .from("official_institution_sites")
+    .select("rejected_seed_urls")
+    .neq("rejected_seed_urls", "[]");
+  if (error) return 0;
+  return (data || []).filter((row) => asUrls(row.rejected_seed_urls).length > 0).length;
+}
+
+export async function countOfficialSiteRejectedSeedUrls(): Promise<number> {
+  const supabase = client();
+  const { data, error } = await supabase
+    .from("official_institution_sites")
+    .select("rejected_seed_urls")
+    .neq("rejected_seed_urls", "[]");
+  if (error) return 0;
+  return (data || []).reduce(
+    (sum, row) => sum + asUrls(row.rejected_seed_urls).length,
+    0,
+  );
+}
+
 export async function listOfficialSiteNeedsReviewSamples(
   limit = 5,
 ): Promise<
@@ -519,9 +624,26 @@ export async function listOfficialSiteNeedsReviewSamples(
     organizationName: string;
     homepageUrl: string;
     reason: string | null;
+    rejectedSeedUrls?: string[];
+    status?: string;
   }>
 > {
   const supabase = client();
+  const withRejected = await supabase
+    .from("official_institution_sites")
+    .select("organization_name, homepage_url, seed_review_reason, seed_review_status, rejected_seed_urls")
+    .in("seed_review_status", ["needs_review", "excluded"])
+    .order("organization_name", { ascending: true })
+    .limit(Math.max(1, Math.min(12, limit)));
+  if (!withRejected.error) {
+    return (withRejected.data || []).map((row) => ({
+      organizationName: String(row.organization_name || ""),
+      homepageUrl: String(row.homepage_url || ""),
+      reason: (row.seed_review_reason as string | null) || null,
+      rejectedSeedUrls: asUrls(row.rejected_seed_urls),
+      status: String(row.seed_review_status || "needs_review"),
+    }));
+  }
   const { data, error } = await supabase
     .from("official_institution_sites")
     .select("organization_name, homepage_url, seed_review_reason")

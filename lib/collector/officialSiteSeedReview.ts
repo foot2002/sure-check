@@ -5,12 +5,16 @@
  */
 
 import type { OfficialInstitutionSeed } from "@/lib/collector/officialSiteSeeds";
+import { partitionSeedUrlsByHomepageOrigin } from "@/lib/collector/officialSiteOrigin";
 
-export type SeedReviewStatus = "ok" | "needs_review";
+export type SeedReviewStatus = "ok" | "needs_review" | "excluded";
 export type SeedReviewReason =
   | "domain_mismatch"
   | "invalid_url"
-  | "missing_homepage";
+  | "invalid_homepage"
+  | "missing_homepage"
+  | "cross_origin_seed_url"
+  | "homonym_merged";
 
 export type OfficialSiteSeedReview = {
   organizationName: string;
@@ -183,7 +187,7 @@ export function reviewOfficialSiteSeed(
       organizationName: seed.organizationName,
       homepageUrl,
       status: "needs_review",
-      reason: "invalid_url",
+      reason: "invalid_homepage",
     };
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -191,9 +195,27 @@ export function reviewOfficialSiteSeed(
       organizationName: seed.organizationName,
       homepageUrl,
       status: "needs_review",
-      reason: "invalid_url",
+      reason: "invalid_homepage",
     };
   }
+
+  const partitioned = partitionSeedUrlsByHomepageOrigin(
+    homepageUrl,
+    seed.seedUrls || [],
+  );
+  const rejected = [
+    ...partitioned.rejectedSeedUrls,
+    ...(seed.rejectedSeedUrls || []),
+  ];
+  if (rejected.length > 0) {
+    return {
+      organizationName: seed.organizationName,
+      homepageUrl,
+      status: "needs_review",
+      reason: "cross_origin_seed_url",
+    };
+  }
+
   if (!isLocalGovernment(seed)) {
     return {
       organizationName: seed.organizationName,

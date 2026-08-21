@@ -75,6 +75,22 @@ console.log("[Official Site Collector Check]\n");
 }
 
 {
+  const built = buildOfficialInstitutionSeeds([
+    {
+      "기관명(부속기관)": "서구",
+      "대분류(기관유형)": "기초자치단체",
+      "홈페이지": "https://bsseogu.go.kr/",
+      "조직도 링크": "https://www.dgs.go.kr/org",
+    },
+  ]);
+  assert.ok(built.seeds.length >= 2);
+  const keys = built.seeds.map((seed) => seedKey(seed));
+  assert.ok(keys.includes("서구::bsseogu.go.kr"));
+  assert.ok(keys.includes("서구::dgs.go.kr"));
+  console.log("  PASS  homonym 서구 is split by homepage host");
+}
+
+{
   assert.equal(crawlPriorityForType("중앙부처"), "A");
   assert.equal(crawlPriorityForType("출연기관"), "B");
   assert.equal(crawlPriorityForType("교육지원청"), "C");

@@ -30,7 +30,9 @@ console.log("[Official Site Quality Metrics Check]\n");
   assert.ok(snap.includes("periodExtractRate"));
   assert.ok(snap.includes("dateExtractSuccessRate"));
   assert.ok(snap.includes("sourceEvidenceSchemaMissing"));
-  assert.ok(snap.includes("012_official_site_source_evidence.sql"));
+  assert.ok(snap.includes("014_official_site_seed_quality.sql"));
+  assert.ok(snap.includes("rejected_seed_urls"));
+  assert.ok(snap.includes("excluded"));
   assert.ok(snap.includes("needs_review"));
   assert.ok(snap.includes("listOfficialSiteNeedsReviewSamples"));
   assert.ok(snap.includes('seed_review_status.eq.ok'));
@@ -40,8 +42,9 @@ console.log("[Official Site Quality Metrics Check]\n");
 {
   const run = source("lib/collector/runOfficialSiteCollection.ts");
   assert.ok(run.includes('seed_review_status !== "needs_review"'));
+  assert.ok(run.includes('seed_review_status !== "excluded"'));
   const sync = source("lib/collector/officialSiteRepository.ts");
-  assert.ok(sync.includes('crawl_priority: needsReview ? "C"'));
+  assert.ok(sync.includes('crawl_priority: status === "ok" ? priority : "C"'));
   console.log("  PASS  needs_review seeds skipped or lowered to C");
 }
 

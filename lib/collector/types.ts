@@ -369,7 +369,12 @@ export interface CollectorSummary {
       organizationName: string;
       homepageUrl: string;
       reason: string | null;
+      rejectedSeedUrls?: string[];
+      status?: string;
     }>;
+    excludedSeedCount?: number;
+    rejectedSeedRowCount?: number;
+    rejectedSeedUrlCount?: number;
     todayPagesFetched?: number;
     todayOrgsWithSurveys?: number;
     avgPagesPerOrg?: number;

@@ -274,13 +274,21 @@
   {
     "organizationName": "강서구",
     "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.bsgangseo.go.kr/",
+    "seedUrls": [
+      "https://www.bsgangseo.go.kr/",
+      "https://www.bsgangseo.go.kr/portal/dept/list.do?mid=0603040200&dept=33601750000",
+      "https://www.bsgangseo.go.kr/portal/dept/list.do?mid=0603070200&dept=33601780000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "강서구",
+    "organizationType": "기초자치단체",
     "homepageUrl": "https://www.gangseo.seoul.kr/",
     "seedUrls": [
       "https://www.gangseo.seoul.kr/",
-      "https://www.gangseo.seoul.kr/gs050376",
-      "https://www.bsgangseo.go.kr/portal/dept/list.do?mid=0603040200&dept=33601750000",
-      "https://www.bsgangseo.go.kr/",
-      "https://www.bsgangseo.go.kr/portal/dept/list.do?mid=0603070200&dept=33601780000"
+      "https://www.gangseo.seoul.kr/gs050376"
     ],
     "source": "wiseon_public_institution_list"
   },
@@ -1266,14 +1274,22 @@
   {
     "organizationName": "고성군",
     "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.goseong.go.kr/",
+    "seedUrls": [
+      "https://www.goseong.go.kr/",
+      "https://www.goseong.go.kr/index.goseong?menuCd=DOM_000000107003002000",
+      "https://www.goseong.go.kr/index.goseong?menuCd=DOM_000000107008002000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "고성군",
+    "organizationType": "기초자치단체",
     "homepageUrl": "https://www.gwgs.go.kr/",
     "seedUrls": [
       "https://www.gwgs.go.kr/",
       "https://www.gwgs.go.kr/prog/deptPerson/kor/sub04_050402/4341020/list.do",
-      "https://www.gwgs.go.kr/prog/deptPerson/kor/sub04_050402/4341022/list.do",
-      "https://www.goseong.go.kr/index.goseong?menuCd=DOM_000000107003002000",
-      "https://www.goseong.go.kr/",
-      "https://www.goseong.go.kr/index.goseong?menuCd=DOM_000000107008002000"
+      "https://www.gwgs.go.kr/prog/deptPerson/kor/sub04_050402/4341022/list.do"
     ],
     "source": "wiseon_public_institution_list"
   },
@@ -2974,13 +2990,37 @@
     "homepageUrl": "https://www.bsnamgu.go.kr/",
     "seedUrls": [
       "https://www.bsnamgu.go.kr/",
-      "https://www.bsnamgu.go.kr/index.namgu?menuCd=DOM_000000101005006001&officeCd=1033000000000",
-      "https://www.nam.daegu.kr/index.do?menu_id=00000945&deptcode=34401450000",
+      "https://www.bsnamgu.go.kr/index.namgu?menuCd=DOM_000000101005006001&officeCd=1033000000000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "남구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.nam.daegu.kr/",
+    "seedUrls": [
       "https://www.nam.daegu.kr/",
-      "https://www.namgu.gwangju.kr/organizationTeam.es?mid=a10707050100&org_cd=3610219",
+      "https://www.nam.daegu.kr/index.do?menu_id=00000945&deptcode=34401450000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "남구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.namgu.gwangju.kr/",
+    "seedUrls": [
       "https://www.namgu.gwangju.kr/",
-      "https://www.ulsannamgu.go.kr/aboutNamgu/specificInformation.jsp?searchCode=01",
+      "https://www.namgu.gwangju.kr/organizationTeam.es?mid=a10707050100&org_cd=3610219"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "남구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.ulsannamgu.go.kr/",
+    "seedUrls": [
       "https://www.ulsannamgu.go.kr/",
+      "https://www.ulsannamgu.go.kr/aboutNamgu/specificInformation.jsp?searchCode=01",
       "https://www.ulsannamgu.go.kr/aboutNamgu/specificInformation.jsp?searchCode=05"
     ],
     "source": "wiseon_public_institution_list"
@@ -3770,22 +3810,62 @@
   {
     "organizationName": "동구",
     "organizationType": "기초자치단체",
+    "homepageUrl": "https://dong.daegu.kr/",
+    "seedUrls": [
+      "https://dong.daegu.kr/",
+      "https://dong.daegu.kr/portal/staff/list.do?mid=0601060100"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "동구",
+    "organizationType": "기초자치단체",
     "homepageUrl": "https://www.bsdonggu.go.kr/",
     "seedUrls": [
       "https://www.bsdonggu.go.kr/",
       "https://www.bsdonggu.go.kr/index.donggu?menuCd=DOM_000000105002001001&deptCD=1004000000000",
-      "https://www.bsdonggu.go.kr/index.donggu?menuCd=DOM_000000105002001001&deptCD=1029007000000",
-      "https://dong.daegu.kr/portal/staff/list.do?mid=0601060100",
-      "https://dong.daegu.kr/",
-      "https://www.icdonggu.go.kr/main/organization/organizationPhoneList.do?orgno0=1&orgno1=10&pgno=2",
-      "https://www.icdonggu.go.kr/",
-      "https://www.icdonggu.go.kr/main/organization/organizationPhoneList.do?orgno0=1&orgno1=29",
-      "https://www.donggu.kr/organization2.es?mid=a10504022201&org_cd=3590118",
-      "https://www.donggu.kr/",
-      "https://www.donggu.go.kr/dg/kor/222/organization/36401790000/list",
+      "https://www.bsdonggu.go.kr/index.donggu?menuCd=DOM_000000105002001001&deptCD=1029007000000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "동구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.donggu.go.kr/",
+    "seedUrls": [
       "https://www.donggu.go.kr/",
-      "https://www.donggu.ulsan.kr/us/prg/staff/list2.do?searchDept=15",
-      "https://www.donggu.ulsan.kr/"
+      "https://www.donggu.go.kr/dg/kor/222/organization/36401790000/list"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "동구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.donggu.kr/",
+    "seedUrls": [
+      "https://www.donggu.kr/",
+      "https://www.donggu.kr/organization2.es?mid=a10504022201&org_cd=3590118"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "동구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.donggu.ulsan.kr/",
+    "seedUrls": [
+      "https://www.donggu.ulsan.kr/",
+      "https://www.donggu.ulsan.kr/us/prg/staff/list2.do?searchDept=15"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "동구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.icdonggu.go.kr/",
+    "seedUrls": [
+      "https://www.icdonggu.go.kr/",
+      "https://www.icdonggu.go.kr/main/organization/organizationPhoneList.do?orgno0=1&orgno1=10&pgno=2",
+      "https://www.icdonggu.go.kr/main/organization/organizationPhoneList.do?orgno0=1&orgno1=29"
     ],
     "source": "wiseon_public_institution_list"
   },
@@ -4843,22 +4923,46 @@
   {
     "organizationName": "북구",
     "organizationType": "기초자치단체",
+    "homepageUrl": "https://bukgu.gwangju.kr/",
+    "seedUrls": [
+      "https://bukgu.gwangju.kr/",
+      "https://bukgu.gwangju.kr/organization2.es?mid=a10602010201&org_cd=3620101",
+      "https://bukgu.gwangju.kr/organization2.es?mid=a10602014401&org_cd=3620206",
+      "https://bukgu.gwangju.kr/organization2.es?mid=a10602014801&org_cd=3620222"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "북구",
+    "organizationType": "기초자치단체",
     "homepageUrl": "https://www.bsbukgu.go.kr/",
     "seedUrls": [
       "https://www.bsbukgu.go.kr/",
       "https://www.bsbukgu.go.kr/index.bsbukgu?menuCd=DOM_000000106003004000&officeCd=1016000000000",
       "https://www.bsbukgu.go.kr/index.bsbukgu?menuCd=DOM_000000106003004000",
-      "https://www.bsbukgu.go.kr/index.bsbukgu?menuCd=DOM_000000106003004000&officeCd=1017000000000",
-      "https://www.buk.daegu.kr/index.do?menu_id=00001763&searchCondition=34501860000",
+      "https://www.bsbukgu.go.kr/index.bsbukgu?menuCd=DOM_000000106003004000&officeCd=1017000000000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "북구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.buk.daegu.kr/",
+    "seedUrls": [
       "https://www.buk.daegu.kr/",
+      "https://www.buk.daegu.kr/index.do?menu_id=00001763&searchCondition=34501860000",
       "https://www.buk.daegu.kr/index.do?menu_id=00001763&searchCondition=34501710000",
-      "https://www.buk.daegu.kr/index.do?menu_id=00001763&searchCondition=34501340000",
-      "https://bukgu.gwangju.kr/organization2.es?mid=a10602010201&org_cd=3620101",
-      "https://bukgu.gwangju.kr/",
-      "https://bukgu.gwangju.kr/organization2.es?mid=a10602014401&org_cd=3620206",
-      "https://bukgu.gwangju.kr/organization2.es?mid=a10602014801&org_cd=3620222",
-      "https://www.bukgu.ulsan.kr/lay1/program/S1T55C549/staff/search/list.do?group_seq=25&condition=member_nm&keyword=&x=39&y=13",
+      "https://www.buk.daegu.kr/index.do?menu_id=00001763&searchCondition=34501340000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "북구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.bukgu.ulsan.kr/",
+    "seedUrls": [
       "https://www.bukgu.ulsan.kr/",
+      "https://www.bukgu.ulsan.kr/lay1/program/S1T55C549/staff/search/list.do?group_seq=25&condition=member_nm&keyword=&x=39&y=13",
       "https://www.bukgu.ulsan.kr/lay1/program/S1T55C549/staff/search/list.do?group_seq=390&search_keyword=&x=26&y=3",
       "https://www.bukgu.ulsan.kr/lay1/program/S1T55C549/staff/search/list.do?group_seq=205&search_keyword=&x=24&y=14",
       "https://www.bukgu.ulsan.kr/lay1/program/S1T55C549/staff/search/list.do?group_seq=35&search_keyword=&x=40&y=16"
@@ -5076,17 +5180,49 @@
     "homepageUrl": "https://www.bsseogu.go.kr/",
     "seedUrls": [
       "https://www.bsseogu.go.kr/",
-      "https://www.bsseogu.go.kr/index.bsseogu?menuCd=DOM_000000104006006000",
-      "https://www.dgs.go.kr/dgs/intro/page.php?mnu_uid=10953&dept_code=627170125",
+      "https://www.bsseogu.go.kr/index.bsseogu?menuCd=DOM_000000104006006000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "서구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.dgs.go.kr/",
+    "seedUrls": [
       "https://www.dgs.go.kr/",
-      "https://www.seo.incheon.kr/open_content/main/organization/organizationPhoneList.do?siteDiv=office&orgno0=1&dcd=52&orgno1=52",
+      "https://www.dgs.go.kr/dgs/intro/page.php?mnu_uid=10953&dept_code=627170125"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "서구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.seo.incheon.kr/",
+    "seedUrls": [
       "https://www.seo.incheon.kr/",
-      "https://www.seogu.gwangju.kr/organizationView.es?mid=a10102010000&org_cd=3600090",
-      "https://www.seogu.gwangju.kr/",
-      "https://www.seogu.gwangju.kr/organizationView.es?mid=a10102010000&org_cd=3600134&orgnztUpperId=3600144",
-      "https://www.seogu.go.kr/prog/deptPerson/kor/sub05_03_02/3660062/list.do",
+      "https://www.seo.incheon.kr/open_content/main/organization/organizationPhoneList.do?siteDiv=office&orgno0=1&dcd=52&orgno1=52"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "서구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.seogu.go.kr/",
+    "seedUrls": [
       "https://www.seogu.go.kr/",
+      "https://www.seogu.go.kr/prog/deptPerson/kor/sub05_03_02/3660062/list.do",
       "https://www.seogu.go.kr/prog/deptPerson/kor/sub05_03_02/3660184/list.do"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "서구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.seogu.gwangju.kr/",
+    "seedUrls": [
+      "https://www.seogu.gwangju.kr/",
+      "https://www.seogu.gwangju.kr/organizationView.es?mid=a10102010000&org_cd=3600090",
+      "https://www.seogu.gwangju.kr/organizationView.es?mid=a10102010000&org_cd=3600134&orgnztUpperId=3600144"
     ],
     "source": "wiseon_public_institution_list"
   },
@@ -10984,18 +11120,50 @@
   {
     "organizationName": "중구",
     "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.bsjunggu.go.kr/",
+    "seedUrls": [
+      "https://www.bsjunggu.go.kr/",
+      "https://www.bsjunggu.go.kr/index.junggu?menuCd=DOM_000000105002001007"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "중구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.djjunggu.go.kr/",
+    "seedUrls": [
+      "https://www.djjunggu.go.kr/",
+      "https://www.djjunggu.go.kr/kr/sub05_03_07_01.do"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "중구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.icjg.go.kr/",
+    "seedUrls": [
+      "https://www.icjg.go.kr/",
+      "https://www.icjg.go.kr/krin0302a?srchDeptCode=34902400000&baseDeptCode=A0000000000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "중구",
+    "organizationType": "기초자치단체",
+    "homepageUrl": "https://www.jung.daegu.kr/",
+    "seedUrls": [
+      "https://www.jung.daegu.kr/",
+      "https://www.jung.daegu.kr/new/pages/happiness/page.html?mc=1127&mode=1&DEP_CODE=34101870000"
+    ],
+    "source": "wiseon_public_institution_list"
+  },
+  {
+    "organizationName": "중구",
+    "organizationType": "기초자치단체",
     "homepageUrl": "https://www.junggu.seoul.kr/",
     "seedUrls": [
       "https://www.junggu.seoul.kr/",
-      "https://www.junggu.seoul.kr/content.do?cmsid=14452",
-      "https://www.bsjunggu.go.kr/index.junggu?menuCd=DOM_000000105002001007",
-      "https://www.bsjunggu.go.kr/",
-      "https://www.jung.daegu.kr/new/pages/happiness/page.html?mc=1127&mode=1&DEP_CODE=34101870000",
-      "https://www.jung.daegu.kr/",
-      "https://www.icjg.go.kr/krin0302a?srchDeptCode=34902400000&baseDeptCode=A0000000000",
-      "https://www.icjg.go.kr/",
-      "https://www.djjunggu.go.kr/kr/sub05_03_07_01.do",
-      "https://www.djjunggu.go.kr/"
+      "https://www.junggu.seoul.kr/content.do?cmsid=14452"
     ],
     "source": "wiseon_public_institution_list"
   },

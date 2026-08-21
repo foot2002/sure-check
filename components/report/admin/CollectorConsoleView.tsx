@@ -638,19 +638,53 @@ export function CollectorConsoleView({
                   />
                   <StatCard
                     label="seed 오매핑 의심"
+                    value={formatCount(summary.officialSite.rejectedSeedRowCount)}
+                    hint="홈페이지와 다른 도메인이 seed URL에 섞인 기관입니다. 자동 크롤링에서 제외합니다."
+                    className="border-amber-200 bg-amber-50"
+                  />
+                  <StatCard
+                    label="cross-origin seed URL"
+                    value={formatCount(summary.officialSite.rejectedSeedUrlCount)}
+                    hint="홈페이지와 다른 도메인이라 크롤 큐에 넣지 않은 seed URL 수"
+                    className="border-amber-200 bg-amber-50"
+                  />
+                  <StatCard
+                    label="needs_review 기관"
                     value={formatCount(summary.officialSite.needsReviewCount)}
-                    hint="기관명과 도메인이 맞지 않아 공식 사이트 여부 확인이 필요한 기관입니다. 대량 크롤링에서 제외합니다."
+                    hint="관리자 확인 전까지 자동 크롤링에서 제외합니다."
+                    className="border-amber-200 bg-amber-50"
+                  />
+                  <StatCard
+                    label="자동 크롤 제외 기관"
+                    value={formatCount(
+                      (summary.officialSite.excludedSeedCount || 0) +
+                        (summary.officialSite.needsReviewCount || 0),
+                    )}
+                    hint="needs_review + excluded. 자동 공식 사이트 수집 대상이 아닙니다."
                     className="border-amber-200 bg-amber-50"
                   />
                 </div>
                 {(summary.officialSite.needsReviewSamples || []).length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-[11px] leading-4 text-amber-900">
-                    {summary.officialSite.needsReviewSamples?.slice(0, 5).map((sample) => (
-                      <li key={`${sample.organizationName}-${sample.homepageUrl}`}>
-                        {sample.organizationName} → {sample.homepageUrl.replace(/^https?:\/\//, "")}
-                        {sample.reason ? ` (${sample.reason})` : ""}
-                      </li>
-                    ))}
+                  <ul className="mt-2 space-y-2 text-[11px] leading-4 text-amber-900">
+                    {summary.officialSite.needsReviewSamples?.slice(0, 8).map((sample) => {
+                      const statusLabel =
+                        sample.status === "excluded" ? "자동 크롤 제외" : "검토 필요";
+                      const reasonLabel =
+                        sample.reason === "cross_origin_seed_url" ||
+                        sample.reason === "domain_mismatch"
+                          ? "홈페이지와 다른 도메인"
+                          : sample.reason || "검토 필요";
+                      const rejected = (sample.rejectedSeedUrls || []).slice(0, 3);
+                      return (
+                        <li key={`${sample.organizationName}-${sample.homepageUrl}`}>
+                          <span className="font-medium">{sample.organizationName}</span>
+                          {" · "}homepage: {sample.homepageUrl.replace(/^https?:\/\//, "")}
+                          {rejected.length > 0 ? ` · 거부 URL: ${rejected.join(", ")}` : ""}
+                          {` · 사유: ${reasonLabel}`}
+                          {` · 상태: ${statusLabel}`}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
                 <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
