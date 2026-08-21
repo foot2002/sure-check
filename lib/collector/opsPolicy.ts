@@ -40,8 +40,9 @@ export const COLLECTOR_STALE_RUNNING_MS = 15 * 60 * 1000;
  * - Collect A: 0 17 * * * → 02:00 KST  /api/internal/collector/run/a
  * - Collect B: 0 19 * * * → 04:00 KST  /api/internal/collector/run/b
  * - Revalidate ×4: 0 23 / 0 3 / 0 7 / 0 13 UTC → 08:00 / 12:00 / 16:00 / 22:00 KST
+ * - Official site ×4 (one cron): 0 0,6,12,18 UTC → 09:00 / 15:00 / 21:00 / 03:00 KST, 8 orgs/run
  * Legacy single /api/internal/collector/run Cron removed (endpoint kept for manual).
- * Diagnosis daily max stays 100 (unchanged); Diagnosis Cron schedules unchanged.
+ * Diagnosis worker stays scanBatch=3; Diagnosis Cron schedules unchanged.
  */
 export const COLLECTOR_OPS_SCHEDULE_NOTES = {
   dailyCollectA: "매일 02:00 KST (17:00 UTC) → /api/internal/collector/run/a",
@@ -49,6 +50,8 @@ export const COLLECTOR_OPS_SCHEDULE_NOTES = {
   discoveredBacklog:
     "매일 08:00 / 12:00 / 16:00 / 22:00 KST × batch~70 → /api/internal/collector/revalidate (~280/일 discovered) + inline A/B ≈ ~300/일",
   unreachableRetry: "discovered 우선 후 unreachable 15건 (동일 revalidate job)",
+  officialSiteWaves:
+    "매일 09:00 / 15:00 / 21:00 / 03:00 KST × 8기관 → /api/internal/collector/official-sites (~32기관/일)",
 } as const;
 
 /** Target collect wall time ≤ 70% of Vercel maxDuration (120s → 84s). */

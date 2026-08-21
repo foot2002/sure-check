@@ -70,6 +70,22 @@ function formatCount(value: number | undefined | null): string {
   return Number(value || 0).toLocaleString("ko-KR");
 }
 
+function formatPct(rate: number | undefined | null): string {
+  return `${Math.round((rate || 0) * 100)}%`;
+}
+
+function rateHint(
+  rate: number | undefined | null,
+  target: number,
+  invert = false,
+): string {
+  const current = Math.round((rate || 0) * 100);
+  const goal = Math.round(target * 100);
+  return invert
+    ? `현재 ${current}% · 목표 ${goal}% 이하`
+    : `현재 ${current}% · 목표 ${goal}% 이상`;
+}
+
 function StatCard({
   label,
   value,
@@ -224,7 +240,17 @@ export function CollectorConsoleView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; crawled?: number };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        crawled?: number;
+        reason?: string;
+        skippedParallel?: boolean;
+      };
+      if (data.skippedParallel || data.reason === "already_running") {
+        setRunMessage("이미 공식 사이트 수집이 실행 중입니다. 병렬 실행은 하지 않습니다.");
+        return;
+      }
       if (!res.ok || !data.ok) {
         setRunMessage(data.error || "공식 사이트 수집에 실패했습니다.");
         return;
@@ -398,6 +424,56 @@ export function CollectorConsoleView({
 
       {summary ? (
         <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-base font-bold text-slate-900">오늘 진단 목표</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            오늘 정상 진단 완료: 목표 100건. 목표에 못 미쳐도 오류가 아니라
+            현재 운영 용량을 보여주는 지표입니다.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <StatCard
+              label="오늘 정상 진단 완료"
+              value={`${formatCount(summary.capacity?.completedToday)}건 / 목표 ${formatCount(summary.capacity?.dailyCompletedTarget)}건`}
+              hint={`진행률 ${formatPct(summary.capacity?.progressVsTarget)}`}
+            />
+            <StatCard
+              label="오늘 자동진단 처리 전체"
+              value={formatCount(summary.capacity?.attemptedToday)}
+              hint={`정상 진단율 ${formatPct(summary.capacity?.completedRate)}`}
+            />
+            <StatCard
+              label="현재 worker 설정 기준 최대 처리량"
+              value={`약 ${formatCount(summary.capacity?.estimatedMaxPerDay)}건/일`}
+              hint={`scanBatch ${summary.capacity?.scanBatch ?? 3} × worker ${summary.capacity?.workerRunsPerDay ?? 22}회`}
+            />
+            <StatCard
+              label="공식 사이트 수집 기관 수"
+              value={`${formatCount(summary.capacity?.officialSiteCrawledToday)} / ${formatCount(summary.capacity?.officialSiteOrgsPerDayTarget)}`}
+              hint={`런당 ${summary.capacity?.officialSiteOrgsPerRun ?? 8}기관 × ${summary.capacity?.officialSiteWavesPerDay ?? 4}회`}
+            />
+            <StatCard
+              label="공식 사이트 적격 설문 수"
+              value={formatCount(summary.capacity?.officialSiteEligibleToday)}
+              hint="오늘 공식 사이트 최근 60일 적격"
+            />
+            <StatCard
+              label="오늘 남은 자동진단 한도"
+              value={formatCount(summary.capacity?.remainingDailyLimit)}
+              hint="dispatcher 일일 한도 잔여"
+            />
+          </div>
+          {summary.capacity?.scanBatchIncreaseHint ? (
+            <p className="mt-3 text-xs leading-5 text-slate-600">
+              100건/일 목표에는 scanBatch 상향 또는 worker 실행 횟수 증가가
+              필요합니다. 이번 운영에서는 scanBatch=3을 유지하고, timeout 0 ·
+              stuck running 0 · pending 적체 없음이 1~2일 유지되면 scanBatch=5
+              상향을 검토합니다.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {summary ? (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-base font-bold text-slate-900">오늘 수집·진단 흐름</h2>
           <p className="mt-1 text-xs text-slate-500">오늘 기준입니다. 개선안내 후보는 현재 후보 규모입니다.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -446,8 +522,8 @@ export function CollectorConsoleView({
               네이버 검색으로 찾은 설문
             </h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              네이버 검색(API)에서 구글폼·네이버폼·모아폼 주소를 찾아 모읍니다.
-              검색 결과 수와 실제 설문 수는 다릅니다.
+              넓게 후보를 찾는 채널입니다. 후보량은 많지만 오래된 설문과
+              개인연구가 섞일 수 있습니다.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <StatCard
@@ -504,8 +580,8 @@ export function CollectorConsoleView({
               공공기관 공식 사이트 수집
             </h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              공공기관 공식 사이트에 직접 접속해 공지사항·참여·신청·설문 페이지에서
-              설문 링크를 찾습니다. 네이버 검색과 별도로 동작합니다.
+              공식 출처 기반의 품질 높은 공공기관 설문 수집 채널입니다. 출처
+              페이지와 게시일 근거를 확보할 수 있습니다. 네이버 검색과 별도로 동작합니다.
             </p>
             {summary.officialSite ? (
               <>
@@ -563,10 +639,20 @@ export function CollectorConsoleView({
                   <StatCard
                     label="seed 오매핑 의심"
                     value={formatCount(summary.officialSite.needsReviewCount)}
-                    hint="기관명과 도메인이 맞지 않아 공식 사이트 여부 확인이 필요한 기관입니다."
+                    hint="기관명과 도메인이 맞지 않아 공식 사이트 여부 확인이 필요한 기관입니다. 대량 크롤링에서 제외합니다."
                     className="border-amber-200 bg-amber-50"
                   />
                 </div>
+                {(summary.officialSite.needsReviewSamples || []).length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[11px] leading-4 text-amber-900">
+                    {summary.officialSite.needsReviewSamples?.slice(0, 5).map((sample) => (
+                      <li key={`${sample.organizationName}-${sample.homepageUrl}`}>
+                        {sample.organizationName} → {sample.homepageUrl.replace(/^https?:\/\//, "")}
+                        {sample.reason ? ` (${sample.reason})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
                   전체 누적 통계
                 </h3>
@@ -617,6 +703,13 @@ export function CollectorConsoleView({
                     페이지의 게시일·모집기간 추출 상태를 확인하세요.
                   </p>
                 ) : null}
+                {summary.officialSite.sourceEvidenceSchemaMissing ? (
+                  <p className="mt-3 text-xs text-amber-800">
+                    source_page_url 등 출처 근거 컬럼이 DB에 없습니다.
+                    db/migrations/012_official_site_source_evidence.sql을
+                    Supabase SQL Editor에서 적용해야 수집 품질이 저장됩니다.
+                  </p>
+                ) : null}
                 <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
                   공식 사이트 수집 품질
                 </h3>
@@ -641,20 +734,44 @@ export function CollectorConsoleView({
                   />
                   <StatCard
                     label="설문 발견률"
-                    value={`${(((summary.officialSite.surveyDiscoveryRate || 0) * 100).toFixed(0))}%`}
+                    value={formatPct(summary.officialSite.surveyDiscoveryRate)}
                     hint="오늘 탐색 기관 중 설문을 찾은 비율입니다."
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
-                    label="날짜 추출 성공률"
-                    value={`${(((summary.officialSite.dateExtractSuccessRate || 0) * 100).toFixed(0))}%`}
-                    hint="공식 사이트 설문에서 날짜를 잡은 비율입니다."
+                    label="공식 사이트 탐색 성공률"
+                    value={formatPct(summary.officialSite.crawlSuccessRate)}
+                    hint="오늘 탐색한 기관 중 수집이 성공한 비율입니다."
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
                     label="source_page_url 저장률"
-                    value={`${(((summary.officialSite.sourcePageUrlSaveRate || 0) * 100).toFixed(0))}%`}
-                    hint="설문 링크가 발견된 실제 게시글/페이지 URL이 저장된 비율입니다."
+                    value={formatPct(summary.officialSite.sourcePageUrlSaveRate)}
+                    hint={rateHint(summary.officialSite.sourcePageUrlSaveRate, 0.9)}
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="게시일 추출 성공률"
+                    value={formatPct(summary.officialSite.postedDateExtractRate)}
+                    hint={rateHint(summary.officialSite.postedDateExtractRate, 0.5)}
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="기간/마감일 추출 성공률"
+                    value={formatPct(summary.officialSite.periodExtractRate)}
+                    hint={rateHint(summary.officialSite.periodExtractRate, 0.5)}
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="날짜 추출 성공률"
+                    value={formatPct(summary.officialSite.dateExtractSuccessRate)}
+                    hint={rateHint(summary.officialSite.dateExtractSuccessRate, 0.5)}
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="date_unknown_hold 비율"
+                    value={formatPct(summary.officialSite.dateUnknownHoldRatio)}
+                    hint={rateHint(summary.officialSite.dateUnknownHoldRatio, 0.3, true)}
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -674,6 +791,48 @@ export function CollectorConsoleView({
         </div>
       ) : null}
 
+      {summary?.sourceComparison ? (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-base font-bold text-slate-900">네이버 API와 공식 사이트 비교</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            네이버는 후보를 넓게 찾고, 공식 사이트는 출처 페이지와 게시일 근거가
+            있는 공공기관 설문을 모읍니다.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard
+              label="오늘 네이버 수집 설문"
+              value={formatCount(summary.sourceComparison.todayNaverSurveys)}
+              hint="네이버 검색 채널에서 오늘 저장한 출처입니다."
+              onClick={() => applyQuick({ sourceType: "naver", status: "all" })}
+            />
+            <StatCard
+              label="오늘 공식 사이트 수집 설문"
+              value={formatCount(summary.sourceComparison.todayOfficialSurveys)}
+              hint="공식 사이트에서 오늘 발견한 설문입니다."
+              onClick={() => applyQuick({ sourceType: "official_site", status: "all" })}
+            />
+            <StatCard
+              label="최근 60일 적격 설문"
+              value={formatCount(summary.sourceComparison.todayRecentEligible)}
+              hint="오늘 공식 사이트 최근 60일 적격"
+              onClick={() => applyQuick({ holdReason: "eligible", sourceType: "official_site", status: "all" })}
+            />
+            <StatCard
+              label="자동진단 큐 등록"
+              value={formatCount(summary.sourceComparison.todayDiagnosisQueued)}
+              hint="오늘 자동진단 큐에 남은 건수입니다."
+              onClick={() => applyQuick({ diagnosisStatus: "queued", status: "all" })}
+            />
+            <StatCard
+              label="개선안내 후보"
+              value={formatCount(summary.sourceComparison.improvementCandidates)}
+              hint="확인·개선이 필요해 보이는 건수입니다."
+              onClick={() => router.push("/report/admin?outreachOnly=true")}
+            />
+          </div>
+        </section>
+      ) : null}
+
       {summary?.todayFunnel || summary?.diagnosis?.today ? (
         <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-base font-bold text-slate-900">오늘 자동진단 처리</h2>
@@ -683,7 +842,7 @@ export function CollectorConsoleView({
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <StatCard
-              label="오늘 진단해 본 설문"
+              label="오늘 자동진단 시도"
               value={formatCount(
                 summary?.diagnosis?.today?.attempted ??
                   summary?.todayFunnel?.diagnosisAttempted,
@@ -691,7 +850,7 @@ export function CollectorConsoleView({
               hint="오늘 자동진단을 시도한 횟수입니다."
             />
             <StatCard
-              label="정상적으로 진단된 설문"
+              label="오늘 자동진단 완료"
               value={formatCount(
                 summary?.diagnosis?.today?.completed ??
                   summary?.todayFunnel?.normalDiagnosis,
@@ -699,7 +858,7 @@ export function CollectorConsoleView({
               hint="문항을 읽어 결과를 낸 설문입니다."
             />
             <StatCard
-              label="이미 끝나 있어서 제외"
+              label="오늘 종료 제외"
               value={formatCount(
                 summary?.diagnosis?.today?.skippedClosed ??
                   summary?.todayFunnel?.closedToday,
@@ -708,7 +867,7 @@ export function CollectorConsoleView({
               onClick={() => applyQuick({ holdReason: "closed", status: "all" })}
             />
             <StatCard
-              label="로그인이 필요해 제외"
+              label="오늘 접근제한 제외"
               value={formatCount(
                 summary?.diagnosis?.today?.skippedRestricted ??
                   summary?.todayFunnel?.restrictedToday,
@@ -753,7 +912,72 @@ export function CollectorConsoleView({
               value={formatCount(summary?.opsFunnel?.improvementCandidateCount)}
               hint="위법 확정이 아닙니다. 확인·개선이 필요해 보이는 건수입니다."
             />
+            <StatCard
+              label="오늘 실패"
+              value={formatCount(summary?.diagnosis?.today?.failed ?? summary?.capacity?.failedToday)}
+              hint="오늘 자동진단이 실패한 건수입니다."
+              className={
+                (summary?.diagnosis?.today?.failed || 0) > 0
+                  ? "border-amber-200 bg-amber-50"
+                  : "border-slate-200 bg-white"
+              }
+            />
+            <StatCard
+              label="오늘 타임아웃"
+              value={formatCount(summary?.diagnosis?.today?.timeout ?? summary?.capacity?.timeoutToday)}
+              hint={
+                (summary?.diagnosis?.today?.timeout || 0) === 0
+                  ? "timeout 0 유지 — 긍정 신호입니다."
+                  : "타임아웃이 늘면 worker 부하를 확인하세요."
+              }
+              className={
+                (summary?.diagnosis?.today?.timeout || 0) === 0
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-rose-200 bg-rose-50"
+              }
+            />
+            <StatCard
+              label="남은 pending"
+              value={formatCount(summary?.capacity?.pendingCount)}
+              hint="queued + 진단 중인 건수입니다."
+              className={
+                (summary?.capacity?.pendingCount || 0) > 40
+                  ? "border-amber-200 bg-amber-50"
+                  : "border-slate-200 bg-white"
+              }
+            />
+            <StatCard
+              label="남은 queued"
+              value={formatCount(summary?.capacity?.queuedCount ?? summary?.diagnosis?.queued)}
+              hint="worker가 아직 가져가지 않은 큐입니다."
+            />
           </div>
+          {(summary?.capacity?.timeoutToday || 0) === 0 &&
+          (summary?.capacity?.failedToday || 0) === 0 ? (
+            <p className="mt-3 text-xs text-emerald-800">
+              timeout 0을 유지하고 있습니다. failed도 늘지 않으면 현재
+              scanBatch=3 설정이 안정적입니다.
+            </p>
+          ) : null}
+          {(summary?.capacity?.timeoutToday || 0) > 0 ||
+          (summary?.capacity?.failedToday || 0) > 3 ? (
+            <p className="mt-3 text-xs text-rose-800">
+              failed/timeout이 늘고 있습니다. scanBatch를 올리지 말고 worker
+              처리 상태를 먼저 확인하세요.
+            </p>
+          ) : null}
+          {(summary?.capacity?.pendingCount || 0) > 40 ? (
+            <p className="mt-3 text-xs text-amber-800">
+              pending이 적체되고 있습니다. worker 실행 횟수 또는 이후
+              scanBatch=5 상향을 검토하세요.
+            </p>
+          ) : null}
+          {(summary?.officialSite?.todayDateUnknownHold || 0) > 8 ? (
+            <p className="mt-3 text-xs text-amber-800">
+              date_unknown_hold가 늘고 있습니다. 날짜 불명 설문은 자동진단하지
+              않습니다.
+            </p>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"

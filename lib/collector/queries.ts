@@ -18,6 +18,7 @@ import {
 import { classifyLimitedOutcome } from "@/lib/report/limitedOutcomeBuckets";
 import { listImprovementCandidates } from "@/lib/report/improvementCandidates";
 import {
+  countNaverChannelSurveysFoundToday,
   countOfficialInstitutionSites,
   countOfficialSiteDiagnosisQueuedToday,
   countOfficialSiteFreshnessStats,
@@ -26,7 +27,17 @@ import {
   countOfficialSiteQualitySnapshot,
   countOfficialSiteSurveysFoundToday,
   countOfficialSiteSurveysTotal,
+  listOfficialSiteNeedsReviewSamples,
 } from "@/lib/collector/officialSiteRepository";
+import {
+  DIAGNOSIS_COMPLETED_DAILY_TARGET,
+  estimatedDiagnosisMaxPerDay,
+  OFFICIAL_SITE_TARGET_ORGS_PER_DAY,
+  OFFICIAL_SITE_WAVES_PER_DAY,
+  SCAN_WORKER_DEFAULT_BATCH,
+  SCAN_WORKER_RUNS_PER_DAY,
+} from "@/lib/collector/opsCapacityPolicy";
+import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 import { matchesCollectorHoldReason } from "@/lib/collector/collectorDashboardLabels";
 import type {
   CollectorPlatform,
@@ -382,7 +393,50 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     maxBacklogDays: getAutoDiagnosisMaxBacklogDays(),
   };
 
-  const officialSite = await loadOfficialSiteAdminStats();
+  const { officialSite, todayNaverSurveys } = await loadOfficialSiteAdminStats();
+  const workerRunsPerDay = SCAN_WORKER_RUNS_PER_DAY;
+  const estimatedMaxPerDay = estimatedDiagnosisMaxPerDay(
+    SCAN_WORKER_DEFAULT_BATCH,
+    workerRunsPerDay,
+  );
+  const completedToday =
+    diagnosis?.today?.completed ?? todayFunnel.normalDiagnosis ?? 0;
+  const attemptedToday =
+    diagnosis?.today?.attempted ?? todayFunnel.diagnosisAttempted ?? 0;
+  const timeoutToday = diagnosis?.today?.timeout ?? 0;
+  const failedToday = diagnosis?.today?.failed ?? 0;
+  const capacity: NonNullable<CollectorSummary["capacity"]> = {
+    completedToday,
+    attemptedToday,
+    completedRate: attemptedToday > 0 ? completedToday / attemptedToday : 0,
+    dailyCompletedTarget: DIAGNOSIS_COMPLETED_DAILY_TARGET,
+    progressVsTarget:
+      DIAGNOSIS_COMPLETED_DAILY_TARGET > 0
+        ? completedToday / DIAGNOSIS_COMPLETED_DAILY_TARGET
+        : 0,
+    scanBatch: SCAN_WORKER_DEFAULT_BATCH,
+    workerRunsPerDay,
+    estimatedMaxPerDay,
+    officialSiteOrgsPerRun: OFFICIAL_SITE_MAX_ORGS_PER_RUN,
+    officialSiteWavesPerDay: OFFICIAL_SITE_WAVES_PER_DAY,
+    officialSiteOrgsPerDayTarget: OFFICIAL_SITE_TARGET_ORGS_PER_DAY,
+    officialSiteCrawledToday: officialSite.crawledToday,
+    officialSiteEligibleToday: officialSite.todayRecentEligible,
+    timeoutToday,
+    pendingCount: (diagnosis?.queued || 0) + (diagnosis?.running || 0),
+    queuedCount: diagnosis?.queued || 0,
+    failedToday,
+    remainingDailyLimit:
+      diagnosis?.today?.remaining ?? todayFunnel.diagnosisRemaining ?? 0,
+    scanBatchIncreaseHint: estimatedMaxPerDay < DIAGNOSIS_COMPLETED_DAILY_TARGET,
+  };
+  const sourceComparison: NonNullable<CollectorSummary["sourceComparison"]> = {
+    todayNaverSurveys,
+    todayOfficialSurveys: officialSite.surveysFoundToday,
+    todayRecentEligible: officialSite.todayRecentEligible,
+    todayDiagnosisQueued: diagnosis?.today?.queued || 0,
+    improvementCandidates: opsFunnel.improvementCandidateCount,
+  };
 
   return {
     totalSurveys,
@@ -423,6 +477,8 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     qualityKpis,
     opsFunnel,
     officialSite,
+    sourceComparison,
+    capacity,
     improvementCandidates: improvement.items,
   };
 }
@@ -441,9 +497,10 @@ async function countFreshnessReason(reason: string): Promise<number> {
   }
 }
 
-async function loadOfficialSiteAdminStats(): Promise<
-  NonNullable<CollectorSummary["officialSite"]>
-> {
+async function loadOfficialSiteAdminStats(): Promise<{
+  officialSite: NonNullable<CollectorSummary["officialSite"]>;
+  todayNaverSurveys: number;
+}> {
   const today = new Date();
   const bounds = getKstDayBounds(today);
   const [
@@ -455,7 +512,9 @@ async function loadOfficialSiteAdminStats(): Promise<
     totalSurveysFound,
     todayDiagnosisQueued,
     needsReviewCount,
+    needsReviewSamples,
     quality,
+    todayNaverSurveys,
     staleYear,
     staleTopic,
     previousYear,
@@ -474,7 +533,9 @@ async function loadOfficialSiteAdminStats(): Promise<
     countOfficialSiteSurveysTotal(),
     countOfficialSiteDiagnosisQueuedToday(today),
     countOfficialSiteNeedsReview(),
+    listOfficialSiteNeedsReviewSamples(5),
     countOfficialSiteQualitySnapshot(today),
+    countNaverChannelSurveysFoundToday(today),
     countFreshnessReason("stale_year"),
     countFreshnessReason("stale_topic_year"),
     countFreshnessReason("previous_year_phrase"),
@@ -485,7 +546,11 @@ async function loadOfficialSiteAdminStats(): Promise<
   const totalOldYearExcluded = staleYear + staleTopic + previousYear;
   const totalDateUnknownHold =
     dateUnknownHold + unknownNoSignal + activeUnknown;
+  const officialSurveysForRatio = Math.max(totalSurveysFound, 1);
+  const dateUnknownHoldRatio =
+    totalSurveysFound > 0 ? totalDateUnknownHold / officialSurveysForRatio : 0;
   return {
+    officialSite: {
     institutionCount,
     crawledToday,
     surveysFoundToday,
@@ -504,16 +569,24 @@ async function loadOfficialSiteAdminStats(): Promise<
     totalDateUnknownHold,
     totalRestrictedExcluded: totalFreshness.restrictedExcluded,
     needsReviewCount,
+    needsReviewSamples,
     todayPagesFetched: quality.todayPagesFetched,
     todayOrgsWithSurveys: quality.todayOrgsWithSurveys,
     avgPagesPerOrg: quality.avgPagesPerOrg,
     surveyDiscoveryRate: quality.surveyDiscoveryRate,
-    dateExtractSuccessRate:
-      totalSurveysFound > 0
-        ? Math.max(0, 1 - totalDateUnknownHold / totalSurveysFound)
-        : 0,
+    crawlSuccessRate: quality.crawlSuccessRate,
+    dateExtractSuccessRate: quality.dateExtractSuccessRate,
+    postedDateExtractRate: quality.postedDateExtractRate,
+    periodExtractRate: quality.periodExtractRate,
+    dateUnknownHoldRatio,
     sourcePageUrlSaveRate: quality.sourcePageUrlSaveRate,
     failedOrgCount: quality.failedOrgCount,
+    sourceEvidenceSchemaMissing: quality.sourceEvidenceSchemaMissing,
+    orgsPerRun: OFFICIAL_SITE_MAX_ORGS_PER_RUN,
+    wavesPerDay: OFFICIAL_SITE_WAVES_PER_DAY,
+    orgsPerDayTarget: OFFICIAL_SITE_TARGET_ORGS_PER_DAY,
+    },
+    todayNaverSurveys,
   };
 }
 

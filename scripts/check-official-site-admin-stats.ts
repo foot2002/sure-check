@@ -17,7 +17,11 @@ console.log("[Official Site Admin Stats Check]\n");
   assert.ok(types.includes("totalDateUnknownHold"));
   assert.ok(types.includes("todayRecentEligible"));
   assert.ok(types.includes("totalRecentEligible"));
-  assert.ok(types.includes("needsReviewCount"));
+  assert.ok(types.includes("dateUnknownHoldRatio"));
+  assert.ok(types.includes("postedDateExtractRate"));
+  assert.ok(types.includes("needsReviewSamples"));
+  assert.ok(types.includes("sourceComparison"));
+  assert.ok(types.includes("estimatedMaxPerDay"));
   console.log("  PASS  summary type has today vs total official-site fields");
 }
 
@@ -39,6 +43,8 @@ console.log("[Official Site Admin Stats Check]\n");
   assert.ok(view.includes("전체 누적 통계"));
   assert.ok(view.includes("source_page_url 저장률"));
   assert.ok(view.includes("seed 오매핑 의심"));
+  assert.ok(view.includes("오늘 정상 진단 완료"));
+  assert.ok(view.includes("네이버 API와 공식 사이트 비교"));
   console.log("  PASS  admin labels separate today official-site and totals");
 }
 

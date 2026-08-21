@@ -5,9 +5,11 @@ import {
   crawlPriorityForType,
   effectiveCrawlPriority,
   nextCrawlAt,
+  OFFICIAL_SITE_MAX_ORGS_PER_RUN,
   seedKey,
   type OfficialSiteCrawlStatus,
 } from "@/lib/collector/officialSiteCrawlPolicy";
+import { OFFICIAL_SITE_STALE_RUNNING_MS } from "@/lib/collector/opsCapacityPolicy";
 import type { OfficialInstitutionSeed } from "@/lib/collector/officialSiteSeeds";
 import {
   reviewOfficialSiteSeeds,
@@ -220,7 +222,7 @@ export async function listDueOfficialInstitutionSites(
     .or("seed_review_status.eq.ok,seed_review_status.is.null")
     .order("crawl_priority", { ascending: true })
     .order("next_crawl_at", { ascending: true })
-    .limit(Math.max(1, Math.min(20, limit)));
+    .limit(Math.max(1, Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, limit)));
   if (error) {
     if (/seed_review_status/i.test(error.message)) {
       const fallback = await supabase
@@ -230,7 +232,7 @@ export async function listDueOfficialInstitutionSites(
         .neq("crawl_status", "running")
         .order("crawl_priority", { ascending: true })
         .order("next_crawl_at", { ascending: true })
-        .limit(Math.max(1, Math.min(20, limit)));
+        .limit(Math.max(1, Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, limit)));
       if (fallback.error) {
         throw new Error(`due official sites 조회 실패: ${fallback.error.message}`);
       }
@@ -244,12 +246,63 @@ export async function listDueOfficialInstitutionSites(
   return (data || []).map((row) => mapRow(row as Record<string, unknown>));
 }
 
+export async function recoverStaleOfficialSiteRunning(
+  staleMs = OFFICIAL_SITE_STALE_RUNNING_MS,
+): Promise<number> {
+  const supabase = client();
+  const cutoff = new Date(Date.now() - staleMs).toISOString();
+  const { data, error } = await supabase
+    .from("official_institution_sites")
+    .update({
+      crawl_status: "failed",
+      last_error: "stale running 자동 복구 (실행시간 초과/중단)",
+    })
+    .eq("crawl_status", "running")
+    .lt("updated_at", cutoff)
+    .select("id");
+  if (error) {
+    if (/updated_at/i.test(error.message)) {
+      console.warn(
+        "[collector] official_institution_sites.updated_at missing; skip stale running recovery",
+      );
+    }
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+
+export async function countOfficialSitesRunning(): Promise<number> {
+  const supabase = client();
+  const { count, error } = await supabase
+    .from("official_institution_sites")
+    .select("id", { count: "exact", head: true })
+    .eq("crawl_status", "running");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function claimOfficialSiteCrawl(
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const supabase = client();
+  const { data, error } = await supabase
+    .from("official_institution_sites")
+    .update({ crawl_status: "running" })
+    .in("id", ids)
+    .neq("crawl_status", "running")
+    .select("id");
+  if (error) return [];
+  return (data || []).map((row) => String(row.id));
+}
+
 export async function markOfficialSiteRunning(id: string): Promise<void> {
   const supabase = client();
   await supabase
     .from("official_institution_sites")
     .update({ crawl_status: "running" })
-    .eq("id", id);
+    .eq("id", id)
+    .neq("crawl_status", "running");
 }
 
 export async function finishOfficialSiteCrawl(input: {
@@ -313,14 +366,19 @@ export async function countOfficialSiteQualitySnapshot(
   todayOrgsWithSurveys: number;
   avgPagesPerOrg: number;
   surveyDiscoveryRate: number;
+  crawlSuccessRate: number;
   sourcePageUrlSaveRate: number;
+  postedDateExtractRate: number;
+  periodExtractRate: number;
+  dateExtractSuccessRate: number;
   failedOrgCount: number;
+  sourceEvidenceSchemaMissing: boolean;
 }> {
   const bounds = getKstDayBounds(now);
   const supabase = client();
   const { data: todayRows } = await supabase
     .from("official_institution_sites")
-    .select("last_pages_fetched, last_surveys_found")
+    .select("last_pages_fetched, last_surveys_found, crawl_status")
     .gte("last_crawled_at", bounds.startUtcIso)
     .lt("last_crawled_at", bounds.endUtcIso)
     .limit(400);
@@ -336,15 +394,52 @@ export async function countOfficialSiteQualitySnapshot(
     crawled.length > 0 ? todayPagesFetched / crawled.length : 0;
   const surveyDiscoveryRate =
     crawled.length > 0 ? todayOrgsWithSurveys / crawled.length : 0;
+  const crawlOk = crawled.filter((row) => row.crawl_status === "ok").length;
+  const crawlSuccessRate = crawled.length > 0 ? crawlOk / crawled.length : 0;
 
-  const { data: sources } = await supabase
+  const evidenceSelect =
+    "source_page_url, source_posted_date, source_period_start, source_period_end, source_deadline";
+  let sample: Array<Record<string, unknown>> = [];
+  let sourceEvidenceSchemaMissing = false;
+  const withEvidence = await supabase
     .from("survey_sources")
-    .select("source_page_url")
+    .select(evidenceSelect)
     .eq("source_type", "official_site")
     .limit(400);
-  const sample = sources || [];
+  if (withEvidence.error) {
+    sourceEvidenceSchemaMissing = /source_page_url|source_posted_date|source_period|source_deadline|schema cache|does not exist/i.test(
+      withEvidence.error.message,
+    );
+    if (sourceEvidenceSchemaMissing) {
+      console.warn(
+        "[collector] official-site source evidence columns missing — apply db/migrations/012_official_site_source_evidence.sql",
+      );
+    }
+    const fallback = await supabase
+      .from("survey_sources")
+      .select("source_url")
+      .eq("source_type", "official_site")
+      .limit(400);
+    sample = (fallback.data || []) as Array<Record<string, unknown>>;
+  } else {
+    sample = (withEvidence.data || []) as Array<Record<string, unknown>>;
+  }
   const withPage = sample.filter((row) => Boolean(row.source_page_url)).length;
-  const sourcePageUrlSaveRate = sample.length > 0 ? withPage / sample.length : 0;
+  const withPosted = sample.filter((row) => Boolean(row.source_posted_date)).length;
+  const withPeriod = sample.filter(
+    (row) =>
+      Boolean(row.source_period_start) ||
+      Boolean(row.source_period_end) ||
+      Boolean(row.source_deadline),
+  ).length;
+  const withAnyDate = sample.filter(
+    (row) =>
+      Boolean(row.source_posted_date) ||
+      Boolean(row.source_period_start) ||
+      Boolean(row.source_period_end) ||
+      Boolean(row.source_deadline),
+  ).length;
+  const denom = sample.length;
 
   const { count: failedOrgCount } = await supabase
     .from("official_institution_sites")
@@ -356,8 +451,17 @@ export async function countOfficialSiteQualitySnapshot(
     todayOrgsWithSurveys,
     avgPagesPerOrg,
     surveyDiscoveryRate,
-    sourcePageUrlSaveRate,
+    crawlSuccessRate,
+    sourcePageUrlSaveRate:
+      denom > 0 && !sourceEvidenceSchemaMissing ? withPage / denom : 0,
+    postedDateExtractRate:
+      denom > 0 && !sourceEvidenceSchemaMissing ? withPosted / denom : 0,
+    periodExtractRate:
+      denom > 0 && !sourceEvidenceSchemaMissing ? withPeriod / denom : 0,
+    dateExtractSuccessRate:
+      denom > 0 && !sourceEvidenceSchemaMissing ? withAnyDate / denom : 0,
     failedOrgCount: failedOrgCount ?? 0,
+    sourceEvidenceSchemaMissing,
   };
 }
 
@@ -404,6 +508,45 @@ export async function countOfficialSiteNeedsReview(): Promise<number> {
     .from("official_institution_sites")
     .select("id", { count: "exact", head: true })
     .eq("seed_review_status", "needs_review");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function listOfficialSiteNeedsReviewSamples(
+  limit = 5,
+): Promise<
+  Array<{
+    organizationName: string;
+    homepageUrl: string;
+    reason: string | null;
+  }>
+> {
+  const supabase = client();
+  const { data, error } = await supabase
+    .from("official_institution_sites")
+    .select("organization_name, homepage_url, seed_review_reason")
+    .eq("seed_review_status", "needs_review")
+    .order("organization_name", { ascending: true })
+    .limit(Math.max(1, Math.min(12, limit)));
+  if (error) return [];
+  return (data || []).map((row) => ({
+    organizationName: String(row.organization_name || ""),
+    homepageUrl: String(row.homepage_url || ""),
+    reason: (row.seed_review_reason as string | null) || null,
+  }));
+}
+
+export async function countNaverChannelSurveysFoundToday(
+  now: Date = new Date(),
+): Promise<number> {
+  const bounds = getKstDayBounds(now);
+  const supabase = client();
+  const { count, error } = await supabase
+    .from("survey_sources")
+    .select("id", { count: "exact", head: true })
+    .in("source_type", ["web", "blog", "cafe"])
+    .gte("discovered_at", bounds.startUtcIso)
+    .lt("discovered_at", bounds.endUtcIso);
   if (error) return 0;
   return count ?? 0;
 }

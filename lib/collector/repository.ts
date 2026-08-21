@@ -474,6 +474,9 @@ export async function insertSurveySource(input: {
     ) ||
       looksLikeMissingColumn(error.message, "source_page_url"))
   ) {
+    console.warn(
+      "[collector] survey_sources source evidence columns missing — apply db/migrations/012_official_site_source_evidence.sql",
+    );
     ({ data, error } = await attempt(base));
   }
 

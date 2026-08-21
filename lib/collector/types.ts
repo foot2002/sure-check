@@ -365,13 +365,54 @@ export interface CollectorSummary {
     totalDateUnknownHold: number;
     totalRestrictedExcluded: number;
     needsReviewCount: number;
+    needsReviewSamples?: Array<{
+      organizationName: string;
+      homepageUrl: string;
+      reason: string | null;
+    }>;
     todayPagesFetched?: number;
     todayOrgsWithSurveys?: number;
     avgPagesPerOrg?: number;
     surveyDiscoveryRate?: number;
+    crawlSuccessRate?: number;
     dateExtractSuccessRate?: number;
+    postedDateExtractRate?: number;
+    periodExtractRate?: number;
+    dateUnknownHoldRatio?: number;
     sourcePageUrlSaveRate?: number;
     failedOrgCount?: number;
+    sourceEvidenceSchemaMissing?: boolean;
+    orgsPerRun?: number;
+    wavesPerDay?: number;
+    orgsPerDayTarget?: number;
+  };
+  sourceComparison?: {
+    todayNaverSurveys: number;
+    todayOfficialSurveys: number;
+    todayRecentEligible: number;
+    todayDiagnosisQueued: number;
+    improvementCandidates: number;
+  };
+  capacity?: {
+    completedToday: number;
+    attemptedToday: number;
+    completedRate: number;
+    dailyCompletedTarget: number;
+    progressVsTarget: number;
+    scanBatch: number;
+    workerRunsPerDay: number;
+    estimatedMaxPerDay: number;
+    officialSiteOrgsPerRun: number;
+    officialSiteWavesPerDay: number;
+    officialSiteOrgsPerDayTarget: number;
+    officialSiteCrawledToday: number;
+    officialSiteEligibleToday: number;
+    timeoutToday: number;
+    pendingCount: number;
+    queuedCount: number;
+    failedToday: number;
+    remainingDailyLimit: number;
+    scanBatchIncreaseHint: boolean;
   };
   improvementCandidates?: Array<{
     id: string;

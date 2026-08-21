@@ -30,6 +30,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ...result,
     kind: "official_site",
-    ok: result.ok || Boolean(result.crawled),
+    ok: result.ok || Boolean(result.crawled) || result.skippedParallel === true,
   });
 }
