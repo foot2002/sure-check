@@ -46,9 +46,11 @@ export function AdminCaseRowActions({
   }, [open]);
 
   const btn =
-    "rounded border border-teal-700 bg-teal-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-45";
+    "rounded border border-teal-700 bg-teal-700 px-1.5 py-0.5 text-[11px] font-semibold leading-5 text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-45";
   const ghost =
-    "rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45";
+    "rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold leading-5 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45";
+  const menuItem =
+    "block w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:text-slate-400";
 
   async function run(task: () => Promise<void>) {
     setBusy(true);
@@ -63,7 +65,7 @@ export function AdminCaseRowActions({
 
   return (
     <div
-      className="flex flex-nowrap items-center gap-1"
+      className="flex flex-nowrap items-center justify-end gap-1"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
@@ -81,73 +83,9 @@ export function AdminCaseRowActions({
         </a>
       ) : (
         <button type="button" className={ghost} disabled title="원본 없음">
-          원본 없음
+          원본
         </button>
       )}
-      <button
-        type="button"
-        className={ghost}
-        disabled={busy}
-        onClick={() =>
-          void run(async () => {
-            await downloadAdminBlob(
-              reviewReportDownloadUrl(row.id),
-              reviewReportFilename(row.id),
-            );
-          })
-        }
-      >
-        요약리포트
-      </button>
-      <button
-        type="button"
-        className={ghost}
-        disabled={busy}
-        onClick={() =>
-          void run(async () => {
-            await downloadAdminBlob(
-              detailReportDownloadUrl(row.id),
-              detailReportFilename(row.id),
-            );
-          })
-        }
-      >
-        상세리포트
-      </button>
-      <button
-        type="button"
-        className={ghost}
-        disabled={busy || (!hasZip && !hasShots)}
-        title={evidenceLabel}
-        onClick={() =>
-          void run(async () => {
-            if (row.temporaryZipId) {
-              await downloadAdminBlob(
-                evidenceProxyDownloadUrl(row.temporaryZipId, row.id),
-                evidenceDownloadFilename({
-                  caseId: row.id,
-                  evidenceType: "temporary_zip",
-                }),
-              );
-              return;
-            }
-            for (const id of row.screenshotFileIds) {
-              await downloadAdminBlob(
-                evidenceProxyDownloadUrl(id, row.id),
-                evidenceDownloadFilename({
-                  caseId: row.id,
-                  evidenceType: "key_screenshot",
-                }),
-              );
-            }
-          })
-        }
-      >
-        {hasZip || hasShots ? "증빙" : evidenceLabel}
-      </button>
-      <button type="button" className={ghost} onClick={onPublish}>
-        공개 사례
-      </button>
       <div className="relative" ref={menuRef}>
         <button
           type="button"
@@ -161,7 +99,81 @@ export function AdminCaseRowActions({
           <div className="absolute right-0 z-20 mt-1 min-w-[11rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
             <button
               type="button"
-              className="block w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:text-slate-400"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                void run(async () => {
+                  await downloadAdminBlob(
+                    reviewReportDownloadUrl(row.id),
+                    reviewReportFilename(row.id),
+                  );
+                });
+              }}
+            >
+              요약리포트
+            </button>
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                void run(async () => {
+                  await downloadAdminBlob(
+                    detailReportDownloadUrl(row.id),
+                    detailReportFilename(row.id),
+                  );
+                });
+              }}
+            >
+              상세리포트
+            </button>
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy || (!hasZip && !hasShots)}
+              title={evidenceLabel}
+              onClick={() => {
+                setOpen(false);
+                void run(async () => {
+                  if (row.temporaryZipId) {
+                    await downloadAdminBlob(
+                      evidenceProxyDownloadUrl(row.temporaryZipId, row.id),
+                      evidenceDownloadFilename({
+                        caseId: row.id,
+                        evidenceType: "temporary_zip",
+                      }),
+                    );
+                    return;
+                  }
+                  for (const id of row.screenshotFileIds) {
+                    await downloadAdminBlob(
+                      evidenceProxyDownloadUrl(id, row.id),
+                      evidenceDownloadFilename({
+                        caseId: row.id,
+                        evidenceType: "key_screenshot",
+                      }),
+                    );
+                  }
+                });
+              }}
+            >
+              {hasZip || hasShots ? "증빙" : evidenceLabel}
+            </button>
+            <button
+              type="button"
+              className={menuItem}
+              onClick={() => {
+                setOpen(false);
+                onPublish();
+              }}
+            >
+              공개 사례
+            </button>
+            <button
+              type="button"
+              className={menuItem}
               disabled={!hasUrl}
               onClick={async () => {
                 if (!row.surveyUrl) return;
@@ -174,7 +186,7 @@ export function AdminCaseRowActions({
             </button>
             <button
               type="button"
-              className="block w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:text-slate-400"
+              className={menuItem}
               disabled={!hasShots || busy}
               onClick={() => {
                 setOpen(false);

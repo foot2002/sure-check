@@ -172,7 +172,7 @@ export function AdminConsoleView({
   }
 
   return (
-    <div className="mx-auto max-w-[90rem] px-4 py-6 md:px-6">
+    <div className="mx-auto w-full max-w-[100rem] px-3 py-6 md:px-4">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-teal-800">
@@ -478,29 +478,35 @@ export function AdminConsoleView({
         ) : null}
       </form>
 
-      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full table-fixed text-left text-xs">
+          <colgroup>
+            <col className="w-[6.5rem]" />
+            <col className="w-[2.4rem]" />
+            <col className="w-[3.4rem]" />
+            <col className="w-[11%]" />
+            <col className="w-[16%]" />
+            <col className="w-[14%]" />
+            <col className="w-[16%]" />
+            <col className="w-[12%]" />
+            <col className="w-[8.5rem]" />
+          </colgroup>
+          <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
             <tr>
-              {[
-                "진단일",
-                "우선순위",
-                "위험도",
-                "기관/기업명",
-                "공공/민간",
-                "설문 제목",
-                "주요 문제",
-                "수집 정보",
-                "증거 상태",
-                "검토 상태",
-                "개선안내 상태",
-                "공개 사례 상태",
-                "조치",
-              ].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-2.5">
-                  {h}
-                </th>
-              ))}
+              <th className="px-2 py-2">진단일</th>
+              <th className="px-1 py-2 text-center">우선</th>
+              <th className="px-1 py-2">위험도</th>
+              <th className="px-2 py-2">기관/기업명</th>
+              <th className="px-2 py-2">설문 제목</th>
+              <th className="px-2 py-2">주요 문제</th>
+              <th className="px-2 py-2">수집 정보</th>
+              <th
+                className="px-2 py-2"
+                title="증거 / 검토 / 개선안내 상태 / 공개 사례 상태"
+              >
+                상태
+              </th>
+              <th className="px-2 py-2 text-right">조치</th>
             </tr>
           </thead>
           <tbody>
@@ -512,63 +518,83 @@ export function AdminConsoleView({
                 }`}
                 onClick={() => setOpenId(row.id)}
               >
-                <td className="whitespace-nowrap px-3 py-3 text-slate-600">
+                <td className="overflow-hidden truncate px-2 py-2 text-slate-600">
                   {row.observedDateKst}
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-1 py-2 text-center">
                   <span
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${priorityBadge(row.outreachPriority)}`}
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${priorityBadge(row.outreachPriority)}`}
                   >
                     {row.outreachPriority}
                   </span>
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-1 py-2">
                   <span
-                    className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
+                    className={`inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
                   >
                     {riskLabelKo(row.overallRiskLevel)}
                   </span>
                 </td>
-                <td className="max-w-[9rem] truncate px-3 py-3 font-medium text-slate-900">
-                  {row.operatorName || "—"}
+                <td
+                  className="overflow-hidden px-2 py-2 font-medium text-slate-900"
+                  title={row.operatorName || undefined}
+                >
+                  <span className="block truncate">{row.operatorName || "—"}</span>
+                  <span className="block truncate text-[10px] font-normal text-slate-500">
+                    {publicPrivateKo(row.publicPrivateType)}
+                  </span>
                 </td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
-                  {publicPrivateKo(row.publicPrivateType)}
-                </td>
-                <td className="max-w-[14rem] truncate px-3 py-3 text-slate-800">
+                <td
+                  className="overflow-hidden truncate px-2 py-2 text-slate-800"
+                  title={row.surveyTitle || undefined}
+                >
                   {row.surveyTitle || "—"}
                 </td>
-                <td className="px-3 py-3">
-                  <div className="flex max-w-[16rem] flex-wrap gap-1">
-                    {row.issueBadges.map((badge) => (
-                      <span
-                        key={badge}
-                        className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-900"
-                      >
-                        {badge}
-                      </span>
-                    ))}
-                    {row.issueBadges.length === 0 ? (
-                      <span className="text-xs text-slate-400">—</span>
-                    ) : null}
+                <td className="overflow-hidden px-2 py-2">
+                  {row.issueBadges.length > 0 ? (
+                    <span
+                      className="block truncate rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
+                      title={row.issueBadges.join(" · ")}
+                    >
+                      {row.issueBadges[0]}
+                      {row.issueBadges.length > 1
+                        ? ` 외 ${row.issueBadges.length - 1}`
+                        : ""}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
+                <td
+                  className="overflow-hidden truncate px-2 py-2 text-[11px] text-slate-700"
+                  title={row.dataSummary}
+                >
+                  {row.dataSummary.replace(/\n/g, " · ")}
+                </td>
+                <td className="overflow-hidden px-2 py-2 text-[10px] leading-4 text-slate-600">
+                  <div className="truncate" title={`증거 ${row.evidenceStatus}`}>
+                    {row.evidenceStatus}
+                  </div>
+                  <div
+                    className="truncate"
+                    title={`검토 ${reviewStatusKo(row.reviewStatus)}`}
+                  >
+                    {reviewStatusKo(row.reviewStatus)}
+                  </div>
+                  <div
+                    className="truncate"
+                    title={`개선안내 상태 ${outreachUiStatusKo(row.outreachUiStatus)}`}
+                  >
+                    {outreachUiStatusKo(row.outreachUiStatus)}
+                  </div>
+                  <div
+                    className="truncate"
+                    title={`공개 사례 상태 ${publicCaseStatusKo(row.publicCaseStatus)}`}
+                  >
+                    {publicCaseStatusKo(row.publicCaseStatus)}
                   </div>
                 </td>
-                <td className="max-w-[14rem] whitespace-pre-line px-3 py-3 text-xs text-slate-700">
-                  {row.dataSummary}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
-                  {row.evidenceStatus}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
-                  {reviewStatusKo(row.reviewStatus)}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-500">
-                  {outreachUiStatusKo(row.outreachUiStatus)}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-500">
-                  {publicCaseStatusKo(row.publicCaseStatus)}
-                </td>
-                <td className="min-w-[22rem] whitespace-nowrap px-3 py-3">
+                <td className="overflow-hidden px-1 py-2">
                   <AdminCaseRowActions
                     row={row}
                     onReview={() => setOpenId(row.id)}
@@ -580,7 +606,7 @@ export function AdminConsoleView({
             ))}
             {payload && payload.cases.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.
                 </td>
               </tr>
