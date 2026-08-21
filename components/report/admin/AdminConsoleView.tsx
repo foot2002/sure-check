@@ -18,6 +18,11 @@ import {
   publicCaseStatusKo,
 } from "@/lib/report/publicCasePolicy";
 import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
+import {
+  formatDataCollectionBrief,
+  subjectTypeKo,
+  type AdminDashboardView,
+} from "@/lib/report/adminDashboardViews";
 
 type Filters = {
   range: string;
@@ -37,6 +42,8 @@ type Filters = {
   reportReview: string;
   outreachStatus: string;
   publicCaseStatus: string;
+  view: string;
+  subjectType: string;
   q: string;
   from: string;
   to: string;
@@ -70,6 +77,94 @@ function kstDateInputValue(value?: string): string {
   }).format(new Date());
 }
 
+function workFilters(): Pick<
+  Filters,
+  | "risk"
+  | "reviewStatus"
+  | "publicationStatus"
+  | "platform"
+  | "publicPrivate"
+  | "hasPersonalInfo"
+  | "hasSensitiveInfo"
+  | "hasHighRiskInfo"
+  | "hasEvidence"
+  | "limitedOnly"
+  | "outreachOnly"
+  | "priority"
+  | "noticeGap"
+  | "reportReview"
+  | "outreachStatus"
+  | "publicCaseStatus"
+  | "view"
+  | "subjectType"
+  | "q"
+> {
+  return {
+    risk: "all",
+    reviewStatus: "all",
+    publicationStatus: "all",
+    platform: "all",
+    publicPrivate: "all",
+    hasPersonalInfo: "all",
+    hasSensitiveInfo: "all",
+    hasHighRiskInfo: "all",
+    hasEvidence: "all",
+    limitedOnly: "all",
+    outreachOnly: "all",
+    priority: "all",
+    noticeGap: "all",
+    reportReview: "all",
+    outreachStatus: "all",
+    publicCaseStatus: "all",
+    view: "all",
+    subjectType: "all",
+    q: "",
+  };
+}
+
+function KpiCard({
+  label,
+  value,
+  hint,
+  help,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  help: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={help}
+      className={`rounded-xl border p-3 text-left shadow-sm transition ${
+        active
+          ? "border-teal-700 bg-teal-50"
+          : "border-slate-200 bg-white hover:border-teal-300"
+      }`}
+    >
+      <p className="flex items-center justify-between gap-2 text-[12px] font-semibold text-slate-800">
+        <span>{label}</span>
+        <span
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold text-slate-500"
+          title={help}
+        >
+          ?
+        </span>
+      </p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+        {value.toLocaleString("ko-KR")}건
+      </p>
+      <p className="mt-1 text-[11px] leading-4 text-slate-500">{hint}</p>
+    </button>
+  );
+}
+
 export function AdminConsoleView({
   data,
   error,
@@ -82,6 +177,8 @@ export function AdminConsoleView({
   const router = useRouter();
   const [form, setForm] = useState<Filters>({
     ...filters,
+    view: filters.view || "all",
+    subjectType: filters.subjectType || "all",
     from: filters.from || "",
     to: filters.to || "",
   });
@@ -92,6 +189,7 @@ export function AdminConsoleView({
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const payload = clientPayload ?? data;
   const loadError = clientError ?? error;
 
@@ -166,19 +264,29 @@ export function AdminConsoleView({
   }
 
   function setQuick(patch: Partial<Filters>) {
-    const next = { ...form, ...patch };
-    if (
-      (patch.publicCaseStatus === "published" ||
-        patch.publicCaseStatus === "paused" ||
-        patch.publicCaseStatus === "reviewing") &&
-      next.range !== "all" &&
-      next.range !== "custom"
-    ) {
-      next.range = "all";
-      next.from = "";
-      next.to = "";
-    }
-    void apply(next);
+    void apply({ ...form, view: "all", ...patch });
+  }
+
+  function applyView(view: AdminDashboardView) {
+    const nextView = form.view === view ? "all" : view;
+    void apply({
+      ...form,
+      ...workFilters(),
+      range: form.range,
+      from: form.from,
+      to: form.to,
+      view: nextView,
+    });
+  }
+
+  function resetFilters() {
+    void apply({
+      ...form,
+      ...workFilters(),
+      range: form.range,
+      from: form.from,
+      to: form.to,
+    });
   }
 
   async function logout() {
@@ -225,6 +333,13 @@ export function AdminConsoleView({
           </Link>
           <button
             type="button"
+            onClick={() => setHelpOpen((v) => !v)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            사용 안내
+          </button>
+          <button
+            type="button"
             onClick={logout}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
@@ -244,99 +359,314 @@ export function AdminConsoleView({
         </div>
       ) : null}
 
+      {helpOpen ? (
+        <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-950">
+          <p className="font-semibold">사용 안내</p>
+          <p className="mt-1">
+            이 화면은 기관·기업에 개인정보 수집 고지 개선을 요청할 후보를 검토하는
+            관리자 화면입니다.
+          </p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            <li>우선순위 A와 치명적 설문부터 확인하세요.</li>
+            <li>증거 확보 상태를 확인하세요.</li>
+            <li>원본 설문을 열어 실제 화면을 확인하세요.</li>
+            <li>요약리포트 또는 상세리포트를 다운로드하세요.</li>
+            <li>공문용 문구를 복사해 개선 요청 공문에 활용하세요.</li>
+          </ol>
+          <p className="mt-2">
+            표시된 결과는 자동진단 기반이며 위법 여부를 확정하지 않습니다.
+          </p>
+        </div>
+      ) : null}
+
       {payload ? (
         <>
-        <p className="mb-2 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-500">
           적용 기간: {appliedAdminRangeLabel(payload)}
-          {" · "}목록 {payload.cases.length.toLocaleString("ko-KR")}건
+          {" · "}검토 대상 전체 {payload.kpi.totalScans.toLocaleString("ko-KR")}건
+          {form.q
+            ? ` · 전체 조건 ${payload.kpi.totalScans.toLocaleString("ko-KR")}건 중 검색 결과 ${payload.cases.length.toLocaleString("ko-KR")}건`
+            : ` · 목록 ${payload.cases.length.toLocaleString("ko-KR")}건`}
           {loading ? " · 갱신 중…" : ""}
         </p>
-        <section className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-          {[
-            ["분석 가능 진단", payload.kpi.totalScans],
-            ["미검토", payload.kpi.reviewPendingCount],
-            ["고위험/신고 검토", payload.kpi.highOrReportReviewCount],
-            ["공공부문 확인 필요", payload.kpi.publicSectorReviewCount],
-            ["증빙 캡처 확보", payload.kpi.evidenceCaptureCount],
-            ["개선안내 후보", payload.kpi.publicationCandidateCount],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                {label}
-              </p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">
-                {Number(value).toLocaleString("ko-KR")}
+
+        <section className="mb-5">
+          <h2 className="mb-2 text-sm font-bold text-slate-900">오늘 검토해야 할 설문</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <KpiCard
+              label="검토 대상 전체"
+              value={payload.kpi.totalScans}
+              hint="현재 기간에서 관리자가 검토할 수 있는 진단 결과입니다."
+              help="자동진단이 문항을 읽어 결과를 낸 설문입니다. 종료·접근제한 건은 포함하지 않습니다."
+              active={form.view === "all" && !form.q}
+              onClick={() => applyView("all")}
+            />
+            <KpiCard
+              label="미검토"
+              value={payload.kpi.reviewPendingCount}
+              hint="아직 관리자가 확인하지 않은 설문입니다."
+              help="검토 상태가 미검토인 설문입니다. 카드를 누르면 해당 목록만 봅니다."
+              active={form.view === "unreviewed"}
+              onClick={() => applyView("unreviewed")}
+            />
+            <KpiCard
+              label="고위험·신고검토"
+              value={payload.kpi.highOrReportReviewCount}
+              hint="응답자에게 주의가 필요하거나 신고 검토 수준으로 분류된 설문입니다."
+              help="자동진단 결과 응답 거부·신고 검토 또는 이에 준하는 위험 판단이 나온 설문입니다. 위반 확정은 아닙니다."
+              active={form.view === "highOrReport"}
+              onClick={() => applyView("highOrReport")}
+            />
+            <KpiCard
+              label="개선안내 후보"
+              value={payload.kpi.publicationCandidateCount}
+              hint="기관·기업에 개인정보 수집 고지 보완을 요청할 수 있는 후보입니다."
+              help="개인정보 수집·이용 고지, 보유기간, 파기 기준, 담당자 연락처, 외부도구 안내 등이 미흡해 개선 요청 공문 검토 대상이 될 수 있는 설문입니다."
+              active={form.view === "outreach"}
+              onClick={() => applyView("outreach")}
+            />
+            <KpiCard
+              label="공공부문 확인 필요"
+              value={payload.kpi.publicSectorReviewCount}
+              hint="공공기관이 외부 설문도구로 개인정보를 수집하는 것으로 보여 확인이 필요합니다."
+              help="공공기관 또는 공공기관 가능성이 있는 주체가 외부 설문도구를 사용해 개인정보를 수집하는 것으로 판단되어 보안 기준 확인이 필요한 설문입니다."
+              active={form.view === "publicSector"}
+              onClick={() => applyView("publicSector")}
+            />
+          </div>
+        </section>
+
+        <section className="mb-5">
+          <h2 className="mb-2 text-sm font-bold text-slate-900">증빙·리포트 준비 상태</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <KpiCard
+              label="증빙 확보"
+              value={payload.kpi.evidenceCaptureCount}
+              hint="캡처 또는 ZIP 증빙자료가 확보된 설문입니다."
+              help="신고용 ZIP 또는 핵심 캡처 이미지가 저장되어 공문 첨부자료로 사용할 수 있는 설문입니다."
+              active={form.view === "evidenceReady"}
+              onClick={() => applyView("evidenceReady")}
+            />
+            <KpiCard
+              label="증빙 부족"
+              value={payload.kpi.evidenceMissingCount}
+              hint="공문에 첨부할 캡처·ZIP이 아직 없는 설문입니다."
+              help="증거 부족 또는 캡처가 필요한 설문입니다."
+              active={form.view === "evidenceMissing"}
+              onClick={() => applyView("evidenceMissing")}
+            />
+            <KpiCard
+              label="캡처 대기"
+              value={payload.kpi.captureNeededCount}
+              hint="증빙자료 생성이 필요한 설문입니다."
+              help="캡처 작업이 대기 중이거나 아직 끝나지 않아 화면 증거가 없는 설문입니다."
+              active={form.view === "captureNeeded"}
+              onClick={() => applyView("captureNeeded")}
+            />
+            <KpiCard
+              label="요약리포트 가능"
+              value={payload.kpi.summaryReportCount}
+              hint="요약리포트를 내려받을 수 있는 설문입니다."
+              help="검토용 요약 리포트 다운로드가 가능한 진단 결과입니다."
+              active={form.view === "reportReady"}
+              onClick={() => applyView("reportReady")}
+            />
+            <KpiCard
+              label="상세리포트 가능"
+              value={payload.kpi.detailReportCount}
+              hint="상세리포트를 내려받을 수 있는 설문입니다."
+              help="문항·고지 항목이 포함된 상세 리포트 다운로드가 가능한 진단 결과입니다."
+              active={form.view === "reportReady"}
+              onClick={() => applyView("reportReady")}
+            />
+          </div>
+        </section>
+
+        <details className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900">
+            자동진단 처리 상태 (접기/펼치기)
+          </summary>
+          <p className="mt-1 text-xs text-slate-500">
+            대기 {payload.queue.scanPending.toLocaleString("ko-KR")} · 진행{" "}
+            {payload.queue.scanRunning.toLocaleString("ko-KR")} · 완료{" "}
+            {payload.kpi.totalScans.toLocaleString("ko-KR")}
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["자동진단 대기", payload.queue.scanPending, "아직 자동진단 차례를 기다리는 작업입니다."],
+              ["자동진단 진행 중", payload.queue.scanRunning, "지금 설문을 읽고 있는 작업입니다."],
+              ["자동진단 완료", payload.kpi.outcomeBuckets.normalDiagnosis, "문항을 읽어 결과를 낸 건수입니다."],
+              ["종료로 제외", payload.kpi.excludedFromReporting.surveyClosed, "응답 기간이 끝나 검토 목록에서 뺀 건수입니다."],
+              ["접근제한 제외", payload.kpi.excludedFromReporting.accessRestricted, "로그인이 필요해 열지 못한 건수입니다."],
+              ["실패", payload.queue.scanFailed, "자동진단이 오류로 끝나 다시 확인이 필요합니다."],
+              ["타임아웃", payload.kpi.excludedFromReporting.systemFailure, "시간이 초과되어 결과를 내지 못한 작업입니다."],
+              ["제한 진단", payload.queue.scanLimited, "화면은 열렸지만 문항을 충분히 읽지 못한 건수입니다."],
+            ].map(([label, value, hint]) => (
+              <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[12px] font-semibold text-slate-800">{label}</p>
+                <p className="mt-1 text-xl font-bold tabular-nums">{Number(value).toLocaleString("ko-KR")}건</p>
+                <p className="mt-1 text-[11px] text-slate-500">{hint}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+
+        <section className="mb-5">
+          <h2 className="mb-2 text-sm font-bold text-slate-900">공개 사례 상태</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="공개 사례 등록"
+              value={payload.kpi.unpublishedCaseCount}
+              hint="아직 공개 사례로 올리지 않은 설문입니다."
+              help="공개 진단 사례로 등록하기 전 상태입니다. 개선안내 상태와는 다릅니다."
+              active={form.view === "unpublished"}
+              onClick={() => applyView("unpublished")}
+            />
+            <KpiCard
+              label="공개 검토 중"
+              value={payload.kpi.reviewingCaseCount}
+              hint="공개 사례로 올리기 전 내용을 확인하고 있는 설문입니다."
+              help="공개 사례 상태가 공개검토입니다."
+              active={form.view === "reviewing"}
+              onClick={() => applyView("reviewing")}
+            />
+            <KpiCard
+              label="공개중"
+              value={payload.kpi.publishedCaseCount}
+              hint="지금 /cases에 올라 있는 공개 사례입니다."
+              help="관리자가 승인한 개별 공개 사례입니다. 위반 확정은 아닙니다."
+              active={form.view === "published"}
+              onClick={() => applyView("published")}
+            />
+            <KpiCard
+              label="공개중지"
+              value={payload.kpi.pausedCaseCount}
+              hint="올렸다가 공개 목록에서 내린 사례입니다."
+              help="공개 사례 상태가 공개중지입니다. 다시 공개할 수 있습니다."
+              active={form.view === "paused"}
+              onClick={() => applyView("paused")}
+            />
+          </div>
+        </section>
+
+        {(payload.todayTasks || []).length > 0 ? (
+          <section className="mb-5 overflow-hidden rounded-xl border border-amber-200 bg-amber-50/40">
+            <div className="border-b border-amber-200 px-4 py-3">
+              <h2 className="text-sm font-bold text-slate-900">
+                오늘 해야 할 일 · 오늘 우선 확인할 설문 {(payload.todayTasks || []).length.toLocaleString("ko-KR")}건
+              </h2>
+              <p className="mt-1 text-[11px] text-slate-600">
+                미검토 A등급, 증빙 확보된 치명적, 공공부문 확인 필요, 공문발송 검토 대상을 먼저 보여줍니다.
               </p>
             </div>
-          ))}
-          <button
-            type="button"
-            onClick={() =>
-              setQuick({
-                publicCaseStatus:
-                  form.publicCaseStatus === "published" ? "all" : "published",
-              })
-            }
-            className={`rounded-xl border p-3 text-left shadow-sm ${
-              form.publicCaseStatus === "published"
-                ? "border-teal-700 bg-teal-50"
-                : "border-slate-200 bg-white hover:border-teal-300"
-            }`}
-          >
-            <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-              공개중
-            </p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {payload.kpi.publishedCaseCount.toLocaleString("ko-KR")}
-            </p>
-          </button>
-        </section>
-        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {[
-            ["스캔 대기", payload.queue.scanPending],
-            ["스캔 실행", payload.queue.scanRunning],
-            ["스캔 실패", payload.queue.scanFailed],
-            ["캡처 대기", payload.queue.capturePending],
-            ["캡처 실행", payload.queue.captureRunning],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-            >
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500">
-                {label}
-              </p>
-              <p className="mt-0.5 text-lg font-bold text-slate-900">
-                {Number(value).toLocaleString("ko-KR")}
-              </p>
+            <div className="divide-y divide-amber-100 bg-white">
+              {(payload.todayTasks || []).map((row, index) => (
+                <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                  <p className="min-w-0 flex-1 text-sm text-slate-800">
+                    <span className="mr-2 font-semibold text-slate-500">{index + 1}.</span>
+                    <span className="font-semibold">{row.outreachPriority}등급</span>
+                    {" · "}
+                    {publicPrivateKo(row.publicPrivateType) === "공공"
+                      ? "공공기관"
+                      : publicPrivateKo(row.publicPrivateType) === "민간"
+                        ? "민간기업"
+                        : publicPrivateKo(row.publicPrivateType)}
+                    {row.issueBadges[0] ? ` · ${row.issueBadges[0]}` : ""}
+                    {" · "}
+                    {row.evidenceStatus}
+                  </p>
+                  <AdminCaseRowActions
+                    row={row}
+                    onReview={() => setOpenId(row.id)}
+                    onPublish={() => setPublishId(row.id)}
+                    onChanged={() => void apply(form)}
+                    onMessage={setToast}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
-        </section>
+          </section>
+        ) : null}
         </>
       ) : null}
 
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">적용 필터:</span>
+        <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+          {appliedAdminRangeLabel({
+            range: (form.range as "today" | "7d" | "30d" | "all" | "custom") || "7d",
+            from: form.from || null,
+            to: form.to || null,
+          })}
+        </span>
+        {form.view !== "all" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            빠른 보기 {form.view}
+          </span>
+        ) : null}
+        {form.priority !== "all" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            우선순위 {form.priority}
+          </span>
+        ) : null}
+        {form.outreachStatus !== "all" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            {outreachUiStatusKo(form.outreachStatus)}
+          </span>
+        ) : null}
+        {form.hasEvidence === "true" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            증거 확보
+          </span>
+        ) : null}
+        {form.hasEvidence === "false" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            증거 부족
+          </span>
+        ) : null}
+        {form.q ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            검색: {form.q}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          필터 초기화
+        </button>
+      </div>
+
+      <p className="mb-2 text-[11px] font-semibold text-slate-500">
+        필터 그룹: 업무 상태 · 위험도 · 증빙 · 주체 · 문제 유형
+      </p>
       <div className="mb-4 flex flex-wrap gap-2">
         {(
           [
-            ["개선안내 후보", form.outreachOnly === "true", { outreachOnly: form.outreachOnly === "true" ? "all" : "true" }],
-            ["우선순위 A", form.priority === "A", { priority: form.priority === "A" ? "all" : "A" }],
+            ["미검토", form.outreachStatus === "unreviewed", { outreachStatus: form.outreachStatus === "unreviewed" ? "all" : "unreviewed" }],
+            ["검토중", form.outreachStatus === "in_review", { outreachStatus: form.outreachStatus === "in_review" ? "all" : "in_review" }],
+            ["개선안내 후보", form.outreachOnly === "true" || form.view === "outreach", { outreachOnly: form.outreachOnly === "true" ? "all" : "true" }],
+            ["발송대상", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
+            ["완료", form.outreachStatus === "done", { outreachStatus: form.outreachStatus === "done" ? "all" : "done" }],
+            ["치명적", form.risk === "critical", { risk: form.risk === "critical" ? "all" : "critical" }],
+            ["높음", form.risk === "high", { risk: form.risk === "high" ? "all" : "high" }],
+            ["중간", form.risk === "medium", { risk: form.risk === "medium" ? "all" : "medium" }],
+            ["낮음", form.risk === "low", { risk: form.risk === "low" ? "all" : "low" }],
             ["증거 확보", form.hasEvidence === "true", { hasEvidence: form.hasEvidence === "true" ? "all" : "true" }],
             ["증거 부족", form.hasEvidence === "false", { hasEvidence: form.hasEvidence === "false" ? "all" : "false" }],
-            ["미검토", form.outreachStatus === "unreviewed", { outreachStatus: form.outreachStatus === "unreviewed" ? "all" : "unreviewed" }],
-            ["발송대상", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
-            ["공문발송 검토", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
             ["공공기관", form.publicPrivate === "public", { publicPrivate: form.publicPrivate === "public" ? "all" : "public" }],
             ["민간기업", form.publicPrivate === "private", { publicPrivate: form.publicPrivate === "private" ? "all" : "private" }],
+            ["학교/교육기관", form.subjectType === "school_local", { subjectType: form.subjectType === "school_local" ? "all" : "school_local" }],
+            ["의료기관", form.subjectType === "medical", { subjectType: form.subjectType === "medical" ? "all" : "medical" }],
             ["개인정보 포함", form.hasPersonalInfo === "true", { hasPersonalInfo: form.hasPersonalInfo === "true" ? "all" : "true" }],
             ["민감정보 포함", form.hasSensitiveInfo === "true", { hasSensitiveInfo: form.hasSensitiveInfo === "true" ? "all" : "true" }],
             ["고지 미흡", form.noticeGap === "true", { noticeGap: form.noticeGap === "true" ? "all" : "true" }],
             ["신고검토", form.reportReview === "true", { reportReview: form.reportReview === "true" ? "all" : "true" }],
-            ["공개중", form.publicCaseStatus === "published", { publicCaseStatus: form.publicCaseStatus === "published" ? "all" : "published" }],
-            ["공개중지", form.publicCaseStatus === "paused", { publicCaseStatus: form.publicCaseStatus === "paused" ? "all" : "paused" }],
-            ["공개검토", form.publicCaseStatus === "reviewing", { publicCaseStatus: form.publicCaseStatus === "reviewing" ? "all" : "reviewing" }],
+            ["공문발송 검토", form.outreachStatus === "send", { outreachStatus: form.outreachStatus === "send" ? "all" : "send" }],
+            ["공개중", form.view === "published" || form.publicCaseStatus === "published", { view: form.view === "published" ? "all" : "published" }],
+            ["공개중지", form.view === "paused" || form.publicCaseStatus === "paused", { view: form.view === "paused" ? "all" : "paused" }],
+            ["공개검토", form.view === "reviewing" || form.publicCaseStatus === "reviewing", { view: form.view === "reviewing" ? "all" : "reviewing" }],
           ] as Array<[string, boolean, Partial<Filters>]>
         ).map(([label, active, patch]) => (
           <button
@@ -353,6 +683,7 @@ export function AdminConsoleView({
           </button>
         ))}
       </div>
+
 
       <form
         onSubmit={applyFilters}
@@ -385,9 +716,11 @@ export function AdminConsoleView({
             label: "위험도",
             options: [
               ["all", "전체"],
-              ["high", "고위험(high+)"],
-              ["critical", "critical"],
-              ["limited", "limited"],
+              ["critical", "치명적"],
+              ["high", "높음 이상"],
+              ["medium", "중간"],
+              ["low", "낮음"],
+              ["limited", "제한 진단"],
             ],
           },
           {
@@ -547,39 +880,51 @@ export function AdminConsoleView({
         ) : null}
       </form>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full table-fixed text-left text-xs">
+      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full min-w-[68rem] table-fixed text-left text-xs">
           <colgroup>
-            <col className="w-[6.5rem]" />
-            <col className="w-[2.4rem]" />
-            <col className="w-[3.4rem]" />
+            <col className="w-[6.2rem]" />
+            <col className="w-[2.6rem]" />
+            <col className="w-[3.6rem]" />
             <col className="w-[11%]" />
-            <col className="w-[16%]" />
             <col className="w-[14%]" />
             <col className="w-[16%]" />
-            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+            <col className="w-[5.5rem]" />
             <col className="w-[8.5rem]" />
+            <col className="w-[12.5rem]" />
           </colgroup>
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
             <tr>
               <th className="px-2 py-2">진단일</th>
-              <th className="px-1 py-2 text-center">우선</th>
+              <th className="px-1 py-2 text-center">우선순위</th>
               <th className="px-1 py-2">위험도</th>
-              <th className="px-2 py-2">기관/기업명</th>
+              <th className="px-2 py-2">기관/기업</th>
               <th className="px-2 py-2">설문 제목</th>
-              <th className="px-2 py-2">주요 문제</th>
+              <th className="px-2 py-2">문제 요약</th>
               <th className="px-2 py-2">수집 정보</th>
-              <th
-                className="px-2 py-2"
-                title="증거 / 검토 / 개선안내 상태 / 공개 사례 상태"
-              >
-                상태
-              </th>
+              <th className="px-2 py-2">증빙</th>
+              <th className="px-2 py-2">상태</th>
               <th className="px-2 py-2 text-right">조치</th>
             </tr>
           </thead>
           <tbody>
-            {(payload?.cases || []).map((row: AdminCaseListItem) => (
+            {(payload?.cases || []).map((row: AdminCaseListItem) => {
+              const dataBrief = formatDataCollectionBrief({
+                personalCount: row.personalInfoQuestionCount,
+                sensitiveCount: row.sensitiveQuestionCount,
+                categoryLabels: row.categoryLabels,
+                hasPersonalInfo: row.hasPersonalInfo,
+                hasSensitiveInfo: row.hasSensitiveInfo,
+              });
+              const orgKind =
+                subjectTypeKo(row.subjectType) ||
+                (publicPrivateKo(row.publicPrivateType) === "공공"
+                  ? "공공기관"
+                  : publicPrivateKo(row.publicPrivateType) === "민간"
+                    ? "민간기업"
+                    : publicPrivateKo(row.publicPrivateType));
+              return (
               <tr
                 key={row.id}
                 className={`cursor-pointer border-b border-slate-100 hover:bg-teal-50/60 ${
@@ -606,6 +951,7 @@ export function AdminConsoleView({
                 <td className="px-1 py-2">
                   <span
                     className={`inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${riskBadge(row.overallRiskLevel)}`}
+                    title={row.overallRiskLevel}
                   >
                     {riskLabelKo(row.overallRiskLevel)}
                   </span>
@@ -616,67 +962,58 @@ export function AdminConsoleView({
                 >
                   <span className="block truncate">{row.operatorName || "—"}</span>
                   <span className="block truncate text-[10px] font-normal text-slate-500">
-                    {publicPrivateKo(row.publicPrivateType)}
+                    {orgKind}
                   </span>
                 </td>
                 <td
                   className="overflow-hidden px-2 py-2 text-slate-800"
                   title={row.surveyTitle || undefined}
                 >
-                  {row.publicCaseStatus === "published" ||
-                  row.publicCaseStatus === "paused" ||
-                  row.publicCaseStatus === "reviewing" ? (
-                    <span
-                      className={`mb-0.5 mr-1 inline-block rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
-                    >
-                      {publicCaseStatusKo(row.publicCaseStatus)}
-                    </span>
-                  ) : null}
-                  <span className="truncate">{row.surveyTitle || "—"}</span>
+                  <span className="block truncate">{row.surveyTitle || "—"}</span>
                 </td>
                 <td className="overflow-hidden px-2 py-2">
                   {row.issueBadges.length > 0 ? (
-                    <span
-                      className="block truncate rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
-                      title={row.issueBadges.join(" · ")}
-                    >
-                      {row.issueBadges[0]}
-                      {row.issueBadges.length > 1
-                        ? ` 외 ${row.issueBadges.length - 1}`
-                        : ""}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {row.issueBadges.slice(0, 3).map((badge) => (
+                        <span
+                          key={badge}
+                          className="inline-block max-w-full truncate rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td
-                  className="overflow-hidden truncate px-2 py-2 text-[11px] text-slate-700"
-                  title={row.dataSummary}
-                >
-                  {row.dataSummary.replace(/\n/g, " · ")}
+                <td className="overflow-hidden px-2 py-2 text-[11px] text-slate-700">
+                  <div className="truncate font-medium">{dataBrief.headline}</div>
+                  {dataBrief.items ? (
+                    <div className="truncate text-[10px] text-slate-500">{dataBrief.items}</div>
+                  ) : null}
+                  {dataBrief.hasSensitive ? (
+                    <div className="mt-0.5 text-[10px] font-semibold text-rose-700">민감정보 포함</div>
+                  ) : null}
+                </td>
+                <td className="overflow-hidden px-2 py-2 text-[11px] text-slate-700">
+                  {row.evidenceStatus}
                 </td>
                 <td className="overflow-hidden px-2 py-2 text-[10px] leading-4 text-slate-600">
-                  <div className="truncate" title={`증거 ${row.evidenceStatus}`}>
-                    {row.evidenceStatus}
-                  </div>
-                  <div
-                    className="truncate"
-                    title={`검토 ${reviewStatusKo(row.reviewStatus)}`}
-                  >
+                  <div title={`검토 ${reviewStatusKo(row.reviewStatus)}`}>
                     {reviewStatusKo(row.reviewStatus)}
                   </div>
-                  <div
-                    className="truncate"
-                    title={`개선안내 상태 ${outreachUiStatusKo(row.outreachUiStatus)}`}
-                  >
+                  <div title={`개선안내 상태 ${outreachUiStatusKo(row.outreachUiStatus)}`}>
                     {outreachUiStatusKo(row.outreachUiStatus)}
                   </div>
-                  <div
-                    className={`mt-0.5 inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
-                    title={`공개 사례 상태 ${publicCaseStatusKo(row.publicCaseStatus)}`}
-                  >
-                    {publicCaseStatusKo(row.publicCaseStatus)}
-                  </div>
+                  {row.publicCaseStatus !== "private" ? (
+                    <div
+                      className={`mt-0.5 inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
+                      title={`공개 사례 ${publicCaseStatusKo(row.publicCaseStatus)}`}
+                    >
+                      공개 사례 {publicCaseStatusKo(row.publicCaseStatus)}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="overflow-hidden px-1 py-2">
                   <AdminCaseRowActions
@@ -688,10 +1025,11 @@ export function AdminConsoleView({
                   />
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {payload && payload.cases.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.
                 </td>
               </tr>

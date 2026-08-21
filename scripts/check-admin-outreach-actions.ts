@@ -69,7 +69,7 @@ function main() {
   const listLib = read("lib/report/adminCases.ts");
   check(
     "KPI uses same cases array as list",
-    /totalScans:\s*cases\.length/.test(listLib),
+    /totalScans:\s*scopedCases\.length/.test(listLib),
   );
   check("list item includes surveyUrl", /surveyUrl: \(row\.survey_url/.test(listLib));
   check("list item hasTemporaryZip", /hasTemporaryZip:/.test(listLib));

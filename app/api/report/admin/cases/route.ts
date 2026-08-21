@@ -32,6 +32,8 @@ export async function GET(request: Request) {
       reportReview: searchParams.get("reportReview"),
       outreachStatus: searchParams.get("outreachStatus"),
       publicCaseStatus: searchParams.get("publicCaseStatus"),
+      view: searchParams.get("view"),
+      subjectType: searchParams.get("subjectType"),
       from: searchParams.get("from"),
       to: searchParams.get("to"),
       q: searchParams.get("q"),

@@ -74,6 +74,8 @@
     "report:public-safety": "tsx scripts/check-public-report-safety.ts",
     "cases:public-safety": "tsx scripts/check-public-cases-safety.ts",
     "admin:outreach-actions-check": "tsx scripts/check-admin-outreach-actions.ts",
+    "admin:kpi-filter-check": "tsx scripts/check-admin-kpi-filter.ts",
+    "admin-dashboard-ux-check": "tsx scripts/check-admin-kpi-filter.ts",
     "queue:schema-check": "tsx scripts/check-queue-schema.ts",
     "jobs:stuck-check": "tsx scripts/check-stuck-jobs.ts",
     "verify:smoke": "tsx scripts/verify-production-readiness.ts --mode=smoke",

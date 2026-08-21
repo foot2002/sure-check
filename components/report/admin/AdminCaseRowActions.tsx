@@ -101,15 +101,7 @@ export function AdminCaseRowActions({
       <button type="button" className={btn} onClick={onReview}>
         검토
       </button>
-      {isPublished ? (
-        <button type="button" className={ghost} onClick={onPublish}>
-          수정
-        </button>
-      ) : isPaused ? (
-        <button type="button" className={ghost} onClick={onPublish}>
-          재공개
-        </button>
-      ) : hasUrl ? (
+      {hasUrl ? (
         <a
           href={row.surveyUrl || undefined}
           target="_blank"
@@ -123,6 +115,52 @@ export function AdminCaseRowActions({
           원본
         </button>
       )}
+      <button
+        type="button"
+        className={`${ghost} hidden sm:inline-flex`}
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
+            await downloadAdminBlob(
+              reviewReportDownloadUrl(row.id),
+              reviewReportFilename(row.id),
+            );
+          })
+        }
+      >
+        리포트
+      </button>
+      <button
+        type="button"
+        className={`${ghost} hidden md:inline-flex`}
+        disabled={busy || (!hasZip && !hasShots)}
+        title={evidenceLabel}
+        onClick={() =>
+          void run(async () => {
+            if (row.temporaryZipId) {
+              await downloadAdminBlob(
+                evidenceProxyDownloadUrl(row.temporaryZipId, row.id),
+                evidenceDownloadFilename({
+                  caseId: row.id,
+                  evidenceType: "temporary_zip",
+                }),
+              );
+              return;
+            }
+            for (const id of row.screenshotFileIds) {
+              await downloadAdminBlob(
+                evidenceProxyDownloadUrl(id, row.id),
+                evidenceDownloadFilename({
+                  caseId: row.id,
+                  evidenceType: "key_screenshot",
+                }),
+              );
+            }
+          })
+        }
+      >
+        증빙
+      </button>
       <div className="relative" ref={menuRef}>
         <button
           type="button"

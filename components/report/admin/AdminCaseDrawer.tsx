@@ -170,7 +170,32 @@ export function AdminCaseDrawer({
             <p className="text-sm text-rose-700">{error}</p>
           ) : null}
           {current ? (
-            <AdminOutreachSections detail={current} onMessage={setMessage} />
+            <>
+              <AdminOutreachSections detail={current} onMessage={setMessage} />
+              <details className="rounded-xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+                  기술정보
+                </summary>
+                <dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  <div>
+                    <dt>플랫폼</dt>
+                    <dd className="font-medium text-slate-800">{s?.platform || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>진단 처리</dt>
+                    <dd className="font-medium text-slate-800">{s?.diagnosisStatus || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>진단일</dt>
+                    <dd className="font-medium text-slate-800">{s?.observedAt || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>위험도(내부코드)</dt>
+                    <dd className="font-medium text-slate-800">{s?.overallRiskLevel || "—"}</dd>
+                  </div>
+                </dl>
+              </details>
+            </>
           ) : null}
         </div>
       </aside>

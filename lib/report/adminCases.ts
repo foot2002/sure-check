@@ -27,6 +27,11 @@ import type {
   ReviewStatus,
 } from "@/lib/db/types";
 import { normalizePublicCaseStatus } from "@/lib/report/publicCasePolicy";
+import {
+  matchesAdminDashboardView,
+  normalizeAdminDashboardView,
+  pickTodayPriorityCases,
+} from "@/lib/report/adminDashboardViews";
 
 export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -49,6 +54,8 @@ export interface AdminCaseListQuery {
   reportReview?: string | null;
   outreachStatus?: string | null;
   publicCaseStatus?: string | null;
+  view?: string | null;
+  subjectType?: string | null;
   from?: string | null;
   to?: string | null;
 }
@@ -67,6 +74,13 @@ export interface AdminKpi {
   publicationCandidateCount: number;
   /** Individual public cases currently listed on /cases. */
   publishedCaseCount: number;
+  unpublishedCaseCount: number;
+  reviewingCaseCount: number;
+  pausedCaseCount: number;
+  evidenceMissingCount: number;
+  captureNeededCount: number;
+  summaryReportCount: number;
+  detailReportCount: number;
   /** Outcome split for ops — extraction_limited is not a primary card. */
   outcomeBuckets: {
     normalDiagnosis: number;
@@ -153,6 +167,7 @@ export interface AdminCaseListPayload {
   kpi: AdminKpi;
   queue: AdminQueueSummary;
   cases: AdminCaseListItem[];
+  todayTasks: AdminCaseListItem[];
   /** Newest collect + diagnosis snapshots for one-page ops view. */
   recentCollect: AdminRecentCollectItem[];
   recentDiagnosis: AdminCaseListItem[];
@@ -324,42 +339,8 @@ export async function listAdminCases(
   if (from) surveyQuery = surveyQuery.gte("observed_date_kst", from);
   if (to) surveyQuery = surveyQuery.lte("observed_date_kst", to);
 
-  if (query.platform && query.platform !== "all") {
-    surveyQuery = surveyQuery.eq("platform", query.platform);
-  }
-  if (query.reviewStatus && query.reviewStatus !== "all") {
-    surveyQuery = surveyQuery.eq("review_status", query.reviewStatus);
-  }
-  if (query.publicPrivate && query.publicPrivate !== "all") {
-    surveyQuery = surveyQuery.eq("public_private_type", query.publicPrivate);
-  }
-  if (query.risk && query.risk !== "all") {
-    if (query.risk === "high") {
-      surveyQuery = surveyQuery.in("overall_risk_level", ["high", "critical"]);
-    } else {
-      surveyQuery = surveyQuery.eq("overall_risk_level", query.risk);
-    }
-  }
-
-  const personal = parseBoolFlag(query.hasPersonalInfo);
-  if (personal != null) surveyQuery = surveyQuery.eq("has_personal_info", personal);
-  const sensitive = parseBoolFlag(query.hasSensitiveInfo);
-  if (sensitive != null) {
-    surveyQuery = surveyQuery.eq("has_sensitive_info", sensitive);
-  }
-  const highRisk = parseBoolFlag(query.hasHighRiskInfo);
-  if (highRisk != null) {
-    surveyQuery = surveyQuery.eq("has_high_risk_info", highRisk);
-  }
   if (query.limitedOnly === "true" || query.limitedOnly === "1") {
     surveyQuery = surveyQuery.eq("overall_risk_level", "limited");
-  }
-
-  const q = (query.q || "").trim();
-  if (q) {
-    surveyQuery = surveyQuery.or(
-      `operator_name.ilike.%${q}%,survey_title.ilike.%${q}%,survey_url.ilike.%${q}%,user_decision_label.ilike.%${q}%`,
-    );
   }
 
   const { data: surveys, error } = await surveyQuery;
@@ -735,41 +716,6 @@ export async function listAdminCases(
     };
   });
 
-  const publicationFilter = query.publicationStatus;
-  if (publicationFilter && publicationFilter !== "all") {
-    cases = cases.filter((c) => c.publicationStatus === publicationFilter);
-  }
-
-  const hasEvidence = parseBoolFlag(query.hasEvidence);
-  if (hasEvidence === true) {
-    cases = cases.filter(
-      (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
-    );
-  }
-  if (hasEvidence === false) {
-    cases = cases.filter(
-      (c) => c.evidenceStatus === "증거 부족" || c.evidenceStatus === "캡처 필요",
-    );
-  }
-  if (query.outreachOnly === "true" || query.outreachOnly === "1") {
-    cases = cases.filter((c) => c.outreachCandidate);
-  }
-  if (query.priority && query.priority !== "all") {
-    cases = cases.filter((c) => c.outreachPriority === query.priority);
-  }
-  if (query.noticeGap === "true" || query.noticeGap === "1") {
-    cases = cases.filter((c) => c.issueBadges.length > 0);
-  }
-  if (query.reportReview === "true" || query.reportReview === "1") {
-    cases = cases.filter((c) => isReportReviewDecision(c.userDecisionLabel));
-  }
-  if (query.outreachStatus && query.outreachStatus !== "all") {
-    cases = cases.filter((c) => c.outreachUiStatus === query.outreachStatus);
-  }
-  if (publicCaseFilter !== "all") {
-    cases = cases.filter((c) => c.publicCaseStatus === publicCaseFilter);
-  }
-
   const PRIORITY_RANK: Record<string, number> = { A: 0, B: 1, C: 2 };
   cases.sort((a, b) => {
     const p =
@@ -848,36 +794,128 @@ export async function listAdminCases(
       outcomeBuckets.systemFailure,
   };
 
+  const scopedCases = cases;
+  const todayTasks = pickTodayPriorityCases(scopedCases, 5);
   const kpi: AdminKpi = {
-    totalScans: cases.length,
+    totalScans: scopedCases.length,
     rawTotalScans: rawCaseCount,
-    reviewPendingCount: cases.filter(
+    reviewPendingCount: scopedCases.filter(
       (c) => c.outreachUiStatus === "unreviewed",
     ).length,
-    highOrReportReviewCount: cases.filter(
+    highOrReportReviewCount: scopedCases.filter(
       (c) =>
         c.overallRiskLevel === "high" ||
         c.overallRiskLevel === "critical" ||
-        /거부|신고/.test(c.userDecisionLabel || ""),
+        isReportReviewDecision(c.userDecisionLabel),
     ).length,
-    publicSectorReviewCount: cases.filter(
+    publicSectorReviewCount: scopedCases.filter(
       (c) =>
         c.publicPrivateType === "public" &&
         c.hasPersonalInfo &&
         c.platform !== "wiseon_csap",
     ).length,
-    evidenceCaptureCount: cases.filter(
+    evidenceCaptureCount: scopedCases.filter(
       (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
     ).length,
+    evidenceMissingCount: scopedCases.filter(
+      (c) => c.evidenceStatus === "증거 부족" || c.evidenceStatus === "캡처 필요",
+    ).length,
+    captureNeededCount: scopedCases.filter((c) => c.evidenceStatus === "캡처 필요")
+      .length,
+    summaryReportCount: scopedCases.length,
+    detailReportCount: scopedCases.length,
     limitedAnalysisCount: excludedFromReporting.total,
-    publicationCandidateCount: cases.filter(
+    publicationCandidateCount: scopedCases.filter(
       (c) => c.outreachUiStatus === "send" || c.outreachUiStatus === "candidate",
     ).length,
-    publishedCaseCount: cases.filter((c) => c.publicCaseStatus === "published")
+    publishedCaseCount: scopedCases.filter((c) => c.publicCaseStatus === "published")
+      .length,
+    unpublishedCaseCount: scopedCases.filter(
+      (c) => c.publicCaseStatus === "private" || c.publicCaseStatus === "archived",
+    ).length,
+    reviewingCaseCount: scopedCases.filter((c) => c.publicCaseStatus === "reviewing")
+      .length,
+    pausedCaseCount: scopedCases.filter((c) => c.publicCaseStatus === "paused")
       .length,
     outcomeBuckets,
     excludedFromReporting,
   };
+
+  const dashboardView = normalizeAdminDashboardView(query.view);
+  if (dashboardView !== "all") {
+    cases = cases.filter((c) => matchesAdminDashboardView(c, dashboardView));
+  }
+  if (query.publicationStatus && query.publicationStatus !== "all") {
+    cases = cases.filter((c) => c.publicationStatus === query.publicationStatus);
+  }
+  const hasEvidence = parseBoolFlag(query.hasEvidence);
+  if (hasEvidence === true) {
+    cases = cases.filter(
+      (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
+    );
+  }
+  if (hasEvidence === false) {
+    cases = cases.filter(
+      (c) => c.evidenceStatus === "증거 부족" || c.evidenceStatus === "캡처 필요",
+    );
+  }
+  if (query.outreachOnly === "true" || query.outreachOnly === "1") {
+    cases = cases.filter((c) => c.outreachCandidate);
+  }
+  if (query.priority && query.priority !== "all") {
+    cases = cases.filter((c) => c.outreachPriority === query.priority);
+  }
+  if (query.noticeGap === "true" || query.noticeGap === "1") {
+    cases = cases.filter((c) => c.issueBadges.length > 0);
+  }
+  if (query.reportReview === "true" || query.reportReview === "1") {
+    cases = cases.filter((c) => isReportReviewDecision(c.userDecisionLabel));
+  }
+  if (query.outreachStatus && query.outreachStatus !== "all") {
+    cases = cases.filter((c) => c.outreachUiStatus === query.outreachStatus);
+  }
+  if (publicCaseFilter !== "all") {
+    cases = cases.filter((c) => c.publicCaseStatus === publicCaseFilter);
+  }
+  if (query.platform && query.platform !== "all") {
+    cases = cases.filter((c) => c.platform === query.platform);
+  }
+  if (query.reviewStatus && query.reviewStatus !== "all") {
+    cases = cases.filter((c) => c.reviewStatus === query.reviewStatus);
+  }
+  if (query.publicPrivate && query.publicPrivate !== "all") {
+    cases = cases.filter((c) => c.publicPrivateType === query.publicPrivate);
+  }
+  if (query.risk && query.risk !== "all") {
+    if (query.risk === "high") {
+      cases = cases.filter(
+        (c) => c.overallRiskLevel === "high" || c.overallRiskLevel === "critical",
+      );
+    } else {
+      cases = cases.filter((c) => c.overallRiskLevel === query.risk);
+    }
+  }
+  const personal = parseBoolFlag(query.hasPersonalInfo);
+  if (personal != null) cases = cases.filter((c) => c.hasPersonalInfo === personal);
+  const sensitive = parseBoolFlag(query.hasSensitiveInfo);
+  if (sensitive != null) {
+    cases = cases.filter((c) => c.hasSensitiveInfo === sensitive);
+  }
+  const highRisk = parseBoolFlag(query.hasHighRiskInfo);
+  if (highRisk != null) {
+    cases = cases.filter((c) => c.hasHighRiskInfo === highRisk);
+  }
+  if (query.subjectType && query.subjectType !== "all") {
+    cases = cases.filter((c) => c.subjectType === query.subjectType);
+  }
+  const q = (query.q || "").trim().toLowerCase();
+  if (q) {
+    cases = cases.filter((c) =>
+      [c.operatorName, c.surveyTitle, c.surveyUrl, c.userDecisionLabel]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q)),
+    );
+  }
 
   let queue: AdminQueueSummary = {
     scanPending: 0,
@@ -948,6 +986,7 @@ export async function listAdminCases(
     kpi,
     queue,
     cases,
+    todayTasks,
     recentCollect,
     recentDiagnosis,
     generatedAt: new Date().toISOString(),
