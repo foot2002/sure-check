@@ -335,8 +335,9 @@ async function main(): Promise<void> {
       fetchPage: false,
     },
   );
-  assert.equal(fetched.shouldDiagnose, true);
-  console.log("  PASS  checkSurveyFreshnessAndAvailability(search mode)");
+  assert.equal(fetched.shouldDiagnose, false);
+  assert.equal(fetched.reasonCode, "date_unknown_hold");
+  console.log("  PASS  checkSurveyFreshnessAndAvailability year-only → date_unknown_hold");
 
   console.log("\ncollector:freshness-check: ok");
 }

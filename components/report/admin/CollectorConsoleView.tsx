@@ -71,7 +71,10 @@ function formatCount(value: number | undefined | null): string {
 }
 
 function formatPct(rate: number | undefined | null): string {
-  return `${Math.round((rate || 0) * 100)}%`;
+  if (rate == null || !Number.isFinite(rate)) return "—";
+  if (rate < 0 || rate > 1) return "계산 불가";
+  const pct = Math.round(rate * 1000) / 10;
+  return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
 }
 
 function rateHint(
@@ -238,7 +241,7 @@ export function CollectorConsoleView({
       const res = await fetch("/api/report/admin/collector/official-sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit }),
+        body: JSON.stringify({ limit, trigger: limit === 1 ? "test" : "admin" }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -426,8 +429,9 @@ export function CollectorConsoleView({
         <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-base font-bold text-slate-900">오늘 진단 목표</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            오늘 정상 진단 완료: 목표 100건. 목표에 못 미쳐도 오류가 아니라
-            현재 운영 용량을 보여주는 지표입니다.
+            오늘 정상 진단 완료: {formatCount(summary.capacity?.completedToday)}건 / 목표 100건.
+            목표에 못 미쳐도 오류가 아니라 현재 운영 용량을 보여주는 지표입니다.
+            현재 worker 설정만으로는 100건/일 목표 달성이 어렵습니다.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <StatCard
@@ -447,8 +451,16 @@ export function CollectorConsoleView({
             />
             <StatCard
               label="공식 사이트 수집 기관 수"
-              value={`${formatCount(summary.capacity?.officialSiteCrawledToday)} / ${formatCount(summary.capacity?.officialSiteOrgsPerDayTarget)}`}
-              hint={`런당 ${summary.capacity?.officialSiteOrgsPerRun ?? 8}기관 × ${summary.capacity?.officialSiteWavesPerDay ?? 4}회`}
+              value={
+                summary.officialSite?.officialSiteRunRecordsToday
+                  ? `${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.capacity?.officialSiteOrgsPerDayTarget)}`
+                  : `${formatCount(summary.capacity?.officialSiteCrawledToday)} / ${formatCount(summary.capacity?.officialSiteOrgsPerDayTarget)}`
+              }
+              hint={
+                summary.officialSite?.officialSiteRunRecordsToday
+                  ? `정기 ${formatCount(summary.officialSite.todayCronCrawled)} · 수동 ${formatCount(summary.officialSite.todayManualCrawled)} · 전체 ${formatCount(summary.capacity?.officialSiteCrawledToday)}`
+                  : `오늘 전체 탐색 ${formatCount(summary.capacity?.officialSiteCrawledToday)}곳. 수동 테스트가 포함될 수 있습니다.`
+              }
             />
             <StatCard
               label="공식 사이트 적격 설문 수"
@@ -463,10 +475,21 @@ export function CollectorConsoleView({
           </div>
           {summary.capacity?.scanBatchIncreaseHint ? (
             <p className="mt-3 text-xs leading-5 text-slate-600">
-              100건/일 목표에는 scanBatch 상향 또는 worker 실행 횟수 증가가
-              필요합니다. 이번 운영에서는 scanBatch=3을 유지하고, timeout 0 ·
-              stuck running 0 · pending 적체 없음이 1~2일 유지되면 scanBatch=5
-              상향을 검토합니다.
+              현재 worker 설정 기준 최대 처리량은 약{" "}
+              {formatCount(summary.capacity?.estimatedMaxPerDay)}건/일입니다.
+              현재 설정만으로는 100건/일 목표 달성이 어렵습니다. timeout{" "}
+              {formatCount(summary.capacity?.timeoutToday)}, stuck running{" "}
+              {formatCount(summary.capacity?.stuckRunning)}, failed 급증 없음이
+              1~2일 유지되면 scanBatch=5 상향을 검토할 수 있습니다. 이번
+              운영에서는 scanBatch=3을 유지합니다.
+            </p>
+          ) : null}
+          {(summary.capacity?.timeoutToday || 0) > 0 ||
+          (summary.capacity?.stuckRunning || 0) > 0 ? (
+            <p className="mt-3 text-xs text-rose-800">
+              자동진단 처리 중 지연 또는 멈춤 가능성이 있습니다. timeout{" "}
+              {formatCount(summary.capacity?.timeoutToday)}, stuck running{" "}
+              {formatCount(summary.capacity?.stuckRunning)}.
             </p>
           ) : null}
         </section>
@@ -585,9 +608,36 @@ export function CollectorConsoleView({
             </p>
             <div className="mt-3 rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
               <p>
-                공식 사이트 수집: 하루 4회, 회당 최대 8기관, 예상 32기관/일
+                계획: 공식 사이트 정기 수집 하루 4회 × 회당 최대 8기관 = 32기관/일
                 (21:30 · 00:30 · 03:30 · 06:30 KST)
               </p>
+              <p>
+                실제: 오늘 전체 탐색 기관 {formatCount(summary.officialSite?.crawledToday)}건.
+                수동 테스트 포함 여부:{" "}
+                {summary.officialSite?.manualTestIncluded === "yes"
+                  ? "포함"
+                  : summary.officialSite?.manualTestIncluded === "no"
+                    ? "없음"
+                    : "알 수 없음"}
+              </p>
+              {summary.officialSite?.officialSiteRunRecordsToday ? (
+                <p>
+                  오늘 정기 수집 기관 {formatCount(summary.officialSite.todayCronCrawled)} / 계획 32
+                  · 오늘 수동 테스트 수집 기관 {formatCount(summary.officialSite.todayManualCrawled)}
+                  · 오늘 전체 탐색 기관 {formatCount(summary.officialSite.crawledToday)}
+                </p>
+              ) : (
+                <p>
+                  오늘 탐색 기관 수에는 수동 테스트 실행이 포함될 수 있습니다.
+                </p>
+              )}
+              {summary.officialSite?.exceededPlanExplained ? (
+                <p className="text-slate-600">
+                  오늘 공식 사이트 탐색 기관이 계획량보다 많습니다. 수동 테스트
+                  또는 관리자 실행이 포함되었을 수 있습니다. 정기 cron 기준
+                  계획량은 32기관/일입니다.
+                </p>
+              ) : null}
               <p>
                 현재 전체 seed: {formatCount(summary.officialSite?.institutionCount)}기관.
                 현재 속도 기준 전체 1회 순환 예상: 약{" "}
@@ -598,13 +648,13 @@ export function CollectorConsoleView({
                       Math.max(1, summary.capacity?.officialSiteOrgsPerDayTarget || 32),
                   ),
                 )}
-                일. 목표: 2주 1회 순환. 다음 확대 후보: 하루 8회 또는 12회.
+                일. 목표: 2주 1회 순환.
               </p>
               <p>
                 자동진단 처리량: 현재 scanBatch {summary.capacity?.scanBatch ?? 3},
                 worker 실행 기준 최대 처리량 약{" "}
                 {formatCount(summary.capacity?.estimatedMaxPerDay)}건/일.
-                100건/일 목표에는 scanBatch 상향 또는 worker 횟수 증가 필요.
+                현재 설정만으로는 100건/일 목표 달성이 어렵습니다.
               </p>
             </div>
             {summary.officialSite ? (
@@ -614,9 +664,25 @@ export function CollectorConsoleView({
                   <StatCard
                     label="오늘 탐색한 기관"
                     value={formatCount(summary.officialSite.crawledToday)}
-                    hint="오늘 공식 사이트 탐색 기관"
+                    hint="오늘 공식 사이트 전체 탐색 기관. 수동 테스트가 포함될 수 있습니다."
                     className="border-teal-200 bg-white"
                   />
+                  {summary.officialSite.officialSiteRunRecordsToday ? (
+                    <>
+                      <StatCard
+                        label="오늘 정기 수집 기관"
+                        value={`${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.officialSite.orgsPerDayTarget)}`}
+                        hint="cron 기준 계획 32기관/일"
+                        className="border-teal-200 bg-white"
+                      />
+                      <StatCard
+                        label="오늘 수동 테스트 수집 기관"
+                        value={formatCount(summary.officialSite.todayManualCrawled)}
+                        hint="관리자·테스트 실행 합계"
+                        className="border-teal-200 bg-white"
+                      />
+                    </>
+                  ) : null}
                   <StatCard
                     label="오늘 발견한 설문"
                     value={formatCount(summary.officialSite.surveysFoundToday)}
@@ -809,6 +875,18 @@ export function CollectorConsoleView({
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
+                    label="실제 게시글·하위페이지 저장률"
+                    value={formatPct(summary.officialSite.realSourcePageRate)}
+                    hint="homepage root/main이 아닌 구체 페이지 비율"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="source_page_url host mismatch"
+                    value={formatCount(summary.officialSite.sourcePageHostMismatchCount)}
+                    hint="홈페이지와 다른 호스트이거나 외부 설문 플랫폼 URL"
+                    className="border-amber-200 bg-amber-50"
+                  />
+                  <StatCard
                     label="게시일 추출 성공률"
                     value={formatPct(summary.officialSite.postedDateExtractRate)}
                     hint={rateHint(summary.officialSite.postedDateExtractRate, 0.5)}
@@ -827,9 +905,29 @@ export function CollectorConsoleView({
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
-                    label="date_unknown_hold 비율"
-                    value={formatPct(summary.officialSite.dateUnknownHoldRatio)}
-                    hint={rateHint(summary.officialSite.dateUnknownHoldRatio, 0.3, true)}
+                    label="오늘 날짜 불명 보류"
+                    value={formatCount(summary.officialSite.todayDateUnknownHold)}
+                    hint={`오늘 발견 ${formatCount(summary.officialSite.surveysFoundToday)}건 기준`}
+                    className="border-teal-200 bg-white"
+                    onClick={() => applyQuick({ holdReason: "date_unknown", sourceType: "official_site", status: "all" })}
+                  />
+                  <StatCard
+                    label="오늘 날짜 불명 비율"
+                    value={formatPct(summary.officialSite.todayDateUnknownHoldRatio)}
+                    hint="오늘 공식 사이트 날짜 불명 보류 / 오늘 공식 사이트 발견 설문"
+                    className="border-teal-200 bg-white"
+                  />
+                  <StatCard
+                    label="전체 날짜 불명 보류"
+                    value={formatCount(summary.officialSite.totalDateUnknownHold)}
+                    hint={`전체 발견 ${formatCount(summary.officialSite.totalSurveysFound)}건 기준`}
+                    className="border-teal-200 bg-white"
+                    onClick={() => applyQuick({ holdReason: "date_unknown", status: "all" })}
+                  />
+                  <StatCard
+                    label="전체 날짜 불명 비율"
+                    value={formatPct(summary.officialSite.totalDateUnknownHoldRatio)}
+                    hint="전체 공식 사이트 날짜 불명 보류 / 전체 공식 사이트 발견 설문"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -839,6 +937,23 @@ export function CollectorConsoleView({
                     className="border-teal-200 bg-white"
                   />
                 </div>
+                {(summary.officialSite.sourcePageUrlSaveRate || 0) < 0.9 ? (
+                  <p className="mt-3 text-xs text-amber-800">
+                    출처 페이지 저장률이 목표보다 낮습니다. 공문·증빙에 활용하려면
+                    실제 발견 페이지 저장률을 높여야 합니다.
+                  </p>
+                ) : null}
+                {(summary.officialSite.postedDateExtractRate || 0) < 0.5 ? (
+                  <p className="mt-3 text-xs text-amber-800">
+                    게시일 추출률이 낮아 최근 60일 판단이 약해질 수 있습니다.
+                    등록일·작성일 패턴을 점검하세요.
+                  </p>
+                ) : null}
+                {(summary.officialSite.todayDateUnknownHoldRatio || 0) > 0.3 ? (
+                  <p className="mt-3 text-xs text-amber-800">
+                    날짜를 확인하지 못해 자동진단에서 보류되는 설문이 많습니다.
+                  </p>
+                ) : null}
               </>
             ) : (
               <p className="mt-4 text-sm text-slate-500">
@@ -1010,6 +1125,12 @@ export function CollectorConsoleView({
               hint="worker가 아직 가져가지 않은 큐입니다."
             />
           </div>
+          {(summary?.capacity?.timeoutToday || 0) > 0 ||
+          (summary?.capacity?.stuckRunning || 0) > 0 ? (
+            <p className="mt-3 text-xs text-rose-800">
+              자동진단 처리 중 지연 또는 멈춤 가능성이 있습니다.
+            </p>
+          ) : null}
           {(summary?.capacity?.timeoutToday || 0) === 0 &&
           (summary?.capacity?.failedToday || 0) === 0 ? (
             <p className="mt-3 text-xs text-emerald-800">
@@ -1075,6 +1196,29 @@ export function CollectorConsoleView({
           </div>
         </section>
       ) : null}
+
+      <section className="mb-6 rounded-2xl border border-teal-200 bg-white p-4">
+        <h2 className="text-base font-bold text-slate-900">우선 증빙 생성 대상</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          개선 공문이나 공개 사례를 위해 우선순위 높은 설문의 증빙을 준비합니다.
+          대량 캡처는 하지 않고, 관리자가 명시한 경우에만 상위 5건을 비동기
+          큐에 등록합니다.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href="/report/admin?view=priorityEvidence"
+            className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+          >
+            상위 5건 증빙 생성
+          </Link>
+          <Link
+            href="/report/admin?view=evidenceMissing"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            목록 보기
+          </Link>
+        </div>
+      </section>
 
       {summary?.opsFunnel?.missingWarning ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

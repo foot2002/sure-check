@@ -26,6 +26,7 @@ export const ADMIN_DASHBOARD_VIEWS = [
   "evidenceReady",
   "evidenceMissing",
   "captureNeeded",
+  "priorityEvidence",
   "reportReady",
   "unpublished",
   "reviewing",
@@ -79,6 +80,17 @@ export function matchesAdminDashboardView(
       return row.evidenceStatus === "증거 부족" || row.evidenceStatus === "캡처 필요";
     case "captureNeeded":
       return row.evidenceStatus === "캡처 필요";
+    case "priorityEvidence":
+      return (
+        row.outreachPriority === "A" &&
+        (row.overallRiskLevel === "high" || row.overallRiskLevel === "critical") &&
+        row.publicPrivateType === "public" &&
+        row.hasPersonalInfo &&
+        (row.evidenceStatus === "증거 부족" || row.evidenceStatus === "캡처 필요") &&
+        (row.outreachUiStatus === "unreviewed" ||
+          row.outreachUiStatus === "send" ||
+          row.outreachUiStatus === "candidate")
+      );
     case "reportReady":
       return true;
     case "unpublished":

@@ -42,6 +42,8 @@ import {
 } from "@/lib/collector/opsCapacityPolicy";
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 import { matchesCollectorHoldReason } from "@/lib/collector/collectorDashboardLabels";
+import { dateUnknownHoldRatios } from "@/lib/collector/collectMetrics";
+import { countOfficialSiteRunsToday } from "@/lib/collector/recordOfficialSiteRun";
 import type {
   CollectorPlatform,
   CollectorSummary,
@@ -429,6 +431,7 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
     pendingCount: (diagnosis?.queued || 0) + (diagnosis?.running || 0),
     queuedCount: diagnosis?.queued || 0,
     failedToday,
+    stuckRunning: qualityKpis?.stuckScanJobs || 0,
     remainingDailyLimit:
       diagnosis?.today?.remaining ?? todayFunnel.diagnosisRemaining ?? 0,
     scanBatchIncreaseHint: estimatedMaxPerDay < DIAGNOSIS_COMPLETED_DAILY_TARGET,
@@ -486,20 +489,6 @@ export async function getCollectorSummary(): Promise<CollectorSummary> {
   };
 }
 
-async function countFreshnessReason(reason: string): Promise<number> {
-  try {
-    const supabase = createSupabaseServerClient();
-    const { count, error } = await supabase
-      .from("survey_links")
-      .select("id", { count: "exact", head: true })
-      .eq("freshness->>reason_code", reason);
-    if (error) return 0;
-    return count ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 async function loadOfficialSiteAdminStats(): Promise<{
   officialSite: NonNullable<CollectorSummary["officialSite"]>;
   todayNaverSurveys: number;
@@ -521,12 +510,7 @@ async function loadOfficialSiteAdminStats(): Promise<{
     rejectedSeedUrlCount,
     quality,
     todayNaverSurveys,
-    staleYear,
-    staleTopic,
-    previousYear,
-    dateUnknownHold,
-    unknownNoSignal,
-    activeUnknown,
+    officialSiteRuns,
   ] = await Promise.all([
     countOfficialInstitutionSites(),
     countOfficialSitesCrawledToday(today),
@@ -545,19 +529,23 @@ async function loadOfficialSiteAdminStats(): Promise<{
     countOfficialSiteRejectedSeedUrls(),
     countOfficialSiteQualitySnapshot(today),
     countNaverChannelSurveysFoundToday(today),
-    countFreshnessReason("stale_year"),
-    countFreshnessReason("stale_topic_year"),
-    countFreshnessReason("previous_year_phrase"),
-    countFreshnessReason("date_unknown_hold"),
-    countFreshnessReason("unknown_no_signal"),
-    countFreshnessReason("active_unknown_date"),
+    countOfficialSiteRunsToday(today),
   ]);
-  const totalOldYearExcluded = staleYear + staleTopic + previousYear;
-  const totalDateUnknownHold =
-    dateUnknownHold + unknownNoSignal + activeUnknown;
-  const officialSurveysForRatio = Math.max(totalSurveysFound, 1);
-  const dateUnknownHoldRatio =
-    totalSurveysFound > 0 ? totalDateUnknownHold / officialSurveysForRatio : 0;
+  const totalDateUnknownHold = totalFreshness.dateUnknownHold;
+  const ratios = dateUnknownHoldRatios({
+    todayHold: todayFreshness.dateUnknownHold,
+    todayFound: surveysFoundToday,
+    totalHold: totalDateUnknownHold,
+    totalFound: totalSurveysFound,
+  });
+  const todayCronCrawled = officialSiteRuns.cronInstitutions;
+  const todayManualCrawled = officialSiteRuns.manualInstitutions;
+  const hasRunRecords = officialSiteRuns.hasRunRecords;
+  const manualTestIncluded = !hasRunRecords
+    ? "unknown"
+    : todayManualCrawled > 0
+      ? "yes"
+      : "no";
   return {
     officialSite: {
     institutionCount,
@@ -574,7 +562,7 @@ async function loadOfficialSiteAdminStats(): Promise<{
     diagnosisQueued: todayDiagnosisQueued,
     totalSurveysFound,
     totalRecentEligible: totalFreshness.recentEligible,
-    totalOldYearExcluded,
+    totalOldYearExcluded: totalFreshness.oldYearExcluded,
     totalDateUnknownHold,
     totalRestrictedExcluded: totalFreshness.restrictedExcluded,
     needsReviewCount,
@@ -590,13 +578,23 @@ async function loadOfficialSiteAdminStats(): Promise<{
     dateExtractSuccessRate: quality.dateExtractSuccessRate,
     postedDateExtractRate: quality.postedDateExtractRate,
     periodExtractRate: quality.periodExtractRate,
-    dateUnknownHoldRatio,
+    dateUnknownHoldRatio: ratios.total.ratio ?? 0,
+    todayDateUnknownHoldRatio: ratios.today.ratio,
+    totalDateUnknownHoldRatio: ratios.total.ratio,
     sourcePageUrlSaveRate: quality.sourcePageUrlSaveRate,
+    realSourcePageRate: quality.realSourcePageRate,
+    sourcePageHostMismatchCount: quality.sourcePageHostMismatchCount,
     failedOrgCount: quality.failedOrgCount,
     sourceEvidenceSchemaMissing: quality.sourceEvidenceSchemaMissing,
     orgsPerRun: OFFICIAL_SITE_MAX_ORGS_PER_RUN,
     wavesPerDay: OFFICIAL_SITE_WAVES_PER_DAY,
     orgsPerDayTarget: OFFICIAL_SITE_TARGET_ORGS_PER_DAY,
+    todayCronCrawled,
+    todayManualCrawled,
+    officialSiteRunRecordsToday: hasRunRecords,
+    manualTestIncluded,
+    exceededPlanExplained:
+      crawledToday > OFFICIAL_SITE_TARGET_ORGS_PER_DAY,
     },
     todayNaverSurveys,
   };

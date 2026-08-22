@@ -45,7 +45,7 @@ console.log("[Diagnosis Daily Capacity Check]\n");
   assert.ok(view.includes("오늘 정상 진단 완료"));
   assert.ok(view.includes("목표 100건"));
   assert.ok(view.includes("현재 worker 설정 기준 최대 처리량"));
-  assert.ok(view.includes("scanBatch 상향"));
+  assert.ok(view.includes("scanBatch=5 상향"));
   assert.ok(view.includes("scanBatch=3"));
   assert.ok(view.includes("오늘 자동진단 시도"));
   assert.ok(view.includes("오늘 자동진단 완료"));

@@ -17,7 +17,10 @@ console.log("[Official Site Admin Stats Check]\n");
   assert.ok(types.includes("totalDateUnknownHold"));
   assert.ok(types.includes("todayRecentEligible"));
   assert.ok(types.includes("totalRecentEligible"));
-  assert.ok(types.includes("dateUnknownHoldRatio"));
+  assert.ok(types.includes("todayDateUnknownHoldRatio"));
+  assert.ok(types.includes("totalDateUnknownHoldRatio"));
+  assert.ok(types.includes("realSourcePageRate"));
+  assert.ok(types.includes("todayCronCrawled"));
   assert.ok(types.includes("postedDateExtractRate"));
   assert.ok(types.includes("needsReviewSamples"));
   assert.ok(types.includes("sourceComparison"));
@@ -36,8 +39,8 @@ console.log("[Official Site Admin Stats Check]\n");
 
 {
   const view = source("components/report/admin/CollectorConsoleView.tsx");
-  assert.ok(view.includes("오늘 공식 사이트 날짜 불명 보류"));
-  assert.ok(view.includes("전체 날짜 불명 보류"));
+  assert.ok(view.includes("오늘 날짜 불명 비율"));
+  assert.ok(view.includes("전체 날짜 불명 비율"));
   assert.ok(view.includes("오늘 공식 사이트 최근 60일 적격"));
   assert.ok(view.includes("전체 공식 사이트 적격 설문"));
   assert.ok(view.includes("전체 누적 통계"));

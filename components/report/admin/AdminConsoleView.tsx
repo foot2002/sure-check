@@ -190,6 +190,8 @@ export function AdminConsoleView({
   const [toast, setToast] = useState<string | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [confirmEvidence, setConfirmEvidence] = useState(false);
+  const [enqueueingEvidence, setEnqueueingEvidence] = useState(false);
   const payload = clientPayload ?? data;
   const loadError = clientError ?? error;
 
@@ -277,6 +279,33 @@ export function AdminConsoleView({
       to: form.to,
       view: nextView,
     });
+  }
+
+  async function enqueuePriorityEvidence() {
+    setEnqueueingEvidence(true);
+    try {
+      const res = await fetch("/api/report/admin/evidence/priority-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 5 }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        queued?: number;
+        error?: string;
+      } | null;
+      if (!res.ok || !json?.ok) {
+        setToast(json?.error || "증빙 생성 큐 등록에 실패했습니다.");
+        return;
+      }
+      setToast(`상위 ${json.queued || 0}건의 증빙 캡처를 비동기 큐에 등록했습니다.`);
+      void apply(form);
+    } catch {
+      setToast("증빙 생성 큐 등록에 실패했습니다.");
+    } finally {
+      setEnqueueingEvidence(false);
+      setConfirmEvidence(false);
+    }
   }
 
   function resetFilters() {
@@ -480,6 +509,67 @@ export function AdminConsoleView({
               onClick={() => applyView("reportReady")}
             />
           </div>
+        </section>
+
+        <section className="mb-5 overflow-hidden rounded-xl border border-teal-200 bg-teal-50/40">
+          <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">
+                우선 증빙 생성 대상{" "}
+                {(payload.kpi.priorityEvidenceCount || payload.priorityEvidence?.length || 0).toLocaleString("ko-KR")}건
+              </h2>
+              <p className="mt-1 text-[11px] text-slate-600">
+                우선순위 A · 치명적/높음 · 공공부문 확인 필요 · 개선안내 후보 ·
+                증빙 부족 · 미검토 또는 공문발송 검토. 한 번에 5건 이하만
+                비동기 캡처 큐에 등록합니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                disabled={
+                  enqueueingEvidence ||
+                  (payload.priorityEvidence || []).length === 0
+                }
+                onClick={() => setConfirmEvidence(true)}
+              >
+                상위 5건 증빙 생성
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                onClick={() => applyView("priorityEvidence")}
+              >
+                목록 보기
+              </button>
+            </div>
+          </div>
+          {confirmEvidence ? (
+            <div className="border-t border-teal-200 bg-white px-4 py-3 text-sm text-slate-800">
+              <p>
+                상위 5건의 증빙 캡처를 비동기 큐에 등록합니다. 캡처 작업은 시간이
+                걸릴 수 있으며, 수동 진단과 분리되어 처리됩니다. 계속하시겠습니까?
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  disabled={enqueueingEvidence}
+                  onClick={() => void enqueuePriorityEvidence()}
+                >
+                  {enqueueingEvidence ? "등록 중…" : "계속"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  onClick={() => setConfirmEvidence(false)}
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <details className="mb-5 rounded-xl border border-slate-200 bg-white p-4">

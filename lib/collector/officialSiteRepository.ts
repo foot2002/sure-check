@@ -17,6 +17,8 @@ import {
   type OfficialSiteSeedReview,
 } from "@/lib/collector/officialSiteSeedReview";
 import { getKstDayBounds } from "@/lib/collector/diagnosisLinkRepository";
+import { summarizeOfficialSourceQuality } from "@/lib/collector/officialSiteSourceQuality";
+import { clampUnitRatio } from "@/lib/collector/collectMetrics";
 
 export type OfficialInstitutionSiteRow = {
   id: string;
@@ -445,6 +447,8 @@ export async function countOfficialSiteQualitySnapshot(
   dateExtractSuccessRate: number;
   failedOrgCount: number;
   sourceEvidenceSchemaMissing: boolean;
+  realSourcePageRate: number;
+  sourcePageHostMismatchCount: number;
 }> {
   const bounds = getKstDayBounds(now);
   const supabase = client();
@@ -470,7 +474,7 @@ export async function countOfficialSiteQualitySnapshot(
   const crawlSuccessRate = crawled.length > 0 ? crawlOk / crawled.length : 0;
 
   const evidenceSelect =
-    "source_page_url, source_posted_date, source_period_start, source_period_end, source_deadline";
+    "source_page_url, source_posted_date, source_period_start, source_period_end, source_deadline, source_institution_homepage, source_url";
   let sample: Array<Record<string, unknown>> = [];
   let sourceEvidenceSchemaMissing = false;
   const withEvidence = await supabase
@@ -512,6 +516,13 @@ export async function countOfficialSiteQualitySnapshot(
       Boolean(row.source_deadline),
   ).length;
   const denom = sample.length;
+  const sourceQuality = summarizeOfficialSourceQuality(
+    sample.map((row) => ({
+      source_page_url: row.source_page_url as string | null,
+      source_institution_homepage: row.source_institution_homepage as string | null,
+      source_url: row.source_url as string | null,
+    })),
+  );
 
   const { count: failedOrgCount } = await supabase
     .from("official_institution_sites")
@@ -525,15 +536,28 @@ export async function countOfficialSiteQualitySnapshot(
     surveyDiscoveryRate,
     crawlSuccessRate,
     sourcePageUrlSaveRate:
-      denom > 0 && !sourceEvidenceSchemaMissing ? withPage / denom : 0,
+      denom > 0 && !sourceEvidenceSchemaMissing
+        ? clampUnitRatio(withPage, denom) ?? 0
+        : 0,
     postedDateExtractRate:
-      denom > 0 && !sourceEvidenceSchemaMissing ? withPosted / denom : 0,
+      denom > 0 && !sourceEvidenceSchemaMissing
+        ? clampUnitRatio(withPosted, denom) ?? 0
+        : 0,
     periodExtractRate:
-      denom > 0 && !sourceEvidenceSchemaMissing ? withPeriod / denom : 0,
+      denom > 0 && !sourceEvidenceSchemaMissing
+        ? clampUnitRatio(withPeriod, denom) ?? 0
+        : 0,
     dateExtractSuccessRate:
-      denom > 0 && !sourceEvidenceSchemaMissing ? withAnyDate / denom : 0,
+      denom > 0 && !sourceEvidenceSchemaMissing
+        ? clampUnitRatio(withAnyDate, denom) ?? 0
+        : 0,
     failedOrgCount: failedOrgCount ?? 0,
     sourceEvidenceSchemaMissing,
+    realSourcePageRate:
+      denom > 0 && !sourceEvidenceSchemaMissing
+        ? sourceQuality.realSourcePageRate ?? 0
+        : 0,
+    sourcePageHostMismatchCount: sourceQuality.hostMismatchCount,
   };
 }
 

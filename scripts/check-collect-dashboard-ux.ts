@@ -34,6 +34,9 @@ function main() {
   check("naver plain labels", view.includes("네이버 검색 후보") && view.includes("새로 저장한 설문 링크"));
   check("official site copy", view.includes("네이버 검색과 별도로 동작합니다"));
   check("quality source_page_url", view.includes("source_page_url 저장률"));
+  check("real source page rate", view.includes("실제 게시글·하위페이지 저장률"));
+  check("today unknown ratio", view.includes("오늘 날짜 불명 비율"));
+  check("total unknown ratio", view.includes("전체 날짜 불명 비율"));
   check("seed mismatch", view.includes("seed 오매핑 의심"));
   check("hold reason summary", view.includes("보류·제외 사유 요약"));
   check("quick filters", view.includes("날짜불명 보류") && view.includes("공식 사이트 수집"));

@@ -36,6 +36,7 @@ async function handle(request: Request): Promise<Response> {
 
   const result = await runOfficialSiteCollection({
     limit: Math.max(1, Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, Math.floor(limit))),
+    trigger: "cron",
   });
   return NextResponse.json({
     ...result,

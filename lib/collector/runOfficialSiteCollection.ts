@@ -13,6 +13,10 @@ import {
   syncOfficialInstitutionSites,
 } from "@/lib/collector/officialSiteRepository";
 import { loadOfficialInstitutionSeeds } from "@/lib/collector/officialSiteSeeds";
+import {
+  recordOfficialSiteCollectionRun,
+  type OfficialSiteRunTrigger,
+} from "@/lib/collector/recordOfficialSiteRun";
 
 export type OfficialSiteCollectionResult = {
   ok: boolean;
@@ -32,8 +36,11 @@ export type OfficialSiteCollectionResult = {
 export async function runOfficialSiteCollection(input?: {
   limit?: number;
   now?: Date;
+  trigger?: OfficialSiteRunTrigger;
 }): Promise<OfficialSiteCollectionResult> {
   const now = input?.now ?? new Date();
+  const startedAt = new Date();
+  const trigger: OfficialSiteRunTrigger = input?.trigger || "cron";
   const limit = Math.max(
     1,
     Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, input?.limit ?? OFFICIAL_SITE_MAX_ORGS_PER_RUN),
@@ -138,7 +145,7 @@ export async function runOfficialSiteCollection(input?: {
     }
   }
 
-  return {
+  const result: OfficialSiteCollectionResult = {
     ok: errors.length === 0,
     synced: sync.upserted,
     due: due.length,
@@ -150,4 +157,14 @@ export async function runOfficialSiteCollection(input?: {
     errors: errors.slice(0, 12),
     orgsPerRun: OFFICIAL_SITE_MAX_ORGS_PER_RUN,
   };
+  await recordOfficialSiteCollectionRun({
+    runTrigger: trigger,
+    startedAt,
+    completedAt: new Date(),
+    institutionsCrawled: crawled,
+    pagesFetched,
+    surveysFound: surveysSaved,
+    errorCount: errors.length,
+  });
+  return result;
 }

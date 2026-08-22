@@ -96,12 +96,19 @@ const RESTRICTED_PHRASE_RE =
 const TOPIC_YEAR_RE =
   /(\d{4})\s*년\s*도?\s*(만족도|실적|사업|평가|성과|운영|고객|교육|업무)/;
 
-const RANGE_LABEL_RE = /(?:응답|조사|설문|접수|참여)\s*기간/;
+const RANGE_LABEL_RE =
+  /(?:신청|접수|모집|운영|조사|응답|설문|참여|행사|교육)\s*기간|마감일|접수\s*마감|신청\s*마감|응답\s*마감/;
 
 const PREVIOUS_YEAR_PHRASE_RE = /작년|전년도|지난해/;
 
 const IN_PROGRESS_PHRASE_RE =
-  /진행\s*중|모집\s*중|응답\s*중|접수\s*중|참여\s*가능|현재\s*진행|현재\s*모집|현재\s*접수/;
+  /현재\s*접수\s*중|신청\s*접수\s*중|설문\s*참여\s*중|의견\s*수렴\s*중|참여\s*가능합니다|진행\s*중|모집\s*중|응답\s*중|접수\s*중|참여\s*가능|현재\s*진행|현재\s*모집|현재\s*접수/;
+
+const COPYRIGHT_YEAR_NOISE_RE =
+  /©\s*(?:19|20)\d{2}|copyright\s*(?:©\s*)?(?:19|20)\d{2}|무단\s*전재[^\n]{0,80}(?:19|20)\d{2}/gi;
+
+const POSTED_DATE_LABEL_RE =
+  /(?:최초\s*)?(?:등록일|작성일|게시일|공지일|게재일|작성일자|등록일자|작성날짜|등록날짜|날짜|작성시간|등록시간|최종수정일|최종수정)/;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -162,14 +169,35 @@ function parseYmd(
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
+export function stripCopyrightYearNoise(text: string): string {
+  return text.replace(COPYRIGHT_YEAR_NOISE_RE, " ");
+}
+
 function collectExplicitYears(text: string): number[] {
+  const cleaned = stripCopyrightYearNoise(text);
   const years = new Set<number>();
   const re = /((?:19|20)\d{2})/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
+  while ((m = re.exec(cleaned))) {
     years.add(Number(m[1]));
   }
   return [...years];
+}
+
+export function parseFlexibleYmd(
+  year: number,
+  month: number,
+  day: number,
+): string | null {
+  return parseYmd(year, month, day);
+}
+
+function matchDateToken(
+  yearRaw: string,
+  monthRaw: string,
+  dayRaw: string,
+): string | null {
+  return parseYmd(Number(yearRaw), Number(monthRaw), Number(dayRaw));
 }
 
 function isTopicYearContext(text: string, year: number): boolean {
@@ -196,9 +224,20 @@ function extractSurveyDates(text: string, currentYear: number): ExtractedDates {
   };
 
   const dotted =
-    /((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})\s*[일.]?\s*[~\-–—내지부터]+\s*(?:((?:19|20)\d{2})[.\-/년]\s*)?(\d{1,2})[.\-/월]\s*(\d{1,2})/g;
+    /((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})\s*[일.]?\s*(?:부터)?\s*[~\-–—내지]+\s*(?:((?:19|20)\d{2})[.\-/년]\s*)?(\d{1,2})[.\-/월]\s*(\d{1,2})/g;
   let m: RegExpExecArray | null;
   while ((m = dotted.exec(text))) {
+    const y1 = Number(m[1]);
+    const y2 = m[4] ? Number(m[4]) : y1;
+    pushRange(
+      parseYmd(y1, Number(m[2]), Number(m[3])),
+      parseYmd(y2, Number(m[5]), Number(m[6])),
+    );
+  }
+
+  const fromUntil =
+    /((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})\s*[일.]?\s*부터\s*(?:((?:19|20)\d{2})[.\-/년]\s*)?(\d{1,2})[.\-/월]\s*(\d{1,2})\s*[일.]?\s*까지/g;
+  while ((m = fromUntil.exec(text))) {
     const y1 = Number(m[1]);
     const y2 = m[4] ? Number(m[4]) : y1;
     pushRange(
@@ -227,13 +266,25 @@ function extractSurveyDates(text: string, currentYear: number): ExtractedDates {
     );
   }
 
-  // Single labelled end date: 마감일 2026.8.31 / 종료일: 2026-08-01
+  if (!start && !end) {
+    const weekdayRange =
+      /(?<!(?:19|20)\d{2}[.\-])(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?\s*(?:\([월화수목금토일]\))?\s*[~\-–—]\s*(\d{1,2})\s*\.\s*(\d{1,2})/g;
+    while ((m = weekdayRange.exec(text))) {
+      pushRange(
+        parseYmd(currentYear, Number(m[1]), Number(m[2])),
+        parseYmd(currentYear, Number(m[3]), Number(m[4])),
+      );
+    }
+  }
+
+  const deadlineLabel =
+    /(?:마감일|종료일|접수\s*마감|신청\s*마감|응답\s*마감)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/;
   if (!end) {
     const labelledRange = RANGE_LABEL_RE.test(text);
     const single = labelledRange
-      ? /(?:종료|마감|까지)[^\d]{0,8}((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]?\s*(\d{1,2})?/
-      : /(?:마감일|종료일|접수\s*마감|응답\s*마감)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/;
-    const sm = text.match(single);
+      ? /(?:종료|마감|까지)[^\d]{0,12}((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]?\s*(\d{1,2})?/
+      : deadlineLabel;
+    const sm = text.match(single) || text.match(deadlineLabel);
     if (sm) {
       end = parseYmd(
         Number(sm[1]),
@@ -243,7 +294,6 @@ function extractSurveyDates(text: string, currentYear: number): ExtractedDates {
     }
   }
 
-  void currentYear;
   return { start, end, years };
 }
 
@@ -251,13 +301,37 @@ export function extractSurveyDateSignals(text: string): ExtractedDates {
   return extractSurveyDates(text, getKstParts().year);
 }
 
-const POSTED_DATE_RE =
-  /(?:등록일|작성일|게시일|공지일|게재일|작성일자|등록일자)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/;
+function parsePostedDateAfterLabel(rest: string): string | null {
+  const ymd =
+    rest.match(/((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/) ||
+    rest.match(/((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (ymd) return matchDateToken(ymd[1], ymd[2], ymd[3]);
+  const mdY = rest.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/]((?:19|20)\d{2})/);
+  if (mdY) {
+    const a = Number(mdY[1]);
+    const b = Number(mdY[2]);
+    if (a > 12 && b <= 12) return parseYmd(Number(mdY[3]), b, a);
+    return parseYmd(Number(mdY[3]), a, b);
+  }
+  return null;
+}
 
 export function extractPostedDateYmd(text: string): string | null {
-  const match = text.match(POSTED_DATE_RE);
-  if (!match) return null;
-  return parseYmd(Number(match[1]), Number(match[2]), Number(match[3]));
+  const cleaned = stripCopyrightYearNoise(text);
+  const labelled = new RegExp(
+    `${POSTED_DATE_LABEL_RE.source}\\s*[:：]?\\s*(.{0,40})`,
+    "i",
+  );
+  const match = cleaned.match(labelled);
+  if (match) {
+    const parsed = parsePostedDateAfterLabel(match[1] || "");
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+export function hasPeriodLanguage(text: string): boolean {
+  return RANGE_LABEL_RE.test(text);
 }
 
 function koreanReason(
@@ -360,9 +434,12 @@ export function evaluateSurveyFreshness(
   const now = input.now ?? new Date();
   const kst = getKstParts(now);
   const windowDays = getRecentSurveyWindowDays();
-  const blob = [input.title, input.snippet, input.pageText, input.url]
-    .filter(Boolean)
-    .join("\n");
+  const contextBlob = [input.title, input.snippet].filter(Boolean).join("\n");
+  const blob = stripCopyrightYearNoise(
+    [input.title, input.snippet, input.pageText, input.url]
+      .filter(Boolean)
+      .join("\n"),
+  );
   const evidence = blob.slice(0, 400);
   const mode = input.mode ?? "search";
   const dates = extractSurveyDates(blob, kst.year);
@@ -513,19 +590,7 @@ export function evaluateSurveyFreshness(
     }
   }
 
-  if (mentionsCurrentYear) {
-    return finish(
-      "active",
-      "active_candidate",
-      "current_year",
-      mode === "page" && input.confirmedLive ? "active" : "discovered",
-      true,
-      true,
-      kst.year,
-    );
-  }
-
-  if (IN_PROGRESS_PHRASE_RE.test(blob)) {
+  if (IN_PROGRESS_PHRASE_RE.test(contextBlob)) {
     return finish(
       "active",
       "active_candidate",

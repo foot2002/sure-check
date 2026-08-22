@@ -63,10 +63,9 @@ console.log("[Official Site Daily Capacity Check]\n");
 {
   const view = source("components/report/admin/CollectorConsoleView.tsx");
   assert.ok(view.includes("공식 사이트 수집 기관 수"));
-  assert.ok(view.includes("런당"));
-  assert.ok(view.includes("하루 4회"));
+  assert.ok(view.includes("계획: 공식 사이트 정기 수집 하루 4회"));
   assert.ok(view.includes("회당 최대 8기관"));
-  assert.ok(view.includes("예상 32기관/일"));
+  assert.ok(view.includes("32기관/일"));
   console.log("  PASS  collector dashboard shows official-site daily capacity");
 }
 

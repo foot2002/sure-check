@@ -47,7 +47,7 @@ export interface SurveyLinkFreshness {
   diagnosis_exclusion_reason?: string | null;
   discovery_channel?: string;
   freshness_basis?: "source_page" | "survey_page" | "unknown";
-  freshness_confidence?: "high" | "medium" | "low";
+  freshness_confidence?: "high" | "medium" | "low" | "none";
   old_year_signal?: boolean;
   source_posted_date?: string | null;
   source_period_start?: string | null;
@@ -384,12 +384,21 @@ export interface CollectorSummary {
     postedDateExtractRate?: number;
     periodExtractRate?: number;
     dateUnknownHoldRatio?: number;
+    todayDateUnknownHoldRatio?: number | null;
+    totalDateUnknownHoldRatio?: number | null;
     sourcePageUrlSaveRate?: number;
+    realSourcePageRate?: number | null;
+    sourcePageHostMismatchCount?: number;
     failedOrgCount?: number;
     sourceEvidenceSchemaMissing?: boolean;
     orgsPerRun?: number;
     wavesPerDay?: number;
     orgsPerDayTarget?: number;
+    todayCronCrawled?: number;
+    todayManualCrawled?: number;
+    officialSiteRunRecordsToday?: boolean;
+    manualTestIncluded?: "yes" | "unknown" | "no";
+    exceededPlanExplained?: boolean;
   };
   sourceComparison?: {
     todayNaverSurveys: number;
@@ -416,6 +425,7 @@ export interface CollectorSummary {
     pendingCount: number;
     queuedCount: number;
     failedToday: number;
+    stuckRunning: number;
     remainingDailyLimit: number;
     scanBatchIncreaseHint: boolean;
   };

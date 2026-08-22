@@ -32,6 +32,7 @@ import {
   normalizeAdminDashboardView,
   pickTodayPriorityCases,
 } from "@/lib/report/adminDashboardViews";
+import { pickPriorityEvidenceCases } from "@/lib/report/priorityEvidenceQueue";
 
 export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -79,6 +80,7 @@ export interface AdminKpi {
   pausedCaseCount: number;
   evidenceMissingCount: number;
   captureNeededCount: number;
+  priorityEvidenceCount: number;
   summaryReportCount: number;
   detailReportCount: number;
   /** Outcome split for ops — extraction_limited is not a primary card. */
@@ -148,6 +150,7 @@ export interface AdminCaseListItem {
   downloadableEvidenceTypes: string[];
   publicCaseStatus: PublicCaseStatus;
   publicId: string | null;
+  scanJobId: string | null;
 }
 
 export interface AdminRecentCollectItem {
@@ -168,6 +171,7 @@ export interface AdminCaseListPayload {
   queue: AdminQueueSummary;
   cases: AdminCaseListItem[];
   todayTasks: AdminCaseListItem[];
+  priorityEvidence: AdminCaseListItem[];
   /** Newest collect + diagnosis snapshots for one-page ops view. */
   recentCollect: AdminRecentCollectItem[];
   recentDiagnosis: AdminCaseListItem[];
@@ -713,6 +717,7 @@ export async function listAdminCases(
       downloadableEvidenceTypes: evidenceSummary.downloadableEvidenceTypes,
       publicCaseStatus: publicCaseMap.get(row.id as string)?.status || "private",
       publicId: publicCaseMap.get(row.id as string)?.publicId || null,
+      scanJobId: (row.scan_job_id as string | null) || null,
     };
   });
 
@@ -796,6 +801,7 @@ export async function listAdminCases(
 
   const scopedCases = cases;
   const todayTasks = pickTodayPriorityCases(scopedCases, 5);
+  const priorityEvidence = pickPriorityEvidenceCases(scopedCases);
   const kpi: AdminKpi = {
     totalScans: scopedCases.length,
     rawTotalScans: rawCaseCount,
@@ -822,6 +828,7 @@ export async function listAdminCases(
     ).length,
     captureNeededCount: scopedCases.filter((c) => c.evidenceStatus === "캡처 필요")
       .length,
+    priorityEvidenceCount: priorityEvidence.length,
     summaryReportCount: scopedCases.length,
     detailReportCount: scopedCases.length,
     limitedAnalysisCount: excludedFromReporting.total,
@@ -987,6 +994,7 @@ export async function listAdminCases(
     queue,
     cases,
     todayTasks,
+    priorityEvidence,
     recentCollect,
     recentDiagnosis,
     generatedAt: new Date().toISOString(),

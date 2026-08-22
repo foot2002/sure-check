@@ -114,6 +114,9 @@ function freshnessShouldDiagnose(
   if (freshness.diagnosis_eligible_recent === false) return false;
   if (freshness.should_diagnose === false) return false;
   if (freshness.old_year_signal === true) return false;
+  if (freshness.freshness_confidence === "low" || freshness.freshness_confidence === "none") {
+    return false;
+  }
   const reason = String(freshness.diagnosis_exclusion_reason || freshness.reason_code || "");
   if (
     reason === "date_unknown_hold" ||

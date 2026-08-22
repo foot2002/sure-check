@@ -296,6 +296,7 @@ export async function crawlOfficialInstitutionSite(
       const freshness = withOfficialSiteFreshnessMeta(
         (sourceFreshness || processed.freshness || {}) as Record<string, unknown>,
         dates,
+        { sourcePageUrl: find.sourcePageUrl, homepageUrl: row.homepage_url },
       ) as SurveyLinkFreshness;
       if (formBlocked && processed.freshness) {
         freshness.diagnosis_eligible_recent = false;

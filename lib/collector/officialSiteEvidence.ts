@@ -7,7 +7,9 @@ import * as cheerio from "cheerio";
 import {
   extractSurveyDateSignals,
   extractPostedDateYmd,
+  hasPeriodLanguage,
 } from "@/lib/collector/surveyFreshness";
+import { sourcePageConfidenceCap } from "@/lib/collector/officialSiteSourceQuality";
 
 export type OfficialSiteSurveyFind = {
   surveyUrl: string;
@@ -115,6 +117,38 @@ export function excerptAround(
   return clipExcerpt(compact.slice(start), max);
 }
 
+const CHROME_SELECTORS = [
+  "footer",
+  "header",
+  "nav",
+  "aside",
+  "sitemap",
+  ".footer",
+  "#footer",
+  ".copyright",
+  "#copyright",
+  ".sitemap",
+  "[class*='footer']",
+  "[id*='footer']",
+  "[class*='copyright']",
+  "[id*='copyright']",
+  "[class*='gnb']",
+  "[class*='lnb']",
+  "[role='navigation']",
+  "[role='contentinfo']",
+].join(", ");
+
+function isoToYmd(value: string | null | undefined): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const labelled = extractPostedDateYmd(`등록일 ${raw}`) || extractPostedDateYmd(raw);
+  if (labelled) return labelled;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const kst = new Date(parsed + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, "0")}-${String(kst.getUTCDate()).padStart(2, "0")}`;
+}
+
 export function extractPageTitle(html: string): string {
   const $ = cheerio.load(html);
   const heading = $("h1, h2")
@@ -129,10 +163,57 @@ export function extractPageTitle(html: string): string {
 export function extractVisiblePageText(html: string): string {
   const $ = cheerio.load(html);
   $("script, style, noscript, iframe").remove();
+  $(CHROME_SELECTORS).remove();
   return ($("body").text() || $.root().text())
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 12_000);
+}
+
+function collectJsonLdDates($: ReturnType<typeof cheerio.load>): string[] {
+  const out: string[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    const raw = $(el).contents().text() || $(el).text();
+    if (!raw.trim()) return;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      const graph =
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        Array.isArray((parsed as Record<string, unknown>)["@graph"])
+          ? ((parsed as Record<string, unknown>)["@graph"] as unknown[])
+          : [];
+      const nodes: unknown[] = Array.isArray(parsed)
+        ? parsed
+        : [parsed, ...graph];
+      for (const node of nodes) {
+        if (!node || typeof node !== "object") continue;
+        const rec = node as Record<string, unknown>;
+        for (const key of ["datePublished", "dateCreated", "dateModified"]) {
+          if (typeof rec[key] === "string") out.push(rec[key]);
+        }
+      }
+    } catch {
+      /* ignore invalid json-ld */
+    }
+  });
+  return out;
+}
+
+function collectLabeledTableDates($: ReturnType<typeof cheerio.load>): string[] {
+  const out: string[] = [];
+  $("th, dt, label, span, strong, em").each((_, el) => {
+    const label = $(el).text().replace(/\s+/g, " ").trim();
+    if (!/(등록일|작성일|게시일|공지일|날짜|작성날짜|최초등록일|최종수정일|최종수정|작성시간|등록시간)/.test(label)) {
+      return;
+    }
+    const sibling = $(el).next("td, dd, span, p").text();
+    const parent = $(el).parent().find("td, dd").last().text();
+    const value = (sibling || parent || $(el).parent().text()).replace(/\s+/g, " ").trim();
+    if (value) out.push(value);
+  });
+  return out;
 }
 
 export function extractAnchorContext(
@@ -141,6 +222,7 @@ export function extractAnchorContext(
   anchorText: string,
 ): string {
   const $ = cheerio.load(html);
+  $(CHROME_SELECTORS).remove();
   let best = "";
   $("a[href]").each((_, el) => {
     const href = String($(el).attr("href") || "");
@@ -168,23 +250,32 @@ export function extractOfficialPageDates(
   pageText?: string,
 ): OfficialSitePageDates {
   const $ = cheerio.load(html);
-  const meta =
-    $('meta[property="article:published_time"]').attr("content") ||
-    $('meta[name="date"]').attr("content") ||
-    $("time[datetime]").attr("datetime") ||
-    "";
-  const text = `${pageText || extractVisiblePageText(html)} ${meta}`;
+  const metaCandidates = [
+    $('meta[property="article:published_time"]').attr("content"),
+    $('meta[property="og:published_time"]').attr("content"),
+    $('meta[name="date"]').attr("content"),
+    $('meta[name="Date"]').attr("content"),
+    $('meta[name="created"]').attr("content"),
+    $('meta[name="regDate"]').attr("content"),
+    $('meta[name="regdate"]').attr("content"),
+    $("time[datetime]").attr("datetime"),
+    $("[data-date]").attr("data-date"),
+    $("[data-regdate]").attr("data-regdate"),
+    ...collectJsonLdDates($),
+  ].filter(Boolean) as string[];
+  const tableDates = collectLabeledTableDates($);
+  const mainText = pageText || extractVisiblePageText(html);
+  const text = [mainText, ...metaCandidates, ...tableDates].join(" ");
   const range = extractSurveyDateSignals(text);
   let postedYmd = extractPostedDateYmd(text);
-  if (!postedYmd && meta) {
-    const parsed = Date.parse(meta);
-    if (Number.isFinite(parsed)) {
-      const kst = new Date(parsed + 9 * 60 * 60 * 1000);
-      postedYmd = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, "0")}-${String(kst.getUTCDate()).padStart(2, "0")}`;
+  if (!postedYmd) {
+    for (const candidate of [...tableDates, ...metaCandidates]) {
+      postedYmd = isoToYmd(candidate);
+      if (postedYmd) break;
     }
   }
   const deadlineMatch = text.match(
-    /(?:마감일|종료일|접수\s*마감|응답\s*마감)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/,
+    /(?:마감일|종료일|접수\s*마감|신청\s*마감|응답\s*마감)\s*[:：]?\s*((?:19|20)\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/,
   );
   const deadline = deadlineMatch
     ? `${deadlineMatch[1]}-${String(Number(deadlineMatch[2])).padStart(2, "0")}-${String(Number(deadlineMatch[3])).padStart(2, "0")}`
@@ -219,13 +310,31 @@ export function freshnessConfidence(input: {
   deadline: string | null;
   eligible: boolean;
   unknown: boolean;
-}): "high" | "medium" | "low" {
-  if (input.postedYmd || input.periodStart || input.periodEnd || input.deadline) {
-    return "high";
+  periodLanguage?: boolean;
+  sourcePageCap?: "high" | "medium" | "low";
+}): "high" | "medium" | "low" | "none" {
+  const hasStructured =
+    Boolean(input.postedYmd) ||
+    Boolean(input.periodStart && input.periodEnd) ||
+    Boolean(input.deadline) ||
+    Boolean(input.periodEnd);
+  let level: "high" | "medium" | "low" | "none";
+  if (hasStructured && (input.postedYmd || input.periodEnd || input.deadline)) {
+    level = "high";
+  } else if (hasStructured || (input.periodLanguage && input.eligible)) {
+    level = "medium";
+  } else if (input.eligible) {
+    level = "medium";
+  } else if (input.unknown) {
+    level = "none";
+  } else {
+    level = "low";
   }
-  if (input.eligible) return "medium";
-  if (input.unknown) return "low";
-  return "medium";
+  if (input.sourcePageCap === "low" && level === "high") level = "medium";
+  if (!hasStructured && input.sourcePageCap === "low") {
+    level = input.unknown ? "none" : "low";
+  }
+  return level;
 }
 
 export function withOfficialSiteFreshnessMeta(
@@ -237,6 +346,7 @@ export function withOfficialSiteFreshnessMeta(
     [key: string]: unknown;
   },
   dates: OfficialSitePageDates,
+  source?: { sourcePageUrl?: string | null; homepageUrl?: string | null },
 ): Record<string, unknown> {
   const reason = String(
     record.diagnosis_exclusion_reason || record.reason_code || "",
@@ -249,18 +359,46 @@ export function withOfficialSiteFreshnessMeta(
     reason === "old_year_2025";
   const unknown = reason === "date_unknown_hold" || reason === "active_unknown_date";
   const eligible = record.diagnosis_eligible_recent === true;
+  const keepExistingExclusion =
+    oldYear ||
+    /closed|restricted|stale|personal|published_too_old|end_date|start_date_future/.test(
+      reason,
+    );
+  const sourcePageCap = sourcePageConfidenceCap({
+    sourcePageUrl: source?.sourcePageUrl,
+    homepageUrl: source?.homepageUrl,
+  });
+  const confidence = freshnessConfidence({
+    postedYmd: dates.postedYmd,
+    periodStart: dates.periodStart,
+    periodEnd: dates.periodEnd,
+    deadline: dates.deadline,
+    eligible,
+    unknown,
+    periodLanguage: hasPeriodLanguage(dates.dateText || ""),
+    sourcePageCap,
+  });
+  const holdByConfidence =
+    !keepExistingExclusion && (confidence === "low" || confidence === "none");
+  const shouldDiagnose =
+    record.should_diagnose === true &&
+    eligible &&
+    !keepExistingExclusion &&
+    !holdByConfidence;
   return {
     ...record,
     discovery_channel: "official_site",
     freshness_basis: "source_page",
-    freshness_confidence: freshnessConfidence({
-      postedYmd: dates.postedYmd,
-      periodStart: dates.periodStart,
-      periodEnd: dates.periodEnd,
-      deadline: dates.deadline,
-      eligible,
-      unknown,
-    }),
+    freshness_confidence: confidence,
+    should_diagnose: shouldDiagnose,
+    diagnosis_eligible_recent: shouldDiagnose,
+    diagnosis_exclusion_reason: shouldDiagnose
+      ? null
+      : keepExistingExclusion
+        ? record.diagnosis_exclusion_reason || reason
+        : holdByConfidence
+          ? "date_unknown_hold"
+          : record.diagnosis_exclusion_reason || reason || "date_unknown_hold",
     old_year_signal: oldYear,
     source_posted_date: dates.postedYmd,
     source_period_start: dates.periodStart,

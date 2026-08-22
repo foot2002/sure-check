@@ -101,7 +101,7 @@ console.log("[Official Site Source Page Check]\n");
   );
   assert.equal(meta.freshness_basis, "source_page");
   assert.equal(meta.old_year_signal, false);
-  assert.equal(meta.freshness_confidence, "low");
+  assert.equal(meta.freshness_confidence, "none");
   console.log("  PASS  freshness meta uses source_page basis");
 }
 
