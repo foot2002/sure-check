@@ -56,6 +56,7 @@
     "evidence:preservation": "tsx scripts/check-evidence-preservation.ts",
     "diagnosis:regression": "tsx scripts/check-diagnosis-regression.ts",
     "diagnosis:ended-check": "tsx scripts/check-ended-survey-handling.ts",
+    "diagnosis:google-login-wall-check": "tsx scripts/check-google-forms-login-wall.ts",
     "diagnosis:dispatch-check": "tsx scripts/check-auto-diagnosis-dispatch.ts",
     "diagnosis:worker-check": "tsx scripts/check-scan-worker-processing.ts",
     "collector:freshness-check": "tsx scripts/check-collector-freshness-filter.ts",

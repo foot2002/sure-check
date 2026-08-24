@@ -296,11 +296,12 @@ function buildPlatformLimitedReport(
   limitedReason: string,
   summary: string,
   jobStatus: Extract<ScanStatus, "failed" | "limited">,
+  loginRequired = false,
 ): { report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta } {
   const report = generateExtractionLimitedReport(
     scanId,
     formUrl,
-    { platform, title },
+    { platform, title, loginRequired },
     {
       limitedReason,
       limitationReasons: [limitedReason, EXTRACTION_LIMITED_GUIDANCE],
@@ -319,7 +320,14 @@ function buildGoogleLimitedReport(
   form: NormalizedForm,
   buildContext: ReportBuildContext,
 ): ScanReport {
-  const warnings = form.metadata?.extractionWarnings ?? [];
+  const warnings = (form.metadata?.extractionWarnings ?? []).filter((warning) => {
+    if (!form.loginRequired) return true;
+    if (/FB_PUBLIC_LOAD_DATA_|DOM fallback|DOM 텍스트 기반/i.test(warning)) {
+      return false;
+    }
+    if (/로그인 또는 접근 권한/i.test(warning)) return false;
+    return true;
+  });
   const limitedReason =
     form.limitedReason ?? "Google Forms 문항을 자동으로 확인하지 못했습니다.";
 
@@ -456,12 +464,25 @@ function emptyMeta(partial?: Partial<ScanExtractionMeta>): ScanExtractionMeta {
   };
 }
 
+const GOOGLE_LOGIN_LIMITED_REASON =
+  "Google Forms에 로그인 또는 접근 권한이 필요합니다.";
+const GOOGLE_LOGIN_LIMITED_SUMMARY =
+  "Google Forms에 로그인 또는 접근 권한이 필요하여 문항을 확인하지 못했습니다.";
+
+function isGoogleHttpAccessDenied(
+  fetchResult: Awaited<ReturnType<typeof safeFetchHtml>>,
+): boolean {
+  const status = fetchResult.status;
+  if (status === 401 || status === 403) return true;
+  return /HTTP 401|HTTP 403/.test(fetchResult.limitedReason || "");
+}
+
 function resolveFetchFailure(
   scanId: string,
   formUrl: string,
   fetchResult: Awaited<ReturnType<typeof safeFetchHtml>>,
 ): { report: ScanReport; jobStatus: ScanStatus; meta: ScanExtractionMeta } {
-  const platforms = isPlatformUrl(formUrl, formUrl);
+  const platforms = isPlatformUrl(formUrl, fetchResult.finalUrl ?? formUrl);
 
   if (fetchResult.failedReason) {
     if (platforms.google) {
@@ -516,14 +537,18 @@ function resolveFetchFailure(
   if (reasons.length === 0) reasons.push("HTML fetch 실패");
 
   if (platforms.google) {
+    const loginBlocked = isGoogleHttpAccessDenied(fetchResult);
     return buildPlatformLimitedReport(
       scanId,
       formUrl,
       "google_forms",
       "Google Forms",
-      reasons[0],
-      `Google Forms 진단이 제한되었습니다. ${reasons.join(" ")}`,
+      loginBlocked ? GOOGLE_LOGIN_LIMITED_REASON : reasons[0],
+      loginBlocked
+        ? GOOGLE_LOGIN_LIMITED_SUMMARY
+        : `Google Forms 진단이 제한되었습니다. ${reasons.join(" ")}`,
       "limited",
+      loginBlocked,
     );
   }
   if (platforms.naver) {
@@ -637,13 +662,25 @@ export async function resolveScanReport(
   }
 
   const fetchResult = await safeFetchHtml(formUrl);
+  const finalUrl = fetchResult.finalUrl ?? formUrl;
+  const platforms = isPlatformUrl(formUrl, finalUrl);
+
+  // Google 401/403 HTML is a login/cookie wall, not a dead URL. Parse it so
+  // the report says "login required" instead of a generic HTTP error.
   if (!fetchResult.ok) {
+    if (platforms.google && fetchResult.html) {
+      return resolveGoogleFormsReport(
+        scanId,
+        formUrl,
+        fetchResult.html,
+        finalUrl,
+        urlHash,
+      );
+    }
     return resolveFetchFailure(scanId, formUrl, fetchResult);
   }
 
-  const finalUrl = fetchResult.finalUrl ?? formUrl;
   const html = fetchResult.html!;
-  const platforms = isPlatformUrl(formUrl, finalUrl);
 
   if (platforms.google) {
     return resolveGoogleFormsReport(scanId, formUrl, html, finalUrl, urlHash);

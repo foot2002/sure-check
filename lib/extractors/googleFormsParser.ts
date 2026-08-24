@@ -35,8 +35,15 @@ const LOGIN_MARKERS = [
   "requires you to sign in",
   "로그인하여 Google 계정",
   "Google 계정으로 로그인",
+  "Google 계정에 로그인",
   "로그인이 필요",
+  "로그인해야 합니다",
   "계정에 로그인",
+  "이 콘텐츠에 액세스하려면 로그인",
+  "sign-in-button",
+  "accounts.google.com/ServiceLogin",
+  "accounts.google.com/v3/signin",
+  "필요한 쿠키에 액세스하도록 허용",
 ];
 
 const CLOSED_MARKERS = [

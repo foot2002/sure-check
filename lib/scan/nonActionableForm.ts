@@ -14,6 +14,9 @@ export const NON_ACTIONABLE_LIMITED_MESSAGE =
 
 export const ENDED_SURVEY_HEADLINE = "종료된 설문은 분석 대상이 아닙니다";
 
+export const LOGIN_RESTRICTED_HEADLINE =
+  "로그인이 필요해 문항을 확인할 수 없습니다";
+
 export function textLooksNonActionable(text: string): boolean {
   return NON_ACTIONABLE_RE.test(text || "");
 }
@@ -104,6 +107,24 @@ export function shouldSkipBrowserFallback(
 }
 
 /** True when the survey response window is closed/ended. */
+export function isAccessRestrictedReport(
+  report: Pick<
+    ScanReport,
+    "limitedReason" | "summary" | "form" | "limitationReasons"
+  >,
+): boolean {
+  if (report.form?.loginRequired) return true;
+  const text = [
+    report.limitedReason || "",
+    report.form?.limitedReason || "",
+    report.summary || "",
+    ...(report.limitationReasons ?? []),
+  ].join(" ");
+  return /로그인\s*또는\s*접근|로그인이\s*필요|로그인\s*필요|접근\s*권한이\s*필요/i.test(
+    text,
+  );
+}
+
 export function isEndedSurveyReport(
   report: Pick<
     ScanReport,

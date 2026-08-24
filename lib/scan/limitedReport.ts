@@ -65,6 +65,7 @@ export function generateExtractionLimitedReport(
     | "operatorType"
     | "metadata"
     | "notices"
+    | "loginRequired"
   >,
   options?: LimitedReportOptions,
 ): ScanReport {
@@ -129,6 +130,7 @@ export function generateExtractionLimitedReport(
     form: {
       ...buildLimitedForm(formUrl, title, platform),
       limitedReason,
+      loginRequired: Boolean(sourceForm?.loginRequired),
       extractedFromHtml: sourceForm?.extractedFromHtml ?? true,
       operatorType: sourceForm?.operatorType ?? "미확인",
       notices: sourceForm?.notices,

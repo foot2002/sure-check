@@ -35,6 +35,8 @@ import {
 import { buildKeyProblems } from "@/lib/reporting/buildKeyProblems";
 import {
   ENDED_SURVEY_HEADLINE,
+  LOGIN_RESTRICTED_HEADLINE,
+  isAccessRestrictedReport,
   isEndedSurveyReport,
 } from "@/lib/scan/nonActionableForm";
 import {
@@ -840,7 +842,8 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
   );
   const safetyType = buildSafetyTypeProfile(report, emptySummary, verdict, false);
   const ended = isEndedSurveyReport(report);
-  const userEvidenceCards = ended
+  const loginRestricted = !ended && isAccessRestrictedReport(report);
+  const userEvidenceCards = ended || loginRestricted
     ? []
     : buildUserEvidenceCards(report, emptySummary, safetyType.typeId);
   const operatorImprovement = buildOperatorImprovementReport(
@@ -851,7 +854,38 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
   );
 
   // Moaform-specific copy overrides (do not invent PII / legal judgments)
-  if (isMoaform && !ended) {
+  if (loginRestricted) {
+    const loginWhy =
+      report.platform === "google_forms"
+        ? "이 Google Forms는 Google 계정 로그인이 있어야 문항이 보입니다. 자동 진단은 공개된 응답 화면만 읽습니다."
+        : "이 설문은 로그인 또는 접근 권한이 있어야 문항이 보입니다. 자동 진단은 공개된 응답 화면만 읽습니다.";
+    safetyType.headline = LOGIN_RESTRICTED_HEADLINE;
+    safetyType.displayName = "접근 제한";
+    safetyType.typeName = "접근 제한";
+    safetyType.whyProblem = loginWhy;
+    safetyType.description = loginWhy;
+    safetyType.howToAct =
+      "로그인 후 실제 설문 화면에서 수집 항목과 개인정보 안내를 직접 확인해 주세요.";
+    safetyType.action = safetyType.howToAct;
+    safetyType.legalOrLimitTitle = "판단 한계";
+    safetyType.legalOrLimitBody =
+      "로그인 없이 문항을 읽을 수 없어 개인정보 수집 여부를 판단하지 못했습니다.";
+    safetyType.toolJudgmentBadge = "접근 제한";
+    safetyType.hideJudgmentDetails = true;
+    if (report.platform === "google_forms") {
+      safetyType.toolBadge = "Google Forms";
+    }
+    safetyType.dataBadge = "확인 불가";
+    decisionSummary.primaryReasons = [
+      "로그인 또는 접근 권한이 필요함",
+      "공개 문항을 자동으로 읽지 못함",
+    ];
+    decisionSummary.actionDescription = safetyType.howToAct;
+    decisionSummary.headline = LOGIN_RESTRICTED_HEADLINE;
+    privacyAssessment.conclusion = LOGIN_RESTRICTED_HEADLINE;
+    privacyAssessment.inclusionSummary = loginWhy;
+    privacyAssessment.quickActions = decisionSummary.primaryReasons;
+  } else if (isMoaform && !ended) {
     safetyType.whyProblem =
       "설문 페이지는 확인했지만, 실제 문항과 개인정보 고지문을 자동으로 읽지 못했습니다.";
     safetyType.description = safetyType.whyProblem;
@@ -915,7 +949,12 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
     respondentDecisionSummary: privacyAssessment.inclusionSummary,
     respondentReasons: [limitedReason],
     collectedDataSummary: emptySummary,
-    respondentDoList: isMoaform
+    respondentDoList: loginRestricted
+      ? [
+          "로그인 후 실제 설문 화면에서 운영기관과 수집 항목을 직접 확인하세요.",
+          "개인정보 고지문이 보이기 전에는 개인정보를 입력하지 마세요.",
+        ]
+      : isMoaform
       ? [
           "설문 첫 화면의 운영기관·수집 목적·보유기간·담당자를 직접 확인하세요.",
           "개인정보 고지문이 보이기 전에는 개인정보를 입력하지 마세요.",
@@ -925,7 +964,9 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
           "개인정보를 요구한다면 보유기간과 담당자 안내가 있는지 확인하세요.",
         ],
     respondentDontList: ["주민등록번호", "계좌번호", "비밀번호나 인증번호"],
-    operatorSummary: isMoaform
+    operatorSummary: loginRestricted
+      ? "로그인 없이 문항을 확인할 수 없어 제한 안내만 제공합니다."
+      : isMoaform
       ? "모아폼 문항을 자동으로 확인하지 못해 제한 진단용 핵심 개선사항만 안내합니다."
       : "문항을 확인하지 못해 운영자 보완 리포트를 최소화했습니다.",
     operatorTopFixes: isMoaform
@@ -970,7 +1011,19 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
       : [],
     copyableTemplates: [],
     riskDimensions: buildRiskDimensions(report, emptySummary),
-    keyReasons: isMoaform
+    keyReasons: loginRestricted
+      ? [
+          {
+            id: "login_required",
+            category: "limited" as const,
+            title: "접근 제한",
+            description: limitedReason,
+            severity: "limited" as const,
+            evidence: ["로그인 또는 접근 권한이 필요합니다."],
+            extraCount: 0,
+          },
+        ]
+      : isMoaform
       ? [
           {
             id: "moaform_page_ok",
@@ -1003,7 +1056,9 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
           },
         ]
       : buildKeyReasons(report, emptySummary),
-    noticeSummary: isMoaform
+    noticeSummary: loginRestricted
+      ? "로그인 후 문항 확인 필요"
+      : isMoaform
       ? "모아폼 문항 자동 확인 제한"
       : "문항 자동 추출 불가",
     detailsSummary: "진단 제한 사유와 원본 JSON만 확인할 수 있습니다.",
@@ -1013,7 +1068,7 @@ function buildLimitedAudienceReport(input: ScanReport): AudienceReport {
     safetyType,
     operatorImprovement,
     userEvidenceCards,
-    keyProblems: ended ? [] : buildKeyProblems(report, emptySummary),
+    keyProblems: ended || loginRestricted ? [] : buildKeyProblems(report, emptySummary),
   };
 }
 

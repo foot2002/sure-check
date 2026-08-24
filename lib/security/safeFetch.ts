@@ -5,6 +5,7 @@ export interface SafeFetchResult {
   html?: string;
   finalUrl?: string;
   contentType?: string;
+  status?: number;
   limitedReason?: string;
   failedReason?: string;
 }
@@ -95,8 +96,21 @@ export async function safeFetchHtml(startUrl: string): Promise<SafeFetchResult> 
       }
 
       if (!response.ok) {
+        const contentType = response.headers.get("content-type");
+        let html: string | undefined;
+        if (isHtmlContentType(contentType)) {
+          try {
+            html = await readLimitedBody(response, MAX_BYTES);
+          } catch {
+            html = undefined;
+          }
+        }
         return {
           ok: false,
+          html,
+          finalUrl: currentUrl,
+          contentType: contentType ?? undefined,
+          status: response.status,
           limitedReason: `HTTP ${response.status} 응답으로 HTML을 가져올 수 없습니다.`,
         };
       }
