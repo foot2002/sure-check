@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { triageCandidate } from "../lib/collector/candidateTriage";
 import {
   candidateFetchPageSize,
+  candidateScanMaxRows,
   filterAndSortEligible,
   isEligibleTriage,
 } from "../lib/collector/diagnosisBridge";
@@ -31,7 +32,9 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
 {
   assert.equal(candidateFetchPageSize(3), 20);
   assert.equal(candidateFetchPageSize(20), 60);
-  console.log("  PASS  candidate page size is limit*3 with floor 20");
+  assert.equal(candidateScanMaxRows(20), 1200);
+  assert.equal(candidateScanMaxRows(3), 800);
+  console.log("  PASS  candidate page size is limit*3 with floor 20; scan window pages undiagnosed backlog");
 }
 
 {
@@ -114,8 +117,19 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
 }
 
 {
+  const admin = source("app/api/report/admin/collector/diagnose/route.ts");
+  assert.ok(admin.includes("processInline: false"));
+  assert.ok(admin.includes("ADMIN_DISPATCH_MAX = 20"));
+  assert.ok(admin.includes("surveyLinkId"));
+  assert.ok(admin.includes("manual"));
+  assert.ok(/maxDuration = 300/.test(admin));
+  console.log("  PASS  admin diagnose enqueues batch or a single survey");
+}
+
+{
   const bridge = source("lib/collector/diagnosisBridge.ts");
   assert.ok(bridge.includes("candidateFetchPageSize"));
+  assert.ok(bridge.includes("candidateScanMaxRows"));
   assert.ok(bridge.includes("findScanJobsByCacheKeys"));
   assert.ok(bridge.includes("insertDiagnosisLinks"));
   assert.ok(!bridge.includes("fetchLimit * 50"));

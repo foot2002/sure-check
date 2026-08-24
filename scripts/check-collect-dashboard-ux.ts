@@ -65,7 +65,12 @@ function main() {
   check(
     "admin diagnose uses dispatcher enqueue-only",
     read("app/api/report/admin/collector/diagnose/route.ts").includes("processInline: false") &&
-      read("app/api/report/admin/collector/diagnose/route.ts").includes("ADMIN_DISPATCH_MAX = 20"),
+      read("app/api/report/admin/collector/diagnose/route.ts").includes("ADMIN_DISPATCH_MAX = 20") &&
+      read("app/api/report/admin/collector/diagnose/route.ts").includes("surveyLinkId"),
+  );
+  check(
+    "per-row diagnose confirm",
+    view.includes("이 설문을 자동진단 큐에 등록합니다"),
   );
   const list = read("lib/collector/queries.ts");
   check("quick hold filter in list", list.includes("matchesCollectorHoldReason"));

@@ -7,6 +7,8 @@ import {
   COLLECTOR_DIAGNOSIS_DAILY_MAX,
   COLLECTOR_DIAGNOSIS_DISPATCH_MAX,
   COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING,
+  candidateFetchPageSize,
+  candidateScanMaxRows,
   filterAndSortEligible,
   isEligibleTriage,
   pickWithPlatformDiversity,
@@ -202,6 +204,8 @@ function makeTriage(partial: Parameters<typeof triageCandidate>[0]) {
 assert.equal(COLLECTOR_DIAGNOSIS_DISPATCH_MAX, 20);
 assert.equal(COLLECTOR_DIAGNOSIS_BACKPRESSURE_PENDING, 20);
 assert.equal(COLLECTOR_DIAGNOSIS_DAILY_MAX, 300);
+assert.equal(candidateFetchPageSize(20), 60);
+assert.equal(candidateScanMaxRows(20), 1200);
 
 // KST day bounds: 2026-08-08 17:30Z is still KST Aug 9 02:30 → day starts 08-08 15:00Z
 {

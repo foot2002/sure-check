@@ -178,16 +178,7 @@ export function filterAndSortEligible(
     ) {
       continue;
     }
-    const { normalized, cacheKey } = scanIdentity(row.canonicalUrl);
-    out.push({
-      surveyLinkId: row.id,
-      canonicalUrl: row.canonicalUrl,
-      platform: row.platform,
-      title: row.title,
-      triage: row.triage,
-      scanCacheKey: cacheKey,
-      normalizedScanUrl: normalized,
-    });
+    out.push(toEligibleCandidate(row));
   }
   out.sort((a, b) => {
     const pr =
@@ -208,6 +199,34 @@ export function filterAndSortEligible(
 /** DB page size: limit=3 → 20, limit=20 → 60. */
 export function candidateFetchPageSize(limit: number): number {
   return Math.min(80, Math.max(20, limit * 3));
+}
+
+/**
+ * How far to page through recent actives looking for undiagnosed eligible rows.
+ * Recent pages are often already diagnosed; keep scanning older actives.
+ */
+export function candidateScanMaxRows(needed: number): number {
+  const pageSize = candidateFetchPageSize(needed);
+  return Math.min(2500, Math.max(800, pageSize * 20));
+}
+
+function toEligibleCandidate(row: {
+  id: string;
+  canonicalUrl: string;
+  platform: CollectorPlatform;
+  title: string | null;
+  triage: TriageResult;
+}): EligibleCandidate {
+  const { normalized, cacheKey } = scanIdentity(row.canonicalUrl);
+  return {
+    surveyLinkId: row.id,
+    canonicalUrl: row.canonicalUrl,
+    platform: row.platform,
+    title: row.title,
+    triage: row.triage,
+    scanCacheKey: cacheKey,
+    normalizedScanUrl: normalized,
+  };
 }
 
 /** Prefer platform diversity when taking the first N. */
@@ -289,6 +308,34 @@ async function fetchActiveSurveyPage(
   }
   if (first.error) {
     throw new Error(`load active survey_links: ${first.error.message}`);
+  }
+  return (first.data as LinkRow[] | null) || [];
+}
+
+async function fetchSurveyRowsByIds(ids: string[]): Promise<LinkRow[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return [];
+  const supabase = createSupabaseServerClient();
+  const first = await supabase
+    .from("survey_links")
+    .select("id, canonical_url, platform, title, status, freshness")
+    .in("id", unique);
+  if (
+    first.error &&
+    /freshness/i.test(first.error.message) &&
+    /column|schema|does not exist/i.test(first.error.message)
+  ) {
+    const fallback = await supabase
+      .from("survey_links")
+      .select("id, canonical_url, platform, title, status")
+      .in("id", unique);
+    if (fallback.error) {
+      throw new Error(`load survey_links by id: ${fallback.error.message}`);
+    }
+    return (fallback.data as LinkRow[] | null) || [];
+  }
+  if (first.error) {
+    throw new Error(`load survey_links by id: ${first.error.message}`);
   }
   return (first.data as LinkRow[] | null) || [];
 }
@@ -425,7 +472,7 @@ async function loadOpenCandidatesForDispatch(
   open: EligibleCandidate[];
 }> {
   const pageSize = candidateFetchPageSize(needed);
-  const maxRows = Math.max(80, pageSize * 6);
+  const maxRows = candidateScanMaxRows(needed);
   const eligible: EligibleCandidate[] = [];
   const open: EligibleCandidate[] = [];
   let offset = 0;
@@ -436,7 +483,15 @@ async function loadOpenCandidatesForDispatch(
         : await fetchActiveSurveyPage(pageSize, offset);
     if (rows.length === 0) break;
     offset += rows.length;
-    const pageEligible = filterAndSortEligible(await attachTriage(rows), {
+    const blocked = await findSurveyIdsWithBlockingDiagnosis(
+      rows.map((r) => String(r.id)),
+    );
+    const unchecked = rows.filter((r) => !blocked.has(String(r.id)));
+    if (unchecked.length === 0) {
+      if (rows.length < pageSize) break;
+      continue;
+    }
+    const pageEligible = filterAndSortEligible(await attachTriage(unchecked), {
       sourceType,
     });
     eligible.push(...pageEligible);
@@ -471,10 +526,17 @@ export async function dispatchCollectorDiagnoses(input?: {
   dryRun?: boolean;
   processInline?: boolean;
   sourceType?: CollectorSourceType | "all";
+  surveyLinkIds?: string[];
+  /** Operator override: enqueue these survey ids even if auto-target rules would skip. */
+  manual?: boolean;
 }): Promise<DispatchResult> {
   void input?.processInline;
   const dryRun = Boolean(input?.dryRun);
   const sourceType = input?.sourceType === "official_site" ? "official_site" : "all";
+  const requestedIds = [
+    ...new Set((input?.surveyLinkIds || []).map((id) => String(id || "").trim()).filter(Boolean)),
+  ];
+  const manual = Boolean(input?.manual && requestedIds.length);
   const batchSize = getAutoDiagnosisBatchSize();
   const dailyMax = getAutoDiagnosisDailyLimit();
   const backpressureCap = batchSize;
@@ -524,9 +586,22 @@ export async function dispatchCollectorDiagnoses(input?: {
     ? requestedLimit
     : Math.min(requestedLimit, dailyRemaining);
 
-  const loaded = await loadOpenCandidatesForDispatch(limit, sourceType);
-  const eligible = loaded.eligible;
-  const openEligible = loaded.open;
+  let eligible: EligibleCandidate[] = [];
+  let openEligible: EligibleCandidate[] = [];
+  if (requestedIds.length > 0) {
+    const rows = await fetchSurveyRowsByIds(requestedIds.slice(0, Math.max(limit, requestedIds.length)));
+    const attached = await attachTriage(rows);
+    eligible = manual
+      ? attached
+          .filter((row) => row.status === "active")
+          .map((row) => toEligibleCandidate(row))
+      : filterAndSortEligible(attached, { sourceType });
+    openEligible = await filterOpenForEnqueue(eligible);
+  } else {
+    const loaded = await loadOpenCandidatesForDispatch(limit, sourceType);
+    eligible = loaded.eligible;
+    openEligible = loaded.open;
+  }
   const selectedPool = pickWithPlatformDiversity(openEligible, limit);
   const existingBySurvey = await findDiagnosisLinksBySurveyIds(
     selectedPool.map((c) => c.surveyLinkId),
@@ -689,6 +764,21 @@ export async function dispatchCollectorDiagnoses(input?: {
     0,
     eligible.length - (dryRun ? counts.wouldEnqueue : linkageCreated),
   );
+  const enqueued = dryRun ? counts.wouldEnqueue : counts.queued;
+  let reason: string | null = null;
+  if (enqueued === 0) {
+    if (requestedIds.length > 0 && eligible.length === 0) {
+      reason = "not_eligible";
+    } else if (requestedIds.length > 0 && openEligible.length === 0) {
+      reason = "already_diagnosed";
+    } else if (openEligible.length === 0) {
+      reason = "no_open_eligible_candidates";
+    } else if (counts.skippedBackpressure > 0) {
+      reason = "in_progress_scan_jobs_at_cap";
+    } else if (counts.skippedDuplicate > 0) {
+      reason = "already_diagnosed";
+    }
+  }
   return {
     dryRun,
     limit,
@@ -706,7 +796,7 @@ export async function dispatchCollectorDiagnoses(input?: {
       remaining: remainingAfter,
       limitReached: remainingAfter <= 0,
     },
-    reason: null,
+    reason,
     candidates: eligible.length,
     skippedAlreadyQueued: counts.skippedDuplicate,
     skippedClosed: counts.skippedPrecheckClosed,

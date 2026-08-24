@@ -147,6 +147,9 @@ export function CollectorConsoleView({
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [confirmDiagnose, setConfirmDiagnose] = useState(false);
+  const [confirmDiagnoseSurveyId, setConfirmDiagnoseSurveyId] = useState<
+    string | null
+  >(null);
   const [dispatching, setDispatching] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sourcesById, setSourcesById] = useState<
@@ -267,33 +270,65 @@ export function CollectorConsoleView({
     }
   }
 
-  async function runDiagnose() {
+  function diagnoseResultMessage(data: {
+    counts?: { queued?: number };
+    reason?: string | null;
+    selected?: number;
+  }): string {
+    const queued = data.counts?.queued ?? 0;
+    if (queued > 0) {
+      return `자동진단 큐에 ${queued}건을 등록했습니다. worker가 순차 처리합니다.`;
+    }
+    if (data.reason === "daily_limit_reached_carryover") {
+      return "오늘 자동진단 한도에 도달했습니다. 내일 이어서 등록합니다.";
+    }
+    if (data.reason === "in_progress_scan_jobs_at_cap") {
+      return "진행 중인 진단이 많아 지금은 추가 등록하지 않았습니다. 잠시 후 다시 시도하세요.";
+    }
+    if (data.reason === "already_diagnosed") {
+      return "이미 자동진단이 등록되었거나 완료된 설문입니다.";
+    }
+    if (data.reason === "not_eligible") {
+      return "이 설문은 지금 자동진단 대상이 아닙니다. (종료·제한 등)";
+    }
+    if (data.reason === "no_open_eligible_candidates") {
+      return "지금 큐에 넣을 수 있는 미진단 설문을 찾지 못했습니다.";
+    }
+    return `자동진단 큐에 0건을 등록했습니다. (후보 ${data.selected ?? 0}건)`;
+  }
+
+  async function runDiagnose(surveyLinkId?: string) {
     setDispatching(true);
     setRunMessage(null);
     try {
       const res = await fetch("/api/report/admin/collector/diagnose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: 20 }),
+        body: JSON.stringify(
+          surveyLinkId
+            ? { limit: 1, surveyLinkId, manual: true }
+            : { limit: 20 },
+        ),
       });
       const data = (await res.json()) as {
         ok?: boolean;
         error?: string;
         counts?: { queued?: number };
+        reason?: string | null;
+        selected?: number;
       };
       if (!res.ok || !data.ok) {
         setRunMessage(data.error || "자동진단 등록에 실패했습니다.");
         return;
       }
-      setRunMessage(
-        `자동진단 큐에 ${data.counts?.queued ?? 0}건을 등록했습니다. worker가 순차 처리합니다.`,
-      );
+      setRunMessage(diagnoseResultMessage(data));
       router.refresh();
     } catch {
       setRunMessage("자동진단 등록을 시작하지 못했습니다.");
     } finally {
       setDispatching(false);
       setConfirmDiagnose(false);
+      setConfirmDiagnoseSurveyId(null);
     }
   }
 
@@ -399,25 +434,31 @@ export function CollectorConsoleView({
         </div>
       ) : null}
 
-      {confirmDiagnose ? (
+      {confirmDiagnose || confirmDiagnoseSurveyId ? (
         <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
           <p>
-            자동진단 큐에 다음 20건을 등록합니다. 실제 진단은 worker가 순차
-            처리합니다. 계속하시겠습니까?
+            {confirmDiagnoseSurveyId
+              ? "이 설문을 자동진단 큐에 등록합니다. 실제 진단은 worker가 순차 처리합니다. 계속하시겠습니까?"
+              : "자동진단 큐에 다음 20건을 등록합니다. 실제 진단은 worker가 순차 처리합니다. 계속하시겠습니까?"}
           </p>
           <div className="mt-2 flex gap-2">
             <button
               type="button"
               className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white"
               disabled={dispatching}
-              onClick={() => void runDiagnose()}
+              onClick={() =>
+                void runDiagnose(confirmDiagnoseSurveyId || undefined)
+              }
             >
               {dispatching ? "등록 중…" : "계속"}
             </button>
             <button
               type="button"
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              onClick={() => setConfirmDiagnose(false)}
+              onClick={() => {
+                setConfirmDiagnose(false);
+                setConfirmDiagnoseSurveyId(null);
+              }}
             >
               취소
             </button>
@@ -1169,7 +1210,10 @@ export function CollectorConsoleView({
               type="button"
               className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
               disabled={dispatching}
-              onClick={() => setConfirmDiagnose(true)}
+              onClick={() => {
+                setConfirmDiagnoseSurveyId(null);
+                setConfirmDiagnose(true);
+              }}
             >
               다음 20건 진단
             </button>
@@ -1934,7 +1978,10 @@ export function CollectorConsoleView({
                     <button
                       type="button"
                       className="rounded-lg border border-teal-200 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50"
-                      onClick={() => setConfirmDiagnose(true)}
+                      onClick={() => {
+                        setConfirmDiagnose(false);
+                        setConfirmDiagnoseSurveyId(item.id);
+                      }}
                     >
                       진단 큐 등록
                     </button>
