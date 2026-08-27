@@ -14,7 +14,9 @@ export const OFFICIAL_SITE_MAX_PAGES = 24;
 export const OFFICIAL_SITE_MAX_DEPTH = 2;
 export const OFFICIAL_SITE_TIMEOUT_PER_PAGE_MS = 8_000;
 export const OFFICIAL_SITE_ORG_BUDGET_MS = 90_000;
-export const OFFICIAL_SITE_RUN_BUDGET_MS = 240_000;
+/** Leave headroom under Vercel maxDuration=300s for finish/record. */
+export const OFFICIAL_SITE_RUN_BUDGET_MS = 270_000;
+export const OFFICIAL_SITE_RUN_FINISH_RESERVE_MS = 25_000;
 export const OFFICIAL_SITE_MAX_ORGS_PER_RUN = 8;
 export const OFFICIAL_SITE_MAX_CONCURRENCY = 1;
 export const OFFICIAL_SITE_SURVEY_BOOST_DAYS = 60;
@@ -84,6 +86,19 @@ export function nextCrawlAt(input: {
 }): string {
   const days = backoffIntervalDays(input);
   return new Date(input.from.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** True when starting another org would overrun the wave budget. */
+export function shouldDeferOfficialSiteOrg(input: {
+  startedAtMs: number;
+  nowMs?: number;
+  runBudgetMs?: number;
+  reserveMs?: number;
+}): boolean {
+  const now = input.nowMs ?? Date.now();
+  const budget = input.runBudgetMs ?? OFFICIAL_SITE_RUN_BUDGET_MS;
+  const reserve = input.reserveMs ?? OFFICIAL_SITE_RUN_FINISH_RESERVE_MS;
+  return now - input.startedAtMs >= Math.max(0, budget - reserve);
 }
 
 export function seedKey(seed: Pick<OfficialInstitutionSeed, "organizationName" | "homepageUrl">): string {

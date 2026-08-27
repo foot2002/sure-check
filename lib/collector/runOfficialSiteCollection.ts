@@ -1,7 +1,10 @@
 import {
   OFFICIAL_SITE_MAX_CONCURRENCY,
   OFFICIAL_SITE_MAX_ORGS_PER_RUN,
+  OFFICIAL_SITE_ORG_BUDGET_MS,
   OFFICIAL_SITE_RUN_BUDGET_MS,
+  OFFICIAL_SITE_RUN_FINISH_RESERVE_MS,
+  shouldDeferOfficialSiteOrg,
 } from "@/lib/collector/officialSiteCrawlPolicy";
 import { crawlOfficialInstitutionSite } from "@/lib/collector/officialSiteCrawler";
 import {
@@ -10,6 +13,7 @@ import {
   finishOfficialSiteCrawl,
   listDueOfficialInstitutionSites,
   recoverStaleOfficialSiteRunning,
+  releaseOfficialSiteCrawlClaim,
   syncOfficialInstitutionSites,
 } from "@/lib/collector/officialSiteRepository";
 import { loadOfficialInstitutionSeeds } from "@/lib/collector/officialSiteSeeds";
@@ -104,19 +108,22 @@ export async function runOfficialSiteCollection(input?: {
   const organizations: string[] = [];
 
   for (const row of claimed) {
-    if (Date.now() - started > OFFICIAL_SITE_RUN_BUDGET_MS) {
-      await finishOfficialSiteCrawl({
-        row,
-        ok: false,
-        pagesFetched: 0,
-        surveysFound: 0,
-        error: "run_budget_exceeded",
-        now: new Date(),
-      });
+    if (shouldDeferOfficialSiteOrg({ startedAtMs: started })) {
+      await releaseOfficialSiteCrawlClaim(row.id);
+      errors.push(`${row.organization_name}: run_budget_exceeded_deferred`);
       continue;
     }
     try {
-      const result = await crawlOfficialInstitutionSite(row, { now });
+      const remaining =
+        OFFICIAL_SITE_RUN_BUDGET_MS - (Date.now() - started);
+      const orgBudget = Math.min(
+        OFFICIAL_SITE_ORG_BUDGET_MS,
+        Math.max(0, remaining - OFFICIAL_SITE_RUN_FINISH_RESERVE_MS),
+      );
+      const result = await crawlOfficialInstitutionSite(row, {
+        now,
+        budgetMs: orgBudget,
+      });
       crawled += 1;
       surveysSaved += result.surveysSaved;
       pagesFetched += result.pagesFetched;

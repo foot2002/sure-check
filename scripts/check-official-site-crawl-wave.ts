@@ -4,7 +4,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { OFFICIAL_SITE_MAX_CONCURRENCY } from "../lib/collector/officialSiteCrawlPolicy";
+import {
+  OFFICIAL_SITE_MAX_CONCURRENCY,
+  OFFICIAL_SITE_RUN_BUDGET_MS,
+  OFFICIAL_SITE_RUN_FINISH_RESERVE_MS,
+  shouldDeferOfficialSiteOrg,
+} from "../lib/collector/officialSiteCrawlPolicy";
 import {
   countCronJobsForPath,
   OFFICIAL_SITE_CRON_PATH,
@@ -29,6 +34,9 @@ console.log("[Official Site Crawl Wave Check]\n");
   assert.ok(run.includes("claimOfficialSiteCrawl"));
   assert.ok(run.includes("recoverStaleOfficialSiteRunning"));
   assert.ok(run.includes("countOfficialSitesRunning"));
+  assert.ok(run.includes("releaseOfficialSiteCrawlClaim"));
+  assert.ok(run.includes("shouldDeferOfficialSiteOrg"));
+  assert.ok(run.includes("budgetMs"));
   assert.ok(!run.includes("Promise.all("));
   assert.ok(run.includes("for (const row of claimed)"));
   console.log("  PASS  wave runner claims orgs and skips if another wave is running");
@@ -54,6 +62,29 @@ console.log("[Official Site Crawl Wave Check]\n");
   assert.ok(internal.includes("OFFICIAL_SITE_MAX_ORGS_PER_RUN"));
   assert.ok(admin.includes("skippedParallel"));
   console.log("  PASS  HTTP wrappers keep per-run cap and parallel skip");
+}
+
+{
+  assert.ok(OFFICIAL_SITE_RUN_BUDGET_MS > 240_000);
+  assert.ok(OFFICIAL_SITE_RUN_BUDGET_MS + OFFICIAL_SITE_RUN_FINISH_RESERVE_MS <= 300_000);
+  assert.equal(
+    shouldDeferOfficialSiteOrg({
+      startedAtMs: 0,
+      nowMs: OFFICIAL_SITE_RUN_BUDGET_MS - OFFICIAL_SITE_RUN_FINISH_RESERVE_MS,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDeferOfficialSiteOrg({
+      startedAtMs: 0,
+      nowMs: OFFICIAL_SITE_RUN_BUDGET_MS - OFFICIAL_SITE_RUN_FINISH_RESERVE_MS - 1,
+    }),
+    false,
+  );
+  const repo = source("lib/collector/officialSiteRepository.ts");
+  assert.ok(repo.includes("releaseOfficialSiteCrawlClaim"));
+  assert.ok(repo.includes('crawl_status: "idle"'));
+  console.log("  PASS  overtime orgs are deferred, not marked failed");
 }
 
 console.log("\nofficial-site-crawl-wave-check: ok");

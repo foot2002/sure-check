@@ -424,6 +424,23 @@ export async function finishOfficialSiteCrawl(input: {
   }
 }
 
+/** Put an unstarted claimed org back on the due queue. Not a crawl failure. */
+export async function releaseOfficialSiteCrawlClaim(id: string): Promise<void> {
+  const supabase = client();
+  const { error } = await supabase
+    .from("official_institution_sites")
+    .update({
+      crawl_status: "idle",
+      last_error: null,
+      next_crawl_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("crawl_status", "running");
+  if (error && !/does not exist|schema cache/i.test(error.message)) {
+    throw new Error(`official site crawl 클레임 해제 실패: ${error.message}`);
+  }
+}
+
 export async function countOfficialInstitutionSites(): Promise<number> {
   const supabase = client();
   const { count, error } = await supabase

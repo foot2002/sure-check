@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   extractOfficialPageDates,
+  extractPageTitle,
   isHomepageUrl,
   pickBetterOfficialSource,
   sourcePageScore,
@@ -13,6 +14,7 @@ import {
   type OfficialSiteSurveyFind,
 } from "../lib/collector/officialSiteEvidence";
 import { extractPostedDateYmd } from "../lib/collector/surveyFreshness";
+import { isChromePageTitle, sanitizeSurveyTitle } from "../lib/collector/titleUtils";
 import { PUBLIC_REPORT_FORBIDDEN_KEYS } from "../lib/report/publicReportPolicy";
 
 function source(path: string): string {
@@ -27,7 +29,10 @@ console.log("[Official Site Source Page Check]\n");
   assert.ok(crawler.includes("sourceAnchorText"));
   assert.ok(crawler.includes("sourceContextExcerpt"));
   assert.ok(crawler.includes("evaluateSurveyFreshness"));
+  assert.ok(crawler.includes("isHomepageLikeSource"));
+  assert.ok(crawler.includes("freshness_basis: \"form_page\""));
   assert.ok(!/sourceUrl:\s*row\.homepage_url/.test(crawler));
+  assert.ok(!/pageText:\s*find\.sourcePageText/.test(crawler));
   console.log("  PASS  crawler stores discovery-page evidence, not homepage-only");
 }
 
@@ -66,6 +71,23 @@ console.log("[Official Site Source Page Check]\n");
   assert.equal(picked.sourcePageUrl, article);
   assert.equal(picked.sourcePageTitle.includes("물가"), true);
   console.log("  PASS  article URL preferred over homepage");
+}
+
+{
+  const html = `
+    <html><head><title>농림축산식품부</title></head>
+    <body>
+      <h1>Skip Navigation</h1>
+      <h2>본문 바로가기</h2>
+      <h1>수요조사 안내</h1>
+    </body></html>
+  `;
+  assert.equal(extractPageTitle(html), "수요조사 안내");
+  assert.equal(isChromePageTitle("Skip Navigation"), true);
+  assert.equal(isChromePageTitle("본문 바로가기"), true);
+  assert.equal(isChromePageTitle("수요조사 안내"), false);
+  assert.equal(sanitizeSurveyTitle("Skip Navigation", "응답 설문"), "응답 설문");
+  console.log("  PASS  skip-nav chrome is not used as survey title");
 }
 
 {

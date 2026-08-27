@@ -24,11 +24,16 @@ import {
   OFFICIAL_SITE_TIMEOUT_PER_PAGE_MS,
 } from "@/lib/collector/officialSiteCrawlPolicy";
 import { officialSiteSameOrigin } from "@/lib/collector/officialSiteOrigin";
+import { isHomepageLikeSource } from "@/lib/collector/officialSiteSourceQuality";
 import type { OfficialInstitutionSiteRow } from "@/lib/collector/officialSiteRepository";
 import { processSurveyCandidate } from "@/lib/collector/processCandidate";
 import { insertSurveySource, upsertSurveyLink } from "@/lib/collector/repository";
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 import { evaluateSurveyFreshness } from "@/lib/collector/surveyFreshness";
+import {
+  isChromePageTitle,
+  sanitizeSurveyTitle,
+} from "@/lib/collector/titleUtils";
 import type { SurveyLinkFreshness } from "@/lib/collector/types";
 
 export type OfficialSiteOrgCrawlResult = {
@@ -174,7 +179,7 @@ function collectPageFinds(
 
 export async function crawlOfficialInstitutionSite(
   row: OfficialInstitutionSiteRow,
-  options?: { now?: Date; maxPages?: number },
+  options?: { now?: Date; maxPages?: number; budgetMs?: number },
 ): Promise<OfficialSiteOrgCrawlResult> {
   const empty = (crossOriginSkipped = 0): OfficialSiteOrgCrawlResult => ({
     organizationName: row.organization_name,
@@ -193,6 +198,10 @@ export async function crawlOfficialInstitutionSite(
   }
   const started = Date.now();
   const maxPages = options?.maxPages ?? OFFICIAL_SITE_MAX_PAGES;
+  const orgBudget = Math.max(
+    1,
+    Math.min(OFFICIAL_SITE_ORG_BUDGET_MS, options?.budgetMs ?? OFFICIAL_SITE_ORG_BUDGET_MS),
+  );
   let seedOrigin: URL;
   try {
     seedOrigin = new URL(row.homepage_url);
@@ -219,7 +228,7 @@ export async function crawlOfficialInstitutionSite(
   let surveysSaved = 0;
 
   while (queue.length > 0 && pagesFetched < maxPages) {
-    if (Date.now() - started > OFFICIAL_SITE_ORG_BUDGET_MS) break;
+    if (Date.now() - started > orgBudget) break;
     queue.sort((a, b) => b.score - a.score || a.depth - b.depth);
     const item = queue.shift();
     if (!item) break;
@@ -269,9 +278,10 @@ export async function crawlOfficialInstitutionSite(
       const processed = await processSurveyCandidate({
         rawUrl: find.surveyUrl,
         searchTitle:
-          find.sourcePageTitle ||
-          find.sourceAnchorText ||
-          `${row.organization_name} 공식 사이트 설문`,
+          sanitizeSurveyTitle(
+            find.sourceAnchorText,
+            find.sourcePageTitle,
+          ) || `${row.organization_name} 공식 사이트 설문`,
       });
       if (!processed.ok || !processed.canonicalUrl || !processed.platform) continue;
 
@@ -281,22 +291,61 @@ export async function crawlOfficialInstitutionSite(
         processed.status === "restricted" ||
         processed.status === "invalid" ||
         processed.status === "unreachable";
+      const homepageLike = isHomepageLikeSource(
+        find.sourcePageUrl,
+        row.homepage_url,
+      );
+      const chromeTitle = isChromePageTitle(find.sourcePageTitle);
+      if (
+        homepageLike &&
+        chromeTitle &&
+        !dates.postedYmd &&
+        !dates.periodStart &&
+        !dates.deadline
+      ) {
+        continue;
+      }
+      // Homepage chrome/news text must not classify the survey (login/작년).
+      // Use the form page, or the excerpt around the survey link.
       const sourceFreshness = formBlocked
         ? processed.freshness
-        : evaluateSurveyFreshness({
-            title: find.sourcePageTitle || processed.title,
-            snippet: `${find.sourceAnchorText}\n${find.sourceContextExcerpt}`,
-            pageText: find.sourcePageText,
-            publishedAt: postedYmdToIso(dates.postedYmd) || undefined,
-            url: processed.canonicalUrl,
-            mode: "page",
-            confirmedLive: processed.status === "active",
-            now: options?.now,
-          }).record;
-      const freshness = withOfficialSiteFreshnessMeta(
-        (sourceFreshness || processed.freshness || {}) as Record<string, unknown>,
-        dates,
-        { sourcePageUrl: find.sourcePageUrl, homepageUrl: row.homepage_url },
+        : homepageLike
+          ? processed.freshness
+          : evaluateSurveyFreshness({
+              title:
+                sanitizeSurveyTitle(find.sourceAnchorText, processed.title) ||
+                processed.title,
+              snippet: find.sourceContextExcerpt || find.sourceAnchorText,
+              pageText: find.sourceContextExcerpt || find.sourceAnchorText,
+              publishedAt: postedYmdToIso(dates.postedYmd) || undefined,
+              url: processed.canonicalUrl,
+              mode: "page",
+              confirmedLive: processed.status === "active",
+              now: options?.now,
+            }).record;
+      const freshness = (
+        homepageLike
+          ? {
+              ...(sourceFreshness || processed.freshness || {}),
+              discovery_channel: "official_site",
+              freshness_basis: "form_page",
+              source_posted_date: dates.postedYmd,
+              source_period_start: dates.periodStart,
+              source_period_end: dates.periodEnd,
+              source_deadline: dates.deadline,
+              source_date_text: dates.dateText,
+            }
+          : withOfficialSiteFreshnessMeta(
+              (sourceFreshness || processed.freshness || {}) as Record<
+                string,
+                unknown
+              >,
+              dates,
+              {
+                sourcePageUrl: find.sourcePageUrl,
+                homepageUrl: row.homepage_url,
+              },
+            )
       ) as SurveyLinkFreshness;
       if (formBlocked && processed.freshness) {
         freshness.diagnosis_eligible_recent = false;
@@ -311,7 +360,11 @@ export async function crawlOfficialInstitutionSite(
         canonicalUrl: processed.canonicalUrl,
         originalUrl: processed.originalUrl || find.surveyUrl,
         platform: processed.platform,
-        title: find.sourcePageTitle || processed.title,
+        title:
+          sanitizeSurveyTitle(
+            processed.title,
+            find.sourceAnchorText || find.sourcePageTitle,
+          ) || `${row.organization_name} 공식 사이트 설문`,
         status: processed.status,
         freshness,
       });
@@ -319,7 +372,9 @@ export async function crawlOfficialInstitutionSite(
         surveyLinkId: saved.link.id,
         sourceType: "official_site" as const,
         sourceUrl: find.sourcePageUrl,
-        sourceTitle: find.sourcePageTitle || row.organization_name,
+        sourceTitle:
+          sanitizeSurveyTitle(find.sourcePageTitle, row.organization_name) ||
+          row.organization_name,
         searchQuery: `official_site:${row.organization_name}`,
         sourcePublishedAt: postedYmdToIso(dates.postedYmd),
         sourcePageUrl: find.sourcePageUrl,

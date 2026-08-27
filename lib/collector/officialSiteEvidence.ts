@@ -10,6 +10,7 @@ import {
   hasPeriodLanguage,
 } from "@/lib/collector/surveyFreshness";
 import { sourcePageConfidenceCap } from "@/lib/collector/officialSiteSourceQuality";
+import { isChromePageTitle } from "@/lib/collector/titleUtils";
 
 export type OfficialSiteSurveyFind = {
   surveyUrl: string;
@@ -151,13 +152,17 @@ function isoToYmd(value: string | null | undefined): string | null {
 
 export function extractPageTitle(html: string): string {
   const $ = cheerio.load(html);
-  const heading = $("h1, h2")
-    .first()
-    .text()
-    .replace(/\s+/g, " ")
-    .trim();
+  let heading = "";
+  $("h1, h2").each((_, el) => {
+    if (heading) return;
+    const text = $(el).text().replace(/\s+/g, " ").trim();
+    if (text && !isChromePageTitle(text)) heading = text;
+  });
   const title = $("title").first().text().replace(/\s+/g, " ").trim();
-  return (heading || title).slice(0, 300);
+  const picked =
+    heading ||
+    (title && !isChromePageTitle(title) ? title : "");
+  return picked.slice(0, 300);
 }
 
 export function extractVisiblePageText(html: string): string {
