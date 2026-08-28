@@ -47,12 +47,12 @@ console.log("[Official Site Crawl Wave Check]\n");
     crons?: Array<{ path?: string; schedule?: string }>;
   };
   const jobs = (vercel.crons || []).filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
-  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 4);
+  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 6);
   for (const job of jobs) {
     assert.equal(scheduleIsOnceDaily(job.schedule || ""), true, job.schedule);
     assert.equal((job.schedule || "").includes(","), false);
   }
-  console.log("  PASS  four staggered once-daily official-site crons (not one multi-hour job)");
+  console.log("  PASS  six staggered once-daily official-site crons (not one multi-hour job)");
 }
 
 {

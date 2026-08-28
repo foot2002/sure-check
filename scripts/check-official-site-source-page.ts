@@ -16,6 +16,10 @@ import {
 import { extractPostedDateYmd } from "../lib/collector/surveyFreshness";
 import { isChromePageTitle, sanitizeSurveyTitle } from "../lib/collector/titleUtils";
 import { PUBLIC_REPORT_FORBIDDEN_KEYS } from "../lib/report/publicReportPolicy";
+import {
+  applyOfficialSiteCollectedFreshness,
+  officialSiteCollectedPersistStatus,
+} from "../lib/collector/collectConfirmedPolicy";
 
 function source(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
@@ -31,6 +35,8 @@ console.log("[Official Site Source Page Check]\n");
   assert.ok(crawler.includes("evaluateSurveyFreshness"));
   assert.ok(crawler.includes("isHomepageLikeSource"));
   assert.ok(crawler.includes("freshness_basis: \"form_page\""));
+  assert.ok(crawler.includes("applyOfficialSiteCollectedFreshness"));
+  assert.ok(crawler.includes("officialSiteCollectedPersistStatus"));
   assert.ok(!/sourceUrl:\s*row\.homepage_url/.test(crawler));
   assert.ok(!/pageText:\s*find\.sourcePageText/.test(crawler));
   console.log("  PASS  crawler stores discovery-page evidence, not homepage-only");
@@ -125,6 +131,29 @@ console.log("[Official Site Source Page Check]\n");
   assert.equal(meta.old_year_signal, false);
   assert.equal(meta.freshness_confidence, "none");
   console.log("  PASS  freshness meta uses source_page basis");
+}
+
+{
+  const live = applyOfficialSiteCollectedFreshness(
+    {
+      diagnosis_eligible_recent: false,
+      diagnosis_exclusion_reason: "date_unknown_hold",
+      reason_code: "date_unknown_hold",
+      should_diagnose: false,
+    },
+    "active",
+  );
+  assert.equal(live.should_diagnose, true);
+  assert.equal(live.diagnosis_eligible_recent, true);
+  assert.equal(live.diagnosis_exclusion_reason, null);
+  assert.equal(officialSiteCollectedPersistStatus("stale"), "active");
+  const closed = applyOfficialSiteCollectedFreshness(
+    { reason_code: "closed_phrase", should_diagnose: true },
+    "closed",
+  );
+  assert.equal(closed.should_diagnose, false);
+  assert.equal(officialSiteCollectedPersistStatus("closed"), "closed");
+  console.log("  PASS  official-site collected live surveys are forced to diagnosis");
 }
 
 {

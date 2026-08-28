@@ -23,7 +23,7 @@ function main() {
   check("quick filter 날짜불명", view.includes("날짜불명 보류"));
   check("quick filter 과거연도", view.includes("과거연도 제외"));
   check("quick filter 로그인 제외", view.includes("로그인 제외"));
-  check("quick filter 공식 사이트", view.includes("공식 사이트 수집"));
+  check("quick filter 공공 사이트", view.includes("공공 사이트 수집"));
   check("quick filter 네이버", view.includes("네이버 검색 수집"));
   check("applyQuick exists", view.includes("function applyQuick"));
   check("page passes holdReason", page.includes("holdReason"));

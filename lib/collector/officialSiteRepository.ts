@@ -281,7 +281,7 @@ export async function listDueOfficialInstitutionSites(
     .lte("next_crawl_at", now.toISOString())
     .neq("crawl_status", "running")
     .or("seed_review_status.eq.ok,seed_review_status.is.null")
-    .order("crawl_priority", { ascending: true })
+    .order("last_crawled_at", { ascending: true, nullsFirst: true })
     .order("next_crawl_at", { ascending: true })
     .limit(Math.max(1, Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, limit)));
   if (error) {
@@ -291,7 +291,7 @@ export async function listDueOfficialInstitutionSites(
         .select("*")
         .lte("next_crawl_at", now.toISOString())
         .neq("crawl_status", "running")
-        .order("crawl_priority", { ascending: true })
+        .order("last_crawled_at", { ascending: true, nullsFirst: true })
         .order("next_crawl_at", { ascending: true })
         .limit(Math.max(1, Math.min(OFFICIAL_SITE_MAX_ORGS_PER_RUN, limit)));
       if (fallback.error) {

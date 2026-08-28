@@ -1,5 +1,7 @@
 /**
  * Dispatcher sourceType=official_site must not mix search-API candidates.
+ * Official-site collected open surveys always enter diagnosis, including
+ * date-unknown and old-year rows. Closed/restricted stay excluded.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -22,6 +24,7 @@ console.log("[Diagnosis Dispatch Source Filter Check]\n");
   const bridge = source("lib/collector/diagnosisBridge.ts");
   assert.ok(bridge.includes('sourceType === "official_site"'));
   assert.ok(bridge.includes("fetchOfficialSiteSurveyPage"));
+  assert.ok(bridge.includes('.in("status", ["active", "stale", "discovered"])'));
   console.log("  PASS  route/bridge accept sourceType=official_site");
 }
 
@@ -98,27 +101,41 @@ const rows = [
     freshness: { ...oldYear.record, old_year_signal: true },
     sourceTypes: ["official_site"],
   },
+  {
+    id: "official-closed",
+    canonicalUrl: "https://forms.gle/closed",
+    platform: "google_forms" as CollectorPlatform,
+    title: "종료된 구청 설문",
+    status: "closed",
+    triage,
+    freshness: {
+      should_diagnose: false,
+      diagnosis_eligible_recent: false,
+      reason_code: "closed_phrase",
+    },
+    sourceTypes: ["official_site"],
+  },
 ];
 
 {
   const mixed = filterAndSortEligible(rows);
   assert.ok(mixed.some((row) => row.surveyLinkId === "search-recent"));
   const officialOnly = filterAndSortEligible(rows, { sourceType: "official_site" });
-  assert.equal(officialOnly.length, 1);
-  assert.equal(officialOnly[0]!.surveyLinkId, "official-recent");
+  const officialIds = officialOnly.map((row) => row.surveyLinkId).sort();
+  assert.deepEqual(officialIds, [
+    "official-old",
+    "official-recent",
+    "official-unknown",
+  ]);
   assert.equal(
     officialOnly.some((row) => row.surveyLinkId === "search-recent"),
     false,
   );
   assert.equal(
-    officialOnly.some((row) => row.surveyLinkId === "official-unknown"),
+    officialOnly.some((row) => row.surveyLinkId === "official-closed"),
     false,
   );
-  assert.equal(
-    officialOnly.some((row) => row.surveyLinkId === "official-old"),
-    false,
-  );
-  console.log("  PASS  official_site filter excludes search / unknown / old year");
+  console.log("  PASS  official_site filter includes unknown/old year, excludes search/closed");
 }
 
 console.log("\ndiagnosis-dispatch-source-filter-check: ok");

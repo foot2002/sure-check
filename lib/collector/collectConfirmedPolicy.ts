@@ -2,12 +2,19 @@
  * Collect-confirmed vs raw-discovered policy.
  * DB CHECK still uses discovered/active/closed/restricted/stale/ignored/invalid/unreachable.
  * Conceptual lanes below are mapped onto those statuses + freshness JSON + triage.
+ *
+ * Official-site (공공기관 리스트) collected surveys: every saved, still-open
+ * form enters auto diagnosis. Date-unknown / old-year / weak triage do not hold.
+ * Search-API collection keeps the 60-day freshness gate.
  */
 
 import type { TriageResult } from "@/lib/collector/candidateTriage";
 import { looksLikePersonalResearch } from "@/lib/collector/candidateTriage";
 import type { CollectorOrgQualityClass } from "@/lib/collector/orgQuality";
-import type { SurveyLinkFreshness } from "@/lib/collector/types";
+import type {
+  CollectorSurveyStatus,
+  SurveyLinkFreshness,
+} from "@/lib/collector/types";
 
 export const AUTO_DIAGNOSIS_DAILY_LIMIT_DEFAULT = 300;
 export const AUTO_DIAGNOSIS_BATCH_SIZE_DEFAULT = 20;
@@ -47,6 +54,72 @@ const SCREENED_STATUSES = new Set([
   "old_year",
   "personal_research",
 ]);
+
+/** Official-site collected forms we cannot usefully diagnose. */
+const OFFICIAL_SITE_UNUSABLE_STATUSES = new Set([
+  "closed",
+  "restricted",
+  "invalid",
+  "unreachable",
+]);
+
+export function isOfficialSiteSource(
+  sourceTypes?: Array<string | null | undefined> | null,
+): boolean {
+  return (sourceTypes || []).some((type) => type === "official_site");
+}
+
+export function isOfficialSiteUnusableStatus(
+  status?: string | null,
+): boolean {
+  return OFFICIAL_SITE_UNUSABLE_STATUSES.has((status || "").toLowerCase());
+}
+
+/**
+ * Public-institution list crawls always diagnose every saved, still-open form.
+ * Date-unknown / old-year / weak triage must not hold these.
+ */
+export function isOfficialSiteCollectedDiagnosisTarget(input: {
+  status?: string | null;
+}): boolean {
+  const status = (input.status || "").toLowerCase();
+  if (!status) return false;
+  return !isOfficialSiteUnusableStatus(status);
+}
+
+export function officialSiteCollectedPersistStatus(
+  processedStatus: string,
+): CollectorSurveyStatus {
+  if (isOfficialSiteUnusableStatus(processedStatus)) {
+    return processedStatus as CollectorSurveyStatus;
+  }
+  return "active";
+}
+
+export function applyOfficialSiteCollectedFreshness(
+  freshness: SurveyLinkFreshness,
+  status: string,
+): SurveyLinkFreshness {
+  if (isOfficialSiteUnusableStatus(status)) {
+    return {
+      ...freshness,
+      discovery_channel: freshness.discovery_channel || "official_site",
+      should_diagnose: false,
+      diagnosis_eligible_recent: false,
+      diagnosis_exclusion_reason:
+        freshness.diagnosis_exclusion_reason ||
+        freshness.reason_code ||
+        status,
+    };
+  }
+  return {
+    ...freshness,
+    discovery_channel: freshness.discovery_channel || "official_site",
+    should_diagnose: true,
+    diagnosis_eligible_recent: true,
+    diagnosis_exclusion_reason: null,
+  };
+}
 
 const PII_HINT_RE =
   /개인정보|주민등록|연락처|휴대전화|휴대폰|이메일|성명|이름|주소|고객|직원|회원|민원|보건|복지/;
@@ -98,7 +171,8 @@ export function isOfficialAutoDiagnosisOrg(
   return Boolean(organization && OFFICIAL_ORGS.has(organization as CollectorOrgQualityClass));
 }
 
-/** Official A/B collect-confirmed rows may enter auto diagnosis. C / academic never. */
+/** Search-API A/B collect-confirmed rows may enter auto diagnosis. C / academic never.
+ * Official-site collected surveys bypass this gate. */
 export function isOfficialAutoDiagnosisTriage(triage: TriageResult): boolean {
   if (triage.organization === "individual_or_academic") return false;
   if (triage.queue === "C_ARCHIVE") return false;
@@ -140,11 +214,18 @@ export function classifyCollectLane(input: {
   status?: string | null;
   freshness?: SurveyLinkFreshness | null;
   title?: string | null;
+  sourceTypes?: Array<string | null | undefined> | null;
 }): CollectLane {
   const status = (input.status || "").toLowerCase();
   const freshness = input.freshness;
   const freshnessStatus = String(freshness?.freshness_status || "");
   const reason = String(freshness?.reason_code || "");
+
+  if (isOfficialSiteSource(input.sourceTypes)) {
+    if (isOfficialSiteUnusableStatus(status)) return "screened_out";
+    if (status === "discovered") return "collect_candidate";
+    return "collect_confirmed";
+  }
 
   if (looksLikePersonalResearch(input.title)) return "screened_out";
   if (freshnessStatus === "stale_candidate") return "stale_candidate";
@@ -186,6 +267,7 @@ export function isCollectConfirmed(input: {
   status?: string | null;
   freshness?: SurveyLinkFreshness | null;
   title?: string | null;
+  sourceTypes?: Array<string | null | undefined> | null;
 }): boolean {
   return isCollectConfirmedLane(classifyCollectLane(input));
 }
@@ -195,7 +277,11 @@ export function isAutoDiagnosisTarget(input: {
   freshness?: SurveyLinkFreshness | null;
   title?: string | null;
   triage?: TriageResult | null;
+  sourceTypes?: Array<string | null | undefined> | null;
 }): boolean {
+  if (isOfficialSiteSource(input.sourceTypes)) {
+    return isOfficialSiteCollectedDiagnosisTarget(input);
+  }
   if (!isCollectConfirmed(input)) return false;
   if (looksLikePersonalResearch(input.title)) return false;
   if (input.triage && !isOfficialAutoDiagnosisTriage(input.triage)) return false;

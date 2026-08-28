@@ -5,16 +5,18 @@
 
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 
-/** Four once-daily vercel.json entries (KST 21:30 / 00:30 / 03:30 / 06:30). */
+/** Six once-daily vercel.json entries (KST 00:30 / 03:30 / 06:30 / 12:30 / 18:30 / 21:30). */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
 export const OFFICIAL_SITE_CRON_SCHEDULES = [
+  "30 3 * * *",
+  "30 9 * * *",
   "30 12 * * *",
   "30 15 * * *",
   "30 18 * * *",
   "30 21 * * *",
 ] as const;
 export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
-export const OFFICIAL_SITE_WAVES_PER_DAY = 4;
+export const OFFICIAL_SITE_WAVES_PER_DAY = 6;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
   OFFICIAL_SITE_MAX_ORGS_PER_RUN * OFFICIAL_SITE_WAVES_PER_DAY;
 

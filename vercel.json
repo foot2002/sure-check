@@ -206,6 +206,14 @@
     },
     {
       "path": "/api/internal/collector/official-sites",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
       "schedule": "30 12 * * *"
     },
     {

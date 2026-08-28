@@ -174,6 +174,7 @@ export function filterAndSortEligible(
         freshness: row.freshness,
         title: row.title,
         triage: row.triage,
+        sourceTypes: row.sourceTypes,
       })
     ) {
       continue;
@@ -457,7 +458,7 @@ async function fetchOfficialSiteSurveyPage(
     .from("survey_links")
     .select("id, canonical_url, platform, title, status, freshness")
     .in("id", ids)
-    .eq("status", "active");
+    .in("status", ["active", "stale", "discovered"]);
   if (first.error) {
     throw new Error(`load official_site survey_links: ${first.error.message}`);
   }

@@ -1,5 +1,5 @@
 /**
- * Official-site daily capacity: 8 orgs/run × 4 once-daily waves = 32/day.
+ * Official-site daily capacity: 8 orgs/run × 6 once-daily waves = 48/day.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -26,10 +26,10 @@ console.log("[Official Site Daily Capacity Check]\n");
 
 {
   assert.equal(OFFICIAL_SITE_MAX_ORGS_PER_RUN, 8);
-  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 4);
-  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 32);
-  assert.equal(estimatedOfficialSiteOrgsPerDay(), 32);
-  console.log("  PASS  8 orgs/run × 4 waves = 32 orgs/day");
+  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 6);
+  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 48);
+  assert.equal(estimatedOfficialSiteOrgsPerDay(), 48);
+  console.log("  PASS  8 orgs/run × 6 waves = 48 orgs/day");
 }
 
 {
@@ -39,7 +39,7 @@ console.log("[Official Site Daily Capacity Check]\n");
   const crons = vercel.crons || [];
   assert.ok(crons.length <= 100, `too many crons: ${crons.length}`);
   assert.equal(hasMultiHourCronExpression(crons), false);
-  assert.equal(countCronJobsForPath(crons, OFFICIAL_SITE_CRON_PATH), 4);
+  assert.equal(countCronJobsForPath(crons, OFFICIAL_SITE_CRON_PATH), 6);
   const jobs = crons.filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
   const schedules = jobs.map((job) => job.schedule || "").sort();
   assert.deepEqual(schedules, [...OFFICIAL_SITE_CRON_SCHEDULES].sort());
@@ -47,8 +47,8 @@ console.log("[Official Site Daily Capacity Check]\n");
     assert.equal(scheduleIsOnceDaily(job.schedule || ""), true, job.schedule);
     assert.equal(cronScheduleDailyFires(job.schedule || ""), 1);
   }
-  assert.equal(officialSiteWavesPerDayFromCrons(crons), 4);
-  console.log("  PASS  four once-daily official-site crons (no comma hours)");
+  assert.equal(officialSiteWavesPerDayFromCrons(crons), 6);
+  console.log("  PASS  six once-daily official-site crons (no comma hours)");
 }
 
 {
@@ -62,10 +62,10 @@ console.log("[Official Site Daily Capacity Check]\n");
 
 {
   const view = source("components/report/admin/CollectorConsoleView.tsx");
-  assert.ok(view.includes("공식 사이트 수집 기관 수"));
-  assert.ok(view.includes("계획: 공식 사이트 정기 수집 하루 4회"));
+  assert.ok(view.includes("공공 사이트 수집 기관 수"));
+  assert.ok(view.includes("계획: 공공 사이트 정기 수집 하루 6회"));
   assert.ok(view.includes("회당 최대 8기관"));
-  assert.ok(view.includes("32기관/일"));
+  assert.ok(view.includes("48기관/일"));
   console.log("  PASS  collector dashboard shows official-site daily capacity");
 }
 

@@ -1042,6 +1042,9 @@ export async function listSurveyLinks(
           firstSeenThisRun: false,
         })),
       );
+      const sourceTypes = (meta?.sources || []).map(
+        (s) => s.source_type || "unknown",
+      );
       return {
         ...row,
         source_count: meta?.count ?? 0,
@@ -1052,12 +1055,14 @@ export async function listSurveyLinks(
           status: row.status,
           freshness: row.freshness,
           title: row.title,
+          sourceTypes,
         }),
         auto_diagnosis_target: isAutoDiagnosisTarget({
           status: row.status,
           freshness: row.freshness,
           title: row.title,
           triage,
+          sourceTypes,
         }),
       };
     });

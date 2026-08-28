@@ -41,11 +41,9 @@ export function crawlPriorityForType(
 }
 
 export function crawlIntervalDaysForPriority(
-  priority: OfficialSiteCrawlPriority,
+  _priority: OfficialSiteCrawlPriority,
 ): number {
-  if (priority === "A") return 1;
-  if (priority === "B") return 3;
-  return 7;
+  return 30;
 }
 
 let cached: OfficialInstitutionSeed[] | null = null;

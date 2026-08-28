@@ -89,6 +89,33 @@ const year = kst.year;
 }
 
 {
+  const unknown = evaluateSurveyFreshness({
+    title: "의견 설문",
+    snippet: "아래 링크에서 응답해 주세요",
+    url: "https://forms.gle/unknown-official",
+    mode: "page",
+    confirmedLive: true,
+  });
+  assert.equal(
+    isAutoDiagnosisTarget({
+      status: unknown.status,
+      freshness: unknown.record,
+      sourceTypes: ["official_site"],
+    }),
+    true,
+  );
+  assert.equal(
+    isAutoDiagnosisTarget({
+      status: "closed",
+      freshness: unknown.record,
+      sourceTypes: ["official_site"],
+    }),
+    false,
+  );
+  console.log("  PASS  official_site date unknown is diagnosed; closed is not");
+}
+
+{
   const running = evaluateSurveyFreshness({
     title: "수요조사",
     snippet: "현재 진행 중이며 참여 가능합니다",

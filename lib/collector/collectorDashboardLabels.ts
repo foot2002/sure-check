@@ -85,7 +85,7 @@ export function collectorFreshnessLabelKo(input: {
 }
 
 export function collectorSourceChannelKo(sourceType: string | null | undefined): string {
-  if (sourceType === "official_site") return "공식 사이트";
+  if (sourceType === "official_site") return "공공 사이트";
   if (sourceType === "web" || sourceType === "blog" || sourceType === "cafe") {
     return "네이버 검색";
   }

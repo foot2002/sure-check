@@ -58,7 +58,7 @@ console.log("[Official Site Quality Metrics Check]\n");
   assert.ok(view.includes("전체 날짜 불명 비율"));
   assert.ok(!view.includes("date_unknown_hold 비율"));
   assert.ok(view.includes("seed 오매핑 의심"));
-  assert.ok(view.includes("공식 사이트 탐색 성공률"));
+  assert.ok(view.includes("공공 사이트 탐색 성공률"));
   assert.ok(view.includes("012_official_site_source_evidence.sql"));
   console.log("  PASS  collector UI shows quality metrics vs targets");
 }

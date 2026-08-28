@@ -254,17 +254,17 @@ export function CollectorConsoleView({
         skippedParallel?: boolean;
       };
       if (data.skippedParallel || data.reason === "already_running") {
-        setRunMessage("이미 공식 사이트 수집이 실행 중입니다. 병렬 실행은 하지 않습니다.");
+        setRunMessage("이미 공공 사이트 수집이 실행 중입니다. 병렬 실행은 하지 않습니다.");
         return;
       }
       if (!res.ok || !data.ok) {
-        setRunMessage(data.error || "공식 사이트 수집에 실패했습니다.");
+        setRunMessage(data.error || "공공 사이트 수집에 실패했습니다.");
         return;
       }
-      setRunMessage(`공식 사이트 수집 완료 — 탐색 기관 ${data.crawled ?? limit}곳`);
+      setRunMessage(`공공 사이트 수집 완료 — 탐색 기관 ${data.crawled ?? limit}곳`);
       router.refresh();
     } catch {
-      setRunMessage("공식 사이트 수집을 시작하지 못했습니다.");
+      setRunMessage("공공 사이트 수집을 시작하지 못했습니다.");
     } finally {
       setRunning(false);
     }
@@ -404,7 +404,7 @@ export function CollectorConsoleView({
             disabled={running || Boolean(configError)}
             className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            공식 사이트 수집 실행
+            공공 사이트 수집 실행
           </button>
           <button
             type="button"
@@ -491,7 +491,7 @@ export function CollectorConsoleView({
               hint={`scanBatch ${summary.capacity?.scanBatch ?? 3} × worker ${summary.capacity?.workerRunsPerDay ?? 22}회`}
             />
             <StatCard
-              label="공식 사이트 수집 기관 수"
+              label="공공 사이트 수집 기관 수"
               value={
                 summary.officialSite?.officialSiteRunRecordsToday
                   ? `${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.capacity?.officialSiteOrgsPerDayTarget)}`
@@ -504,9 +504,9 @@ export function CollectorConsoleView({
               }
             />
             <StatCard
-              label="공식 사이트 적격 설문 수"
+              label="공공 사이트 적격 설문 수"
               value={formatCount(summary.capacity?.officialSiteEligibleToday)}
-              hint="오늘 공식 사이트 최근 60일 적격"
+              hint="오늘 공공 사이트에서 수집되어 자동진단 대상인 설문"
             />
             <StatCard
               label="오늘 남은 자동진단 한도"
@@ -542,9 +542,9 @@ export function CollectorConsoleView({
           <p className="mt-1 text-xs text-slate-500">오늘 기준입니다. 개선안내 후보는 현재 후보 규모입니다.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StatCard
-              label="검색·공식사이트 탐색"
+              label="검색·공공사이트 탐색"
               value={`${formatCount(summary.todayFunnel?.searchResults)} · ${formatCount(summary.officialSite?.crawledToday)}`}
-              hint="네이버 검색 결과와 오늘 탐색한 공식 사이트 기관 수입니다."
+              hint="네이버 검색 결과와 오늘 탐색한 공공 사이트 기관 수입니다."
             />
             <StatCard
               label="설문 URL 저장"
@@ -560,7 +560,7 @@ export function CollectorConsoleView({
             <StatCard
               label="최근 60일 진단대상"
               value={formatCount(summary.officialSite?.todayRecentEligible)}
-              hint="오늘 공식 사이트 최근 60일 적격"
+              hint="오늘 공공 사이트에서 수집되어 자동진단 대상인 설문"
               onClick={() => applyQuick({ holdReason: "eligible", sourceType: "official_site", status: "all" })}
             />
             <StatCard
@@ -641,15 +641,15 @@ export function CollectorConsoleView({
 
           <section className="rounded-2xl border border-teal-200 bg-teal-50/40 p-4">
             <h2 className="text-base font-bold text-slate-900">
-              공공기관 공식 사이트 수집
+              공공 사이트 수집
             </h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              공식 출처 기반의 품질 높은 공공기관 설문 수집 채널입니다. 출처
+              공공 사이트 기반의 품질 높은 공공기관 설문 수집 채널입니다. 출처
               페이지와 게시일 근거를 확보할 수 있습니다. 네이버 검색과 별도로 동작합니다.
             </p>
             <div className="mt-3 rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
               <p>
-                계획: 공식 사이트 정기 수집 하루 4회 × 회당 최대 8기관 = 32기관/일
+                계획: 공공 사이트 정기 수집 하루 6회 × 회당 최대 8기관 = 48기관/일
                 (21:30 · 00:30 · 03:30 · 06:30 KST)
               </p>
               <p>
@@ -674,9 +674,9 @@ export function CollectorConsoleView({
               )}
               {summary.officialSite?.exceededPlanExplained ? (
                 <p className="text-slate-600">
-                  오늘 공식 사이트 탐색 기관이 계획량보다 많습니다. 수동 테스트
+                  오늘 공공 사이트 탐색 기관이 계획량보다 많습니다. 수동 테스트
                   또는 관리자 실행이 포함되었을 수 있습니다. 정기 cron 기준
-                  계획량은 32기관/일입니다.
+                  계획량은 48기관/일입니다.
                 </p>
               ) : null}
               <p>
@@ -700,12 +700,12 @@ export function CollectorConsoleView({
             </div>
             {summary.officialSite ? (
               <>
-                <h3 className="mb-2 mt-4 text-sm font-semibold text-slate-900">오늘 공식 사이트 수집</h3>
+                <h3 className="mb-2 mt-4 text-sm font-semibold text-slate-900">오늘 공공 사이트 수집</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <StatCard
                     label="오늘 탐색한 기관"
                     value={formatCount(summary.officialSite.crawledToday)}
-                    hint="오늘 공식 사이트 전체 탐색 기관. 수동 테스트가 포함될 수 있습니다."
+                    hint="오늘 공공 사이트 전체 탐색 기관. 수동 테스트가 포함될 수 있습니다."
                     className="border-teal-200 bg-white"
                   />
                   {summary.officialSite.officialSiteRunRecordsToday ? (
@@ -713,7 +713,7 @@ export function CollectorConsoleView({
                       <StatCard
                         label="오늘 정기 수집 기관"
                         value={`${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.officialSite.orgsPerDayTarget)}`}
-                        hint="cron 기준 계획 32기관/일"
+                        hint="cron 기준 계획 48기관/일"
                         className="border-teal-200 bg-white"
                       />
                       <StatCard
@@ -727,14 +727,14 @@ export function CollectorConsoleView({
                   <StatCard
                     label="오늘 발견한 설문"
                     value={formatCount(summary.officialSite.surveysFoundToday)}
-                    hint="오늘 공식 사이트에서 발견한 설문 링크입니다."
+                    hint="오늘 공공 사이트에서 발견한 설문 링크입니다."
                     className="border-teal-200 bg-white"
                     onClick={() => applyQuick({ sourceType: "official_site", status: "all" })}
                   />
                   <StatCard
-                    label="오늘 공식 사이트 최근 60일 적격"
+                    label="오늘 공공 사이트 최근 60일 적격"
                     value={formatCount(summary.officialSite.todayRecentEligible)}
-                    hint="공식 사이트에서 발견했고, 게시일·모집기간·마감일 기준으로 최근 설문이라고 판단된 건입니다."
+                    hint="공공 사이트에서 수집한 응답 가능 설문입니다. 게시일·기간이 없어도 자동진단합니다."
                     className="border-teal-200 bg-white"
                     onClick={() => applyQuick({ sourceType: "official_site", holdReason: "eligible", status: "all" })}
                   />
@@ -746,9 +746,9 @@ export function CollectorConsoleView({
                     onClick={() => applyQuick({ holdReason: "old_year", sourceType: "official_site", status: "all" })}
                   />
                   <StatCard
-                    label="오늘 공식 사이트 날짜 불명 보류"
+                    label="오늘 공공 사이트 날짜 불명 보류"
                     value={formatCount(summary.officialSite.todayDateUnknownHold)}
-                    hint="날짜 불명으로 보류"
+                    hint="날짜는 확인되지 않았지만, 공공 사이트 수집분은 진단합니다."
                     className="border-teal-200 bg-white"
                     onClick={() => applyQuick({ holdReason: "date_unknown", sourceType: "official_site", status: "all" })}
                   />
@@ -764,7 +764,7 @@ export function CollectorConsoleView({
                   <StatCard
                     label="오늘 자동진단 큐 등록"
                     value={formatCount(summary.officialSite.todayDiagnosisQueued)}
-                    hint="오늘 공식 사이트 자동진단 큐 등록"
+                    hint="오늘 공공 사이트 자동진단 큐 등록"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -791,7 +791,7 @@ export function CollectorConsoleView({
                       (summary.officialSite.excludedSeedCount || 0) +
                         (summary.officialSite.needsReviewCount || 0),
                     )}
-                    hint="needs_review + excluded. 자동 공식 사이트 수집 대상이 아닙니다."
+                    hint="needs_review + excluded. 자동 공공 사이트 수집 대상이 아닙니다."
                     className="border-amber-200 bg-amber-50"
                   />
                 </div>
@@ -825,19 +825,19 @@ export function CollectorConsoleView({
                   <StatCard
                     label="전체 공공기관 seed 수"
                     value={formatCount(summary.officialSite.institutionCount)}
-                    hint="전체 공식 사이트 대상 기관"
+                    hint="전체 공공 사이트 대상 기관"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
-                    label="전체 공식 사이트 발견 설문"
+                    label="전체 공공 사이트 발견 설문"
                     value={formatCount(summary.officialSite.totalSurveysFound)}
-                    hint="지금까지 공식 사이트에서 발견한 설문입니다."
+                    hint="지금까지 공공 사이트에서 발견한 설문입니다."
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
-                    label="전체 공식 사이트 적격 설문"
+                    label="전체 공공 사이트 적격 설문"
                     value={formatCount(summary.officialSite.totalRecentEligible)}
-                    hint="전체 최근 60일 적격 설문"
+                    hint="공공 사이트에서 수집되어 자동진단 대상인 누적 설문"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -850,7 +850,7 @@ export function CollectorConsoleView({
                   <StatCard
                     label="전체 날짜 불명 보류"
                     value={formatCount(summary.officialSite.totalDateUnknownHold)}
-                    hint="날짜를 몰라 보류한 누적"
+                    hint="날짜는 확인되지 않았지만, 공공 사이트 수집분은 진단합니다."
                     className="border-teal-200 bg-white"
                     onClick={() => applyQuick({ holdReason: "date_unknown", status: "all" })}
                   />
@@ -876,13 +876,13 @@ export function CollectorConsoleView({
                   </p>
                 ) : null}
                 <h3 className="mb-2 mt-5 text-sm font-semibold text-slate-900">
-                  공식 사이트 수집 품질
+                  공공 사이트 수집 품질
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <StatCard
                     label="오늘 탐색 페이지 수"
                     value={formatCount(summary.officialSite.todayPagesFetched)}
-                    hint="오늘 공식 사이트에서 연 페이지 수입니다."
+                    hint="오늘 공공 사이트에서 연 페이지 수입니다."
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -904,7 +904,7 @@ export function CollectorConsoleView({
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
-                    label="공식 사이트 탐색 성공률"
+                    label="공공 사이트 탐색 성공률"
                     value={formatPct(summary.officialSite.crawlSuccessRate)}
                     hint="오늘 탐색한 기관 중 수집이 성공한 비율입니다."
                     className="border-teal-200 bg-white"
@@ -955,7 +955,7 @@ export function CollectorConsoleView({
                   <StatCard
                     label="오늘 날짜 불명 비율"
                     value={formatPct(summary.officialSite.todayDateUnknownHoldRatio)}
-                    hint="오늘 공식 사이트 날짜 불명 보류 / 오늘 공식 사이트 발견 설문"
+                    hint="오늘 공공 사이트 날짜 불명 보류 / 오늘 공공 사이트 발견 설문"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -968,7 +968,7 @@ export function CollectorConsoleView({
                   <StatCard
                     label="전체 날짜 불명 비율"
                     value={formatPct(summary.officialSite.totalDateUnknownHoldRatio)}
-                    hint="전체 공식 사이트 날짜 불명 보류 / 전체 공식 사이트 발견 설문"
+                    hint="전체 공공 사이트 날짜 불명 보류 / 전체 공공 사이트 발견 설문"
                     className="border-teal-200 bg-white"
                   />
                   <StatCard
@@ -1007,9 +1007,9 @@ export function CollectorConsoleView({
 
       {summary?.sourceComparison ? (
         <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-base font-bold text-slate-900">네이버 API와 공식 사이트 비교</h2>
+          <h2 className="text-base font-bold text-slate-900">네이버 API와 공공 사이트 비교</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            네이버는 후보를 넓게 찾고, 공식 사이트는 출처 페이지와 게시일 근거가
+            네이버는 후보를 넓게 찾고, 공공 사이트는 출처 페이지와 게시일 근거가
             있는 공공기관 설문을 모읍니다.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -1020,15 +1020,15 @@ export function CollectorConsoleView({
               onClick={() => applyQuick({ sourceType: "naver", status: "all" })}
             />
             <StatCard
-              label="오늘 공식 사이트 수집 설문"
+              label="오늘 공공 사이트 수집 설문"
               value={formatCount(summary.sourceComparison.todayOfficialSurveys)}
-              hint="공식 사이트에서 오늘 발견한 설문입니다."
+              hint="공공 사이트에서 오늘 발견한 설문입니다."
               onClick={() => applyQuick({ sourceType: "official_site", status: "all" })}
             />
             <StatCard
               label="최근 60일 적격 설문"
               value={formatCount(summary.sourceComparison.todayRecentEligible)}
-              hint="오늘 공식 사이트 최근 60일 적격"
+              hint="오늘 공공 사이트에서 수집되어 자동진단 대상인 설문"
               onClick={() => applyQuick({ holdReason: "eligible", sourceType: "official_site", status: "all" })}
             />
             <StatCard
@@ -1194,8 +1194,8 @@ export function CollectorConsoleView({
           ) : null}
           {(summary?.officialSite?.todayDateUnknownHold || 0) > 8 ? (
             <p className="mt-3 text-xs text-amber-800">
-              date_unknown_hold가 늘고 있습니다. 날짜 불명 설문은 자동진단하지
-              않습니다.
+              날짜 불명 설문이 늘고 있습니다. 공공 사이트에서 수집된 응답
+              가능 설문은 날짜와 관계없이 자동진단합니다.
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -1304,7 +1304,7 @@ export function CollectorConsoleView({
                   summary.monitoring?.totalDiscovered ??
                   summary.totalLinksAll,
               )}
-              hint="검색·공식 사이트에서 들어온 주소 전체입니다. 설문이 아닌 것도 포함됩니다."
+              hint="검색·공공 사이트에서 들어온 주소 전체입니다. 설문이 아닌 것도 포함됩니다."
             />
             <StatCard
               label="응답이 끝난 설문"
@@ -1504,7 +1504,7 @@ export function CollectorConsoleView({
 
       <details className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
         <summary className="cursor-pointer font-semibold text-slate-900">
-          최근 공식 사이트 수집 로그
+          최근 공공 사이트 수집 로그
         </summary>
         <p className="mt-2 text-xs text-slate-500">
           오늘 탐색 기관 {formatCount(summary?.officialSite?.crawledToday)} · 발견
@@ -1625,7 +1625,7 @@ export function CollectorConsoleView({
         <span className="text-slate-500">적용 필터:</span>
         <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
           {form.sourceType === "official_site"
-            ? "공식 사이트 수집"
+            ? "공공 사이트 수집"
             : form.sourceType === "naver"
               ? "네이버 검색 수집"
               : form.sourceType !== "all"
@@ -1662,7 +1662,7 @@ export function CollectorConsoleView({
             ["과거연도 제외", { holdReason: form.holdReason === "old_year" ? "all" : "old_year", status: "all" }],
             ["로그인 제외", { holdReason: form.holdReason === "restricted" ? "all" : "restricted", status: "all" }],
             ["개선안내 후보", { diagnosisStatus: "completed", status: "all" }],
-            ["공식 사이트 수집", { sourceType: form.sourceType === "official_site" ? "all" : "official_site", status: "all" }],
+            ["공공 사이트 수집", { sourceType: form.sourceType === "official_site" ? "all" : "official_site", status: "all" }],
             ["네이버 검색 수집", { sourceType: form.sourceType === "naver" ? "all" : "naver", status: "all" }],
           ] as Array<[string, Partial<Filters>]>
         ).map(([label, patch]) => (
@@ -1778,7 +1778,7 @@ export function CollectorConsoleView({
             <option value="web">네이버 검색 · 웹문서</option>
             <option value="blog">네이버 검색 · 블로그</option>
             <option value="cafe">네이버 검색 · 카페</option>
-            <option value="official_site">공공기관 공식 사이트</option>
+            <option value="official_site">공공 사이트</option>
             <option value="naver">네이버 검색 수집</option>
           </select>
         </label>
@@ -2006,7 +2006,7 @@ export function CollectorConsoleView({
                           <li key={source.id} className="text-xs text-slate-700">
                             <span className="mr-2 rounded border border-slate-200 px-1 text-[10px] text-slate-500">
                               {source.source_type === "official_site"
-                                ? "공식 사이트"
+                                ? "공공 사이트"
                                 : "네이버 검색"}
                             </span>
                             <a

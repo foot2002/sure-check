@@ -31,6 +31,10 @@ import { insertSurveySource, upsertSurveyLink } from "@/lib/collector/repository
 import { safeUrlCheck } from "@/lib/security/urlSafety";
 import { evaluateSurveyFreshness } from "@/lib/collector/surveyFreshness";
 import {
+  applyOfficialSiteCollectedFreshness,
+  officialSiteCollectedPersistStatus,
+} from "@/lib/collector/collectConfirmedPolicy";
+import {
   isChromePageTitle,
   sanitizeSurveyTitle,
 } from "@/lib/collector/titleUtils";
@@ -281,7 +285,7 @@ export async function crawlOfficialInstitutionSite(
           sanitizeSurveyTitle(
             find.sourceAnchorText,
             find.sourcePageTitle,
-          ) || `${row.organization_name} 공식 사이트 설문`,
+          ) || `${row.organization_name} 공공 사이트 설문`,
       });
       if (!processed.ok || !processed.canonicalUrl || !processed.platform) continue;
 
@@ -291,6 +295,7 @@ export async function crawlOfficialInstitutionSite(
         processed.status === "restricted" ||
         processed.status === "invalid" ||
         processed.status === "unreachable";
+      const persistStatus = officialSiteCollectedPersistStatus(processed.status);
       const homepageLike = isHomepageLikeSource(
         find.sourcePageUrl,
         row.homepage_url,
@@ -347,14 +352,10 @@ export async function crawlOfficialInstitutionSite(
               },
             )
       ) as SurveyLinkFreshness;
-      if (formBlocked && processed.freshness) {
-        freshness.diagnosis_eligible_recent = false;
-        freshness.should_diagnose = false;
-        freshness.diagnosis_exclusion_reason =
-          processed.freshness.diagnosis_exclusion_reason ||
-          processed.freshness.reason_code ||
-          processed.status;
-      }
+      const diagnosisFreshness = applyOfficialSiteCollectedFreshness(
+        freshness,
+        processed.status,
+      );
 
       const saved = await upsertSurveyLink({
         canonicalUrl: processed.canonicalUrl,
@@ -364,9 +365,9 @@ export async function crawlOfficialInstitutionSite(
           sanitizeSurveyTitle(
             processed.title,
             find.sourceAnchorText || find.sourcePageTitle,
-          ) || `${row.organization_name} 공식 사이트 설문`,
-        status: processed.status,
-        freshness,
+          ) || `${row.organization_name} 공공 사이트 설문`,
+        status: persistStatus,
+        freshness: diagnosisFreshness,
       });
       const sourcePayload = {
         surveyLinkId: saved.link.id,

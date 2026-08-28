@@ -251,6 +251,16 @@ async function main(): Promise<void> {
       "date_unknown_hold must not be auto-diagnosis target",
     );
     console.log("  PASS  날짜 불명 → date_unknown_hold (자동진단 제외)");
+    assert.equal(
+      isAutoDiagnosisTarget({
+        status: liveUnknown.status,
+        freshness: liveUnknown.record,
+        sourceTypes: ["official_site"],
+      }),
+      true,
+      "official_site date_unknown_hold must enter auto diagnosis",
+    );
+    console.log("  PASS  공식 사이트 날짜 불명 → 자동진단 대상");
   }
 
   {
