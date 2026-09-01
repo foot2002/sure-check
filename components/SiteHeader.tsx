@@ -2,7 +2,7 @@ import { Logo } from "@/components/Logo";
 import { HeaderNav } from "@/components/HeaderNav";
 
 /**
- * Canonical site chrome — identical on / and /report.
+ * Canonical site chrome — identical on /, /report, /cases, and /about.
  * No page-specific size/padding variants.
  */
 export function SiteHeader() {

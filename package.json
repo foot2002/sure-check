@@ -92,6 +92,7 @@
     "check:survey-liveness": "tsx scripts/check-survey-liveness-precheck.ts",
     "report:public-safety": "tsx scripts/check-public-report-safety.ts",
     "cases:public-safety": "tsx scripts/check-public-cases-safety.ts",
+    "about-page-check": "tsx scripts/check-about-page.ts",
     "admin:outreach-actions-check": "tsx scripts/check-admin-outreach-actions.ts",
     "admin:kpi-filter-check": "tsx scripts/check-admin-kpi-filter.ts",
     "admin-dashboard-ux-check": "tsx scripts/check-admin-kpi-filter.ts",

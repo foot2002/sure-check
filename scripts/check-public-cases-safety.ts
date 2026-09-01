@@ -144,6 +144,13 @@ function main() {
   const header = read("components/HeaderNav.tsx");
   check("nav adds 공개 진단 사례", header.includes('label: "공개 진단 사례"'));
   check("nav active on /cases", header.includes('pathname.startsWith("/cases/")'));
+  check(
+    "nav adds 개인정보보호진흥원 소개 last",
+    /label: "공개 진단 사례"[\s\S]*label: "개인정보보호진흥원 소개"/.test(header) &&
+      header.includes('href: "/about"'),
+  );
+  check("nav active on /about", header.includes('pathname.startsWith("/about/")'));
+  check("about page exists", exists("app/about/page.tsx"));
 
   const listPage = read("app/cases/page.tsx");
   check("list page title", listPage.includes("공개 진단 사례"));
