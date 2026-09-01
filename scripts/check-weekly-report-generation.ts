@@ -113,7 +113,12 @@ function main() {
   check(
     "headline 144/132",
     buildHeadline(144, 132) ===
-      "공개 온라인 설문 144건 중 132건에서 개인정보 수집 신호 확인",
+      "공개 온라인 설문 144건 중 132건, 개인정보 수집 신호 확인",
+  );
+  check(
+    "headline attention fallback",
+    buildHeadline(100, 60, 75) ===
+      "공개 온라인 설문 100건 중 75건, 응답 전 주의 필요",
   );
 
   const fourAvg = fourWeekWeightedPrivacyAverage([
@@ -139,6 +144,14 @@ function main() {
   });
   check("insights 3-5", insights.length >= 3 && insights.length <= 5);
   check("public insight only with public data", insights.some((row) => row.text.includes("공공부문")));
+  check(
+    "standard notice insight",
+    insights.some((row) => row.text.includes("표준 고지문")),
+  );
+  check(
+    "retention insight",
+    insights.some((row) => row.text.includes("보유기간") && row.text.includes("파기")),
+  );
 
   const noSchool = buildWeeklyInsights({
     personalInfoRate: 90,
@@ -167,7 +180,8 @@ function main() {
     publicNarrative: "공공부문 확인 필요 신호가 반복적으로 나타났습니다.",
   });
   check("press has headline", press.includes(headline));
-  check("press has disclaimer", press.includes("위법 여부를 확정하는 자료는 아닙니다"));
+  check("press has 보도 제목 후보", press.includes("보도 제목 후보"));
+  check("press has disclaimer", press.includes("위법 여부를 확정하지 않으며"));
   check("press no 위반 확정", !/위반 확정입니다/.test(press));
 
   const cases = buildAnonymousCases({

@@ -23,9 +23,13 @@ export type WeeklyIssueRow = {
 export type WeeklyPlatformRow = {
   platform: string;
   surveyCount: number;
+  personalInfoCount: number;
   personalInfoRate: number;
+  sensitiveInfoCount: number;
   sensitiveInfoRate: number;
+  highRiskInfoCount: number;
   highRiskInfoRate: number;
+  attentionNeededCount: number;
   attentionNeededRate: number;
   avgOverallScore: number | null;
 };
@@ -33,9 +37,13 @@ export type WeeklyPlatformRow = {
 export type WeeklyOrgTypeRow = {
   typeLabel: string;
   surveyCount: number;
+  personalInfoCount: number;
   personalInfoRate: number;
+  sensitiveInfoCount: number;
   sensitiveInfoRate: number;
+  highRiskInfoCount: number;
   highRiskInfoRate: number;
+  attentionNeededCount: number;
   attentionNeededRate: number;
   avgOverallScore: number | null;
 };
@@ -58,6 +66,12 @@ export type WeeklyAnonymousCase = {
   respondentRisk: string;
   operatorFix: string;
   similarCount: number;
+  whyRisky: string;
+  respondentBlindSpot: string;
+  operatorMissed: string[];
+  quickFixNotice: string;
+  weakNoticeExample: string;
+  improvedNoticeExample: string;
 };
 
 export type WeeklyInsight = {
@@ -83,6 +97,8 @@ export type WeeklyQualityStats = {
   closedExcludedCount: number;
   restrictedExcludedCount: number;
   evidenceCaptureCount: number;
+  evidenceSurveyCount: number;
+  evidenceImageCount: number;
 };
 
 export type WeeklySummary = {
@@ -116,6 +132,8 @@ export type WeeklyMetrics = {
   grade: WeeklyPrivacyGrade | null;
   publicExternalToolCount: number;
   evidenceCaptureCount: number;
+  evidenceSurveyCount: number;
+  evidenceImageCount: number;
 };
 
 export type WeeklyReportSnapshot = {

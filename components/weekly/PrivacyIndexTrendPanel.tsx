@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { WeeklyTrendChart } from "@/components/weekly/WeeklyCharts";
 import {
   WEEKLY_PRIVACY_GRADE_BANDS,
-  WEEKLY_PRIVACY_INDEX_DISCLAIMER,
   WEEKLY_PRIVACY_INDEX_FORMULA,
   formatScore1,
   monthlyPrivacyIndexSeries,
@@ -42,7 +41,7 @@ export function PrivacyIndexGuide() {
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 md:px-5">
         <h3 className="text-sm font-bold text-slate-900">점수대별 의미</h3>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
-          등급은 자동진단 기반 참고 구간입니다. 위법 여부를 확정하지 않습니다.
+          등급은 자동진단 기반 참고 구간입니다.
         </p>
         <ul className="mt-3 space-y-2.5">
           {WEEKLY_PRIVACY_GRADE_BANDS.map((band) => (
@@ -57,9 +56,6 @@ export function PrivacyIndexGuide() {
           ))}
         </ul>
       </div>
-      <p className="text-xs leading-relaxed text-slate-500 lg:col-span-2">
-        {WEEKLY_PRIVACY_INDEX_DISCLAIMER}
-      </p>
     </div>
   );
 }
@@ -109,7 +105,7 @@ export function PrivacyIndexTrendPanel({
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
             공개 설문 화면 기준 자동진단 결과를 주간·월간으로 요약한 참고
-            지표입니다. 개별 설문의 위법 여부를 확정하지 않습니다.
+            지표입니다.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -150,7 +146,7 @@ export function PrivacyIndexTrendPanel({
         </div>
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white px-2 py-3 md:px-4 md:py-4">
+      <div className="mt-4 rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white px-2 py-2 md:px-3 md:py-3">
         <WeeklyTrendChart
           key={period}
           title=""

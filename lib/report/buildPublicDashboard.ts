@@ -52,9 +52,13 @@ export interface PublicDashboardTrendRow {
 export interface PublicDashboardPlatformRow {
   platform: string;
   surveyCount: number;
+  personalInfoCount: number;
   personalInfoRate: number;
+  sensitiveInfoCount: number;
   sensitiveInfoRate: number;
+  highRiskInfoCount: number;
   highRiskInfoRate: number;
+  attentionNeededCount: number;
   attentionNeededRate: number;
   avgOverallScore: number | null;
 }
@@ -69,9 +73,13 @@ export interface PublicDashboardIssueRow {
 export interface PublicDashboardOrgTypeRow {
   typeLabel: string;
   surveyCount: number;
+  personalInfoCount: number;
   personalInfoRate: number;
+  sensitiveInfoCount: number;
   sensitiveInfoRate: number;
+  highRiskInfoCount: number;
   highRiskInfoRate: number;
+  attentionNeededCount: number;
   attentionNeededRate: number;
   avgOverallScore: number | null;
 }
@@ -133,6 +141,8 @@ export interface PublicDiagnosisQualityStats {
   completedDiagnosisCount: number;
   limitedQuestionAnalysisCount: number;
   evidenceCaptureCount: number;
+  evidenceSurveyCount: number;
+  evidenceImageCount: number;
   fullPathCaptureCount: number;
   avgCapturedPageCount: number | null;
 }
@@ -807,6 +817,7 @@ interface ComplianceAggRow {
 }
 
 interface CaptureAggRow {
+  survey_record_id?: string | null;
   completeness: string | null;
   captured_page_count: number | null;
   status: string | null;
@@ -847,6 +858,8 @@ function emptyDiagnosisQualityStats(): PublicDiagnosisQualityStats {
     completedDiagnosisCount: 0,
     limitedQuestionAnalysisCount: 0,
     evidenceCaptureCount: 0,
+    evidenceSurveyCount: 0,
+    evidenceImageCount: 0,
     fullPathCaptureCount: 0,
     avgCapturedPageCount: null,
   };
@@ -879,7 +892,7 @@ export async function buildPublicDashboard(
         .lte("observed_date_kst", to),
       supabase
         .from("capture_jobs")
-        .select("completeness, captured_page_count, status")
+        .select("survey_record_id, completeness, captured_page_count, status")
         .gte("observed_date_kst", from)
         .lte("observed_date_kst", to),
       supabase
@@ -1071,9 +1084,13 @@ export async function buildPublicDashboard(
     .map(([platform, bucket]) => ({
       platform: platformLabel(platform),
       surveyCount: bucket.surveyCount,
+      personalInfoCount: bucket.personalInfoCount,
       personalInfoRate: rate(bucket.personalInfoCount, bucket.surveyCount),
+      sensitiveInfoCount: bucket.sensitiveInfoCount,
       sensitiveInfoRate: rate(bucket.sensitiveInfoCount, bucket.surveyCount),
+      highRiskInfoCount: bucket.highRiskInfoCount,
       highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
+      attentionNeededCount: bucket.attentionNeededCount,
       attentionNeededRate: rate(bucket.attentionNeededCount, bucket.surveyCount),
       avgOverallScore: avg(bucket.scores),
     }))
@@ -1373,9 +1390,13 @@ export async function buildPublicDashboard(
     .map(([typeLabel, bucket]) => ({
       typeLabel,
       surveyCount: bucket.surveyCount,
+      personalInfoCount: bucket.personalInfoCount,
       personalInfoRate: rate(bucket.personalInfoCount, bucket.surveyCount),
+      sensitiveInfoCount: bucket.sensitiveInfoCount,
       sensitiveInfoRate: rate(bucket.sensitiveInfoCount, bucket.surveyCount),
+      highRiskInfoCount: bucket.highRiskInfoCount,
       highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
+      attentionNeededCount: bucket.attentionNeededCount,
       attentionNeededRate: rate(bucket.attentionNeededCount, bucket.surveyCount),
       avgOverallScore: avg(bucket.scores),
     }))
@@ -1383,19 +1404,35 @@ export async function buildPublicDashboard(
     .sort((a, b) => b.surveyCount - a.surveyCount);
 
   // Diagnosis quality — public surface never exposes limited/extraction counts.
+  const evidenceCaptures = captures.filter(
+    (c) =>
+      c.status === "completed" ||
+      c.completeness === "complete" ||
+      c.completeness === "partial" ||
+      (c.captured_page_count || 0) > 0,
+  );
+  const evidenceSurveyIds = new Set(
+    evidenceCaptures
+      .map((c) => c.survey_record_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+  const evidenceImageCount = evidenceCaptures.reduce(
+    (sum, c) => sum + Math.max(0, c.captured_page_count || 0),
+    0,
+  );
   const diagnosisQualityStats: PublicDiagnosisQualityStats =
     totalScans === 0 && captures.length === 0
       ? emptyDiagnosisQualityStats()
       : {
           completedDiagnosisCount: totalScans,
           limitedQuestionAnalysisCount: 0,
-          evidenceCaptureCount: captures.filter(
-            (c) =>
-              c.status === "completed" ||
-              c.completeness === "complete" ||
-              c.completeness === "partial" ||
-              (c.captured_page_count || 0) > 0,
-          ).length,
+          evidenceCaptureCount: evidenceCaptures.length,
+          evidenceSurveyCount:
+            evidenceSurveyIds.size > 0
+              ? evidenceSurveyIds.size
+              : evidenceCaptures.length,
+          evidenceImageCount:
+            evidenceImageCount > 0 ? evidenceImageCount : evidenceCaptures.length,
           fullPathCaptureCount: captures.filter(
             (c) => c.completeness === "complete",
           ).length,
@@ -1407,9 +1444,13 @@ export async function buildPublicDashboard(
   const emptyPlatformStats = Object.values(PLATFORM_LABEL).map((platform) => ({
     platform,
     surveyCount: 0,
+    personalInfoCount: 0,
     personalInfoRate: 0,
+    sensitiveInfoCount: 0,
     sensitiveInfoRate: 0,
+    highRiskInfoCount: 0,
     highRiskInfoRate: 0,
+    attentionNeededCount: 0,
     attentionNeededRate: 0,
     avgOverallScore: null,
   }));

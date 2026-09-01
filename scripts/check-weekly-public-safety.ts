@@ -34,7 +34,7 @@ function mockSnapshot(): WeeklyReportSnapshot {
     generatedAt: "2026-09-01T00:00:00.000Z",
     isPartial: false,
     summary: {
-      headline: "공개 온라인 설문 84건 중 81건에서 개인정보 수집 신호 확인",
+      headline: "공개 온라인 설문 84건 중 81건, 개인정보 수집 신호 확인",
       oneLiner: "분석 완료 설문 84건 중 81건에서 개인정보 수집 신호가 확인되었습니다.",
       bullets: [
         "이번 주 분석 완료 설문 84건 중 81건에서 개인정보 수집 신호가 확인되었습니다.",
@@ -67,6 +67,8 @@ function mockSnapshot(): WeeklyReportSnapshot {
       grade: "주의",
       publicExternalToolCount: 62,
       evidenceCaptureCount: 70,
+      evidenceSurveyCount: 68,
+      evidenceImageCount: 210,
     },
     trends: [
       {
@@ -92,9 +94,13 @@ function mockSnapshot(): WeeklyReportSnapshot {
       {
         platform: "Google Forms",
         surveyCount: 40,
+        personalInfoCount: 38,
         personalInfoRate: 95,
+        sensitiveInfoCount: 2,
         sensitiveInfoRate: 5,
+        highRiskInfoCount: 0,
         highRiskInfoRate: 1,
+        attentionNeededCount: 36,
         attentionNeededRate: 90,
         avgOverallScore: 48,
       },
@@ -103,9 +109,13 @@ function mockSnapshot(): WeeklyReportSnapshot {
       {
         typeLabel: "공공기관",
         surveyCount: 20,
+        personalInfoCount: 18,
         personalInfoRate: 90,
+        sensitiveInfoCount: 1,
         sensitiveInfoRate: 4,
+        highRiskInfoCount: 0,
         highRiskInfoRate: 1,
+        attentionNeededCount: 18,
         attentionNeededRate: 88,
         avgOverallScore: 45,
       },
@@ -142,6 +152,16 @@ function mockSnapshot(): WeeklyReportSnapshot {
         respondentRisk: "내 정보가 언제까지 보관되고 누가 관리하는지 알기 어렵습니다.",
         operatorFix: "설문 첫 화면에 개인정보 수집·이용 안내문을 명확히 표시해야 합니다.",
         similarCount: 23,
+        whyRisky:
+          "연락처가 필요할 수 있지만 보관 기간과 관리 주체를 확인하기 어려우면 제공 여부를 판단하기 어렵습니다.",
+        respondentBlindSpot:
+          "정보가 언제까지 보관되고 삭제 요청은 어디에 해야 하는지 확인하기 어렵습니다.",
+        operatorMissed: ["수집 목적", "보유기간", "파기 기준", "담당자 연락처"],
+        quickFixNotice:
+          "본 설문은 안내 발송을 위해 이름과 연락처를 수집하며, 목적 달성 후 30일 이내 파기합니다.",
+        weakNoticeExample: "이름과 연락처를 입력해 주세요.",
+        improvedNoticeExample:
+          "본 설문은 안내 발송을 위해 이름과 연락처를 수집합니다. 목적 달성 후 30일 이내 파기하며, 문의는 담당부서로 안내합니다.",
       },
     ],
     insights: [
@@ -152,13 +172,15 @@ function mockSnapshot(): WeeklyReportSnapshot {
     ],
     checklist: ["수집 목적을 명확히 안내했는가"],
     pressSummary:
-      "공개 온라인 설문 84건 중 81건에서 개인정보 수집 신호 확인\n본 통계는 공개 설문 화면 기준 자동진단 결과이며, 개별 설문의 위법 여부를 확정하는 자료는 아닙니다.",
+      "공개 온라인 설문 84건 중 81건, 개인정보 수집 신호 확인\n본 통계는 공개 설문 화면 기준 자동진단 결과이며, 개별 설문의 위법 여부를 확정하지 않습니다.",
     quality: {
       completedDiagnosisCount: 84,
       limitedQuestionAnalysisCount: 3,
       closedExcludedCount: 10,
       restrictedExcludedCount: 5,
       evidenceCaptureCount: 70,
+      evidenceSurveyCount: 68,
+      evidenceImageCount: 210,
     },
     disclaimer:
       "본 리포트는 공개 설문 화면 기준의 참고 지표이며, 개별 설문의 위법 여부를 확정하지 않습니다.",

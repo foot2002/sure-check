@@ -1,10 +1,35 @@
 import Link from "next/link";
-import { WeeklyBarList, WeeklyTrendChart } from "@/components/weekly/WeeklyCharts";
+import { WeeklyBarList } from "@/components/weekly/WeeklyCharts";
 import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
 import { WeeklyPressCopy } from "@/components/weekly/WeeklyPressCopy";
+import {
+  WeeklyGroupCards,
+  WeeklyGroupInsightCards,
+  WeeklyKeyFindings,
+  WeeklyKeyNumberStrip,
+  WeeklyPressBox,
+  WeeklyPublicSectorBlock,
+  WeeklyRiskCaseCard,
+  WeeklySampleBadge,
+  WeeklyTopDisclaimer,
+} from "@/components/weekly/WeeklyEditorial";
+import {
+  WEEKLY_CHECKLIST,
+  WEEKLY_DISCLAIMER,
+  WEEKLY_PLATFORM_CAVEAT,
+  WEEKLY_RESPONDENT_TIPS,
+  buildKeyFindings,
+  formatWeeklyCount,
+} from "@/lib/weekly/copy";
 import { formatScore1, fourWeekWeightedPrivacyAverage, roundScore1 } from "@/lib/weekly/privacyIndex";
+import {
+  groupInsightCards,
+  hydrateOrgRows,
+  hydratePlatformRows,
+} from "@/lib/weekly/present";
 import type { WeeklyListCard, WeeklyReportSnapshot } from "@/lib/weekly/types";
 import { isCompletedReportWeek } from "@/lib/weekly/week";
+import { enrichAnonymousCase } from "@/lib/weekly/anonymousCases";
 
 function fmt(n: number | null | undefined, suffix = ""): string {
   if (n == null) return "-";
@@ -62,16 +87,31 @@ export function WeeklyDetailView({
         analyzableCount: row.analyzableCount,
       })),
   );
-  const trendShort = snapshot.trends
-    .filter((row) => keepTrend(row.weekId))
-    .map((row) => ({
-      label: row.shortRange,
-      pii: row.personalInfoRate,
-      attention: row.attentionNeededRate,
-    }));
+  const findings = buildKeyFindings({
+    analyzable: m.analyzableCount,
+    personalInfoCount: m.personalInfoCount,
+    attentionNeededCount: m.attentionNeededCount,
+    publicPersonalInfoCount: snapshot.publicSector.publicPersonalInfoSurveyCount,
+    publicExternalToolCount: m.publicExternalToolCount,
+    sensitiveCount: m.sensitiveInfoCount,
+    highRiskCount: m.highRiskInfoCount,
+  });
+  const platforms = hydratePlatformRows(snapshot.platformStats);
+  const orgs = hydrateOrgRows(snapshot.organizationStats);
+  const cases = snapshot.anonymousCases.map(enrichAnonymousCase);
+  const evidenceSurveyCount =
+    m.evidenceSurveyCount || snapshot.quality.evidenceSurveyCount || 0;
+  const evidenceImageCount =
+    m.evidenceImageCount ||
+    snapshot.quality.evidenceImageCount ||
+    m.evidenceCaptureCount;
+  const topPlatform = [...platforms].sort((a, b) => b.surveyCount - a.surveyCount)[0];
+  const cautionPlatform = [...platforms]
+    .filter((row) => row.surveyCount >= 5)
+    .sort((a, b) => b.attentionNeededRate - a.attentionNeededRate)[0];
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <header>
         <p className="text-xs font-semibold tracking-wide text-teal-800">
           {snapshot.weekLabel}
@@ -85,6 +125,20 @@ export function WeeklyDetailView({
         </p>
       </header>
 
+      <WeeklyTopDisclaimer />
+      <WeeklyKeyNumberStrip
+        analyzable={m.analyzableCount}
+        personalInfoCount={m.personalInfoCount}
+        attentionNeededCount={m.attentionNeededCount}
+        publicExternalToolCount={m.publicExternalToolCount}
+      />
+      <WeeklyKeyFindings findings={findings} />
+      <WeeklyPressBox
+        title={snapshot.summary.headline}
+        bullets={[...snapshot.summary.bullets]}
+        text={snapshot.pressSummary}
+      />
+
       <section className={`rounded-2xl border px-5 py-5 md:px-6 ${gradeClass(m.grade)}`}>
         <p className="text-xs font-semibold">이번 주 온라인 수집 개인정보 보호 수준지수</p>
         <p className="mt-2 text-3xl font-bold">
@@ -95,13 +149,13 @@ export function WeeklyDetailView({
           {deltaText(snapshot.summary.scoreDelta)} · 4주 평균{" "}
           {formatScore1(fourWeekAvgScore ?? snapshot.summary.fourWeekAvgScore)}
         </p>
-        <p className="mt-3 text-xs leading-relaxed opacity-80">
-          본 지수는 공개 설문 화면 기준 자동진단 결과를 바탕으로 산출한 참고
-          지표이며, 개별 설문의 위법 여부를 확정하는 기준은 아닙니다.
-        </p>
       </section>
 
-      <PrivacyIndexTrendPanel rows={trendRows} currentWeekId={snapshot.weekId} />
+      <PrivacyIndexTrendPanel
+        rows={trendRows}
+        currentWeekId={snapshot.weekId}
+        showFormula
+      />
 
       <section>
         <h2 className="text-xl font-bold text-slate-900">핵심 통계</h2>
@@ -114,7 +168,11 @@ export function WeeklyDetailView({
             ["주의 필요", `${fmt(m.attentionNeededCount, "건")} / ${m.attentionNeededRate}%`, "응답자 관점에서 주의 또는 추가 확인이 필요한 설문입니다."],
             ["평균 개인정보 보호 점수", formatScore1(m.avgScore), "자동진단 점수 평균입니다."],
             ["공공부문 외부도구 확인 필요", fmt(m.publicExternalToolCount, "건"), "공공부문 설문이 외부 도구로 운영되어 확인이 필요한 건수입니다."],
-            ["증빙 캡처 확보", fmt(m.evidenceCaptureCount, "건"), "운영 검토용 화면 캡처가 확보된 건수입니다. 원본은 공개하지 않습니다."],
+            [
+              "증빙 확보 설문",
+              fmt(evidenceSurveyCount, "건"),
+              "캡처 또는 ZIP 증빙자료가 확보된 설문 수입니다.",
+            ],
           ].map(([title, value, hint]) => (
             <article key={title} className="rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-xs text-slate-500">{title}</p>
@@ -125,30 +183,7 @@ export function WeeklyDetailView({
         </div>
       </section>
 
-      <section>
-        <h2 className="text-xl font-bold text-slate-900">추세</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          최근 {snapshot.trends.length}주 · 출처: 주간 리포트 스냅샷
-        </p>
-        <div className="mt-4 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <WeeklyTrendChart
-              title="개인정보 포함 비율"
-              points={trendShort.map((row) => ({ label: row.label, value: row.pii }))}
-              valueSuffix="%"
-              variant="compact"
-            />
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <WeeklyTrendChart
-              title="주의 필요 설문 비율"
-              points={trendShort.map((row) => ({ label: row.label, value: row.attention }))}
-              valueSuffix="%"
-              variant="compact"
-            />
-          </div>
-        </div>
-      </section>
+      <WeeklyPublicSectorBlock stats={snapshot.publicSector} />
 
       {snapshot.issueTop5.length > 0 ? (
         <section>
@@ -158,28 +193,44 @@ export function WeeklyDetailView({
               items={snapshot.issueTop5.map((row) => ({
                 label: row.label,
                 value: row.affectedSurveyCount,
-                meta: `${row.affectedSurveyCount}건`,
+                meta: `${row.affectedSurveyCount}건 · ${row.rateOfAllScans}%`,
+                hint: row.description,
               }))}
             />
-            <ul className="mt-5 space-y-2 text-sm text-slate-600">
-              {snapshot.issueTop5.map((row) => (
-                <li key={row.label}>
-                  <span className="font-semibold text-slate-800">{row.label}</span>
-                  {" — "}
-                  {row.description}
-                </li>
-              ))}
-            </ul>
+          </div>
+        </section>
+      ) : null}
+
+      {cases.length > 0 ? (
+        <section>
+          <h2 className="text-xl font-bold text-slate-900">대표 개인정보 위험 사례</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            실제 기관명, 설문 제목, URL, 캡처, 문항 원문은 공개하지 않습니다.
+          </p>
+          <div className="mt-4 space-y-4">
+            {cases.map((item) => (
+              <WeeklyRiskCaseCard key={item.id} item={item} />
+            ))}
           </div>
         </section>
       ) : null}
 
       <section>
         <h2 className="text-xl font-bold text-slate-900">플랫폼별 분석</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          플랫폼 자체의 위법성을 의미하는 것이 아니라, 해당 플랫폼으로 운영된
-          공개 설문 화면에서 확인된 고지·안내 상태를 집계한 결과입니다.
-        </p>
+        <p className="mt-2 text-sm text-slate-600">{WEEKLY_PLATFORM_CAVEAT}</p>
+        <div className="mt-4">
+          <WeeklyGroupInsightCards cards={groupInsightCards(platforms)} />
+        </div>
+        {topPlatform || cautionPlatform ? (
+          <p className="mt-3 text-sm text-slate-600">
+            {topPlatform
+              ? `이번 주 가장 많이 확인된 플랫폼: ${topPlatform.label} ${formatWeeklyCount(topPlatform.surveyCount)}건`
+              : ""}
+            {cautionPlatform
+              ? ` · 주의 필요 비율이 높은 플랫폼: ${cautionPlatform.label} ${cautionPlatform.attentionNeededRate}%`
+              : ""}
+          </p>
+        ) : null}
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
@@ -194,9 +245,14 @@ export function WeeklyDetailView({
               </tr>
             </thead>
             <tbody>
-              {snapshot.platformStats.map((row) => (
-                <tr key={row.platform} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium">{row.platform}</td>
+              {platforms.map((row) => (
+                <tr key={row.label} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      {row.label}
+                      <WeeklySampleBadge count={row.surveyCount} />
+                    </span>
+                  </td>
                   <td className="px-4 py-3">{row.surveyCount}</td>
                   <td className="px-4 py-3">{row.personalInfoRate}%</td>
                   <td className="px-4 py-3">{row.sensitiveInfoRate}%</td>
@@ -208,16 +264,10 @@ export function WeeklyDetailView({
             </tbody>
           </table>
         </div>
-        {snapshot.issueTop5[0] ? (
-          <p className="mt-3 text-sm text-slate-600">
-            이번 주 자주 확인된 미흡 항목: {snapshot.issueTop5[0].label} (
-            {snapshot.issueTop5[0].affectedSurveyCount}건)
-          </p>
-        ) : null}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
           <WeeklyBarList
-            items={snapshot.platformStats.map((row) => ({
-              label: row.platform,
+            items={platforms.map((row) => ({
+              label: row.label,
               value: row.surveyCount,
               meta: `${row.surveyCount}건`,
             }))}
@@ -228,51 +278,22 @@ export function WeeklyDetailView({
 
       <section>
         <h2 className="text-xl font-bold text-slate-900">기관유형별 분석</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {snapshot.organizationStats.map((row) => (
-            <article
-              key={row.typeLabel}
-              className={`rounded-2xl border bg-white p-4 ${
-                row.typeLabel === "공공기관" || row.typeLabel === "학교/교육기관"
-                  ? "border-teal-200"
-                  : "border-slate-200"
-              }`}
-            >
-              <h3 className="font-bold text-slate-900">{row.typeLabel}</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                {row.surveyCount}건 · 개인정보 {row.personalInfoRate}% · 주의 필요{" "}
-                {row.attentionNeededRate}% · 평균 {formatScore1(row.avgOverallScore)}
-              </p>
-            </article>
-          ))}
+        <div className="mt-4">
+          <WeeklyGroupInsightCards cards={groupInsightCards(orgs)} />
         </div>
+        <WeeklyGroupCards
+          rows={orgs}
+          emphasize={["공공기관", "학교/교육기관"]}
+        />
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
           <WeeklyBarList
-            items={snapshot.organizationStats.map((row) => ({
-              label: row.typeLabel,
+            items={orgs.map((row) => ({
+              label: row.label,
               value: row.surveyCount,
               meta: `${row.surveyCount}건`,
             }))}
           />
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-teal-100 bg-white p-5 md:p-6">
-        <h2 className="text-xl font-bold text-slate-900">공공부문 특별 분석</h2>
-        <p className="mt-3 text-sm leading-relaxed text-slate-700">
-          {snapshot.publicSector.narrative ||
-            "이번 주 공공부문 분석 대상이 충분하지 않습니다."}
-        </p>
-        <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-          <div>공공부문 개인정보 수집 설문 {snapshot.publicSector.publicPersonalInfoSurveyCount}건</div>
-          <div>외부 설문도구 확인 필요 {snapshot.publicSector.externalToolReviewCount}건</div>
-          <div>클라우드 보안 확인 필요 {snapshot.publicSector.csapOrCloudReviewCount}건</div>
-          <div>수집 목적 안내 미흡 {snapshot.publicSector.purposeGapCount}건</div>
-          <div>수집 항목 안내 미흡 {snapshot.publicSector.itemsGapCount}건</div>
-          <div>보유기간 안내 미흡 {snapshot.publicSector.retentionGapCount}건</div>
-          <div>파기 기준 안내 미흡 {snapshot.publicSector.destructionGapCount}건</div>
-          <div>담당자 연락처 미흡 {snapshot.publicSector.contactGapCount}건</div>
-        </dl>
       </section>
 
       <section>
@@ -298,41 +319,11 @@ export function WeeklyDetailView({
         </div>
       </section>
 
-      {snapshot.anonymousCases.length > 0 ? (
-        <section>
-          <h2 className="text-xl font-bold text-slate-900">대표 개인정보 위험 사례</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            실제 기관명, 설문 제목, URL, 캡처, 문항 원문은 공개하지 않습니다.
-          </p>
-          <div className="mt-4 space-y-4">
-            {snapshot.anonymousCases.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5">
-                <h3 className="text-base font-bold text-slate-900">{item.title}</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {item.orgType} · {item.surveyPattern} · {item.tool}
-                </p>
-                <p className="mt-3 text-sm text-slate-700">
-                  수집 정보: {item.collectedInfo.join(", ")}
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  확인 필요 항목: {item.noticeGaps.join(", ")}
-                </p>
-                <p className="mt-2 text-sm text-slate-700">{item.respondentRisk}</p>
-                <p className="mt-1 text-sm text-slate-700">{item.operatorFix}</p>
-                <p className="mt-3 text-xs font-semibold text-teal-800">
-                  이번 주 유사 신호 {item.similarCount}건
-                </p>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section>
-        <h2 className="text-xl font-bold text-slate-900">정책적 인사이트</h2>
-        <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-slate-700">
-          {snapshot.insights.map((item) => (
-            <li key={item.order}>{item.text}</li>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+        <h2 className="text-xl font-bold text-slate-900">{WEEKLY_RESPONDENT_TIPS.title}</h2>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-slate-800">
+          {WEEKLY_RESPONDENT_TIPS.items.map((item) => (
+            <li key={item}>{item}</li>
           ))}
         </ol>
       </section>
@@ -343,14 +334,28 @@ export function WeeklyDetailView({
           개인정보를 수집하는 설문 운영자는 아래 항목을 확인해야 합니다.
         </p>
         <ul className="mt-4 space-y-2 text-sm text-slate-800">
-          {snapshot.checklist.map((item) => (
+          {WEEKLY_CHECKLIST.map((item) => (
             <li key={item}>□ {item}</li>
           ))}
         </ul>
       </section>
 
       <section>
-        <h2 className="text-xl font-bold text-slate-900">보도·공유용 요약</h2>
+        <h2 className="text-xl font-bold text-slate-900">정책적 인사이트</h2>
+        <div className="mt-4 space-y-3">
+          {snapshot.insights.map((item) => (
+            <blockquote
+              key={item.order}
+              className="rounded-2xl border-l-4 border-teal-700 bg-teal-50/60 px-5 py-4 text-sm leading-relaxed text-slate-800"
+            >
+              {item.text}
+            </blockquote>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-xl font-bold text-slate-900">보도·공유용 전체 요약</h2>
         <div className="mt-4">
           <WeeklyPressCopy text={snapshot.pressSummary} />
         </div>
@@ -363,13 +368,15 @@ export function WeeklyDetailView({
           {fmt(snapshot.quality.closedExcludedCount, "건")}
           {snapshot.quality.limitedQuestionAnalysisCount > 0
             ? ` · 문항 분석 제한 ${fmt(snapshot.quality.limitedQuestionAnalysisCount, "건")}`
-            : ""}
-          {snapshot.quality.restrictedExcludedCount > 0
-            ? ` · 접근제한 제외 ${fmt(snapshot.quality.restrictedExcludedCount, "건")}`
             : ""}{" "}
-          · 증빙 캡처 확보 {fmt(snapshot.quality.evidenceCaptureCount, "건")}
+          · 증빙 확보 설문 {fmt(evidenceSurveyCount, "건")} · 증빙 캡처 이미지{" "}
+          {fmt(evidenceImageCount, "개")}
         </p>
-        <p className="mt-3">{snapshot.disclaimer}</p>
+        <p className="mt-2 text-xs text-amber-900">
+          증빙 캡처 이미지 {fmt(evidenceImageCount, "개")}는 분석 설문 중 일부에서 저장된
+          화면 캡처 수입니다. 설문 건수와 다른 단위입니다.
+        </p>
+        <p className="mt-3">{WEEKLY_DISCLAIMER}</p>
       </section>
 
       <div className="flex flex-wrap gap-2">

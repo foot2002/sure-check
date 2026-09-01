@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
+import { WeeklyKeyFindings } from "@/components/weekly/WeeklyEditorial";
+import { enrichAnonymousCase } from "@/lib/weekly/anonymousCases";
+import { buildKeyFindings } from "@/lib/weekly/copy";
 import { formatScore1 } from "@/lib/weekly/privacyIndex";
 import type { WeeklyAnonymousCase, WeeklyListCard } from "@/lib/weekly/types";
 
@@ -42,6 +45,19 @@ export function WeeklyListView({
   const [filter, setFilter] = useState<FilterId>("all");
   const [sort, setSort] = useState<SortId>("recent");
   const latest = cards[0] || null;
+  const latestFindings = latest
+    ? buildKeyFindings({
+        analyzable: latest.analyzableCount,
+        personalInfoCount: latest.personalInfoCount,
+        attentionNeededCount: latest.attentionNeededCount,
+        publicPersonalInfoCount: latest.publicExternalToolCount,
+        publicExternalToolCount: latest.publicExternalToolCount,
+      })
+    : [];
+  const compactCases = useMemo(
+    () => cases.map(enrichAnonymousCase),
+    [cases],
+  );
 
   const filtered = useMemo(() => {
     let rows = [...cards];
@@ -104,11 +120,9 @@ export function WeeklyListView({
                 {latest.grade ? ` · ${latest.grade}` : ""} · 공공부문 외부도구 확인
                 필요 {latest.publicExternalToolCount.toLocaleString("ko-KR")}건
               </p>
-              <ul className="mt-4 space-y-1.5 text-sm leading-relaxed text-slate-600">
-                {latest.bullets.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              <div className="mt-5">
+                <WeeklyKeyFindings findings={latestFindings} />
+              </div>
               <Link
                 href={`/weekly/${latest.weekId}`}
                 className="mt-5 inline-flex rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900"
@@ -223,7 +237,7 @@ export function WeeklyListView({
         </div>
       </section>
 
-      {cases.length > 0 ? (
+      {compactCases.length > 0 ? (
         <section>
           <h2 className="text-xl font-bold text-slate-900">대표 개인정보 위험 사례</h2>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
@@ -231,7 +245,7 @@ export function WeeklyListView({
             유형을 익명화해 보여줍니다.
           </p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {cases.map((item) => (
+            {compactCases.map((item) => (
               <article
                 key={item.id}
                 className="rounded-2xl border border-slate-200 bg-white p-5"
@@ -243,8 +257,11 @@ export function WeeklyListView({
                 <p className="mt-1 text-sm text-slate-600">
                   자주 확인되는 문제: {item.noticeGaps.join(", ")}
                 </p>
-                <p className="mt-2 text-sm text-slate-700">{item.respondentRisk}</p>
-                <p className="mt-1 text-sm text-slate-700">{item.operatorFix}</p>
+                {item.whyRisky ? (
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                    {item.whyRisky}
+                  </p>
+                ) : null}
                 <p className="mt-3 text-xs font-semibold text-teal-800">
                   최근 주간 유사 신호 {item.similarCount}건
                 </p>

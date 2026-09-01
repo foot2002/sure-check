@@ -12,7 +12,6 @@ import {
 } from "@/lib/weekly/copy";
 import { isPublicWeeklyIssue, weeklyIssueDescription } from "@/lib/weekly/issueCopy";
 import {
-  WEEKLY_PRIVACY_INDEX_DISCLAIMER,
   fourWeekWeightedPrivacyAverage,
   roundScore1,
   weeklyPrivacyGrade,
@@ -142,12 +141,17 @@ export async function buildWeeklySnapshot(
       ? "이번 주 공공부문 개인정보 수집 설문에서는 외부 설문도구 사용 및 공공부문 클라우드 보안 기준 확인 필요 신호가 반복적으로 나타났습니다. 이는 개별 기관의 위법 여부를 확정하는 자료가 아니라, 공개 설문 화면에서 확인 가능한 고지·안내 수준을 기준으로 한 점검 결과입니다."
       : "";
 
-  const headline = buildHeadline(analyzable, dash.summary.personalInfoCount);
+  const headline = buildHeadline(
+    analyzable,
+    dash.summary.personalInfoCount,
+    dash.summary.attentionNeededCount,
+  );
   const grade = weeklyPrivacyGrade(dash.summary.avgOverallScore);
   const oneLiner = buildWeeklyOneLiner(
     week.label,
     analyzable,
     dash.summary.personalInfoCount,
+    dash.summary.attentionNeededCount,
   );
   const thirdBullet = publicNarrative
     ? "공공부문 설문에서는 외부 설문도구 사용 및 보안 기준 확인 필요 신호가 반복적으로 나타났습니다."
@@ -167,6 +171,8 @@ export async function buildWeeklySnapshot(
     grade,
     publicExternalToolCount: dash.publicSectorToolStats.externalToolReviewCount,
     evidenceCaptureCount: dash.diagnosisQualityStats.evidenceCaptureCount,
+    evidenceSurveyCount: dash.diagnosisQualityStats.evidenceSurveyCount,
+    evidenceImageCount: dash.diagnosisQualityStats.evidenceImageCount,
   };
 
   const snapshot: WeeklyReportSnapshot = {
@@ -214,18 +220,26 @@ export async function buildWeeklySnapshot(
     platformStats: dash.platformStats.map((row) => ({
       platform: row.platform,
       surveyCount: row.surveyCount,
+      personalInfoCount: row.personalInfoCount,
       personalInfoRate: row.personalInfoRate,
+      sensitiveInfoCount: row.sensitiveInfoCount,
       sensitiveInfoRate: row.sensitiveInfoRate,
+      highRiskInfoCount: row.highRiskInfoCount,
       highRiskInfoRate: row.highRiskInfoRate,
+      attentionNeededCount: row.attentionNeededCount,
       attentionNeededRate: row.attentionNeededRate,
       avgOverallScore: row.avgOverallScore,
     })),
     organizationStats: dash.organizationTypeStats.map((row) => ({
       typeLabel: row.typeLabel,
       surveyCount: row.surveyCount,
+      personalInfoCount: row.personalInfoCount,
       personalInfoRate: row.personalInfoRate,
+      sensitiveInfoCount: row.sensitiveInfoCount,
       sensitiveInfoRate: row.sensitiveInfoRate,
+      highRiskInfoCount: row.highRiskInfoCount,
       highRiskInfoRate: row.highRiskInfoRate,
+      attentionNeededCount: row.attentionNeededCount,
       attentionNeededRate: row.attentionNeededRate,
       avgOverallScore: row.avgOverallScore,
     })),
@@ -271,7 +285,10 @@ export async function buildWeeklySnapshot(
       headline,
       analyzable,
       personalInfoCount: dash.summary.personalInfoCount,
+      personalInfoRate: dash.summary.personalInfoRate,
       attentionNeededCount: dash.summary.attentionNeededCount,
+      attentionNeededRate: dash.summary.attentionNeededRate,
+      publicExternalToolCount: dash.publicSectorToolStats.externalToolReviewCount,
       publicNarrative: publicNarrative || null,
     }),
     quality: {
@@ -281,8 +298,10 @@ export async function buildWeeklySnapshot(
       closedExcludedCount: Math.max(0, dash.rawTotalScans - analyzable),
       restrictedExcludedCount: 0,
       evidenceCaptureCount: dash.diagnosisQualityStats.evidenceCaptureCount,
+      evidenceSurveyCount: dash.diagnosisQualityStats.evidenceSurveyCount,
+      evidenceImageCount: dash.diagnosisQualityStats.evidenceImageCount,
     },
-    disclaimer: `${WEEKLY_DISCLAIMER} ${WEEKLY_PRIVACY_INDEX_DISCLAIMER}`,
+    disclaimer: WEEKLY_DISCLAIMER,
   };
 
   assertWeeklySnapshotSafe(snapshot);

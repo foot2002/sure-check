@@ -61,6 +61,9 @@ function main() {
   check("grid cards", list.includes("md:grid-cols-2"));
   check("list uses 1-decimal scores", list.includes("formatScore1"));
   check("list shows diagnosis counts", list.includes("personalInfoCount") && list.includes("attentionNeededCount"));
+  check("featured key findings", list.includes("buildKeyFindings") && list.includes("WeeklyKeyFindings"));
+  check("list has no 공개 진단 사례", !list.includes("공개 진단 사례"));
+  check("list case compact whyRisky", list.includes("whyRisky"));
 
   const panel = exists("components/weekly/PrivacyIndexTrendPanel.tsx")
     ? read("components/weekly/PrivacyIndexTrendPanel.tsx")
@@ -86,6 +89,31 @@ function main() {
   check("detail checklist", detail.includes("기관·기업 개선 체크리스트"));
   check("no chart library import", !detail.includes("recharts") && !detail.includes("chart.js"));
   check("detail 1-decimal scores", detail.includes("formatScore1"));
+  check("detail key findings", detail.includes("<WeeklyKeyFindings"));
+  check("detail press box", detail.includes("<WeeklyPressBox"));
+  check("detail public sector", detail.includes("<WeeklyPublicSectorBlock"));
+  check("detail evidence survey card", detail.includes("증빙 확보 설문"));
+  check("detail evidence image quality", detail.includes("증빙 캡처 이미지"));
+
+  const findingsAt = detail.indexOf("<WeeklyKeyFindings");
+  const pressAt = detail.indexOf("<WeeklyPressBox");
+  const indexAt = detail.indexOf("<PrivacyIndexTrendPanel");
+  const statsAt = detail.indexOf("핵심 통계");
+  const publicAt = detail.indexOf("<WeeklyPublicSectorBlock");
+  const casesAt = detail.indexOf("대표 개인정보 위험 사례");
+  const platformAt = detail.indexOf("플랫폼별 분석");
+  const orgAt = detail.indexOf("기관유형별 분석");
+  check(
+    "detail section order: findings then press then index",
+    findingsAt >= 0 && pressAt > findingsAt && indexAt > pressAt,
+  );
+  check(
+    "detail section order: public and cases before platform/org",
+    publicAt > statsAt &&
+      casesAt > publicAt &&
+      platformAt > casesAt &&
+      orgAt > platformAt,
+  );
 
   if (failures.length > 0) {
     console.error(`\n${failures.length} check(s) failed`);

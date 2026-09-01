@@ -7,7 +7,7 @@ export function WeeklyBarList({
   items,
   emphasizeLast = false,
 }: {
-  items: Array<{ label: string; value: number; meta?: string }>;
+  items: Array<{ label: string; value: number; meta?: string; hint?: string }>;
   emphasizeLast?: boolean;
 }) {
   const max = Math.max(1, ...items.map((item) => item.value));
@@ -15,7 +15,10 @@ export function WeeklyBarList({
     <div className="space-y-3">
       {items.map((item, index) => {
         const width = Math.max(4, Math.round((item.value / max) * 100));
-        const active = emphasizeLast && index === items.length - 1;
+        const active = emphasizeLast
+          ? index === items.length - 1
+          : index === 0;
+        const opacity = active ? 1 : Math.max(0.45, 1 - index * 0.12);
         return (
           <div key={`${item.label}-${index}`}>
             <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
@@ -26,10 +29,13 @@ export function WeeklyBarList({
                 {item.meta || item.value.toLocaleString("ko-KR")}
               </span>
             </div>
+            {item.hint ? (
+              <p className="mb-1 text-xs leading-relaxed text-slate-500">{item.hint}</p>
+            ) : null}
             <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
               <div
                 className={`h-full rounded-full ${active ? "bg-teal-800" : "bg-teal-500"}`}
-                style={{ width: `${width}%` }}
+                style={{ width: `${width}%`, opacity }}
               />
             </div>
           </div>
@@ -106,11 +112,11 @@ export function WeeklyTrendChart({
   const yMax = yMaxProp ?? auto.yMax;
 
   const width = variant === "hero" ? 720 : 560;
-  const height = variant === "hero" ? 300 : 220;
-  const padL = 46;
-  const padR = 18;
-  const padT = 32;
-  const padB = 38;
+  const height = variant === "hero" ? 210 : 170;
+  const padL = 42;
+  const padR = 16;
+  const padT = 22;
+  const padB = 28;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
   const span = yMax - yMin || 1;
