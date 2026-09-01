@@ -4,6 +4,7 @@ import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPan
 import { WeeklyPressCopy } from "@/components/weekly/WeeklyPressCopy";
 import { formatScore1, roundScore1 } from "@/lib/weekly/privacyIndex";
 import type { WeeklyListCard, WeeklyReportSnapshot } from "@/lib/weekly/types";
+import { isCompletedReportWeek } from "@/lib/weekly/week";
 
 function fmt(n: number | null | undefined, suffix = ""): string {
   if (n == null) return "-";
@@ -35,7 +36,9 @@ export function WeeklyDetailView({
   trendCards?: WeeklyListCard[];
 }) {
   const m = snapshot.metrics;
-  const trendRows =
+  const keepTrend = (weekId: string) =>
+    weekId === snapshot.weekId || isCompletedReportWeek(weekId);
+  const trendRows = (
     trendCards && trendCards.length > 0
       ? trendCards.map((card) => ({
           weekId: card.weekId,
@@ -48,12 +51,15 @@ export function WeeklyDetailView({
           shortRange: row.shortRange,
           avgScore: row.avgScore,
           analyzableCount: row.analyzableCount,
-        }));
-  const trendShort = snapshot.trends.map((row) => ({
-    label: row.shortRange,
-    pii: row.personalInfoRate,
-    attention: row.attentionNeededRate,
-  }));
+        }))
+  ).filter((row) => keepTrend(row.weekId));
+  const trendShort = snapshot.trends
+    .filter((row) => keepTrend(row.weekId))
+    .map((row) => ({
+      label: row.shortRange,
+      pii: row.personalInfoRate,
+      attention: row.attentionNeededRate,
+    }));
 
   return (
     <div className="space-y-10">

@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { assertWeeklySnapshotSafe } from "@/lib/weekly/safety";
+import { isCompletedReportWeek } from "@/lib/weekly/week";
 import type {
   WeeklyListCard,
   WeeklyReportRow,
@@ -96,7 +97,7 @@ export async function listWeeklyReports(options?: {
 
 export async function listPublishedWeeklyCards(): Promise<WeeklyListCard[]> {
   const rows = await listWeeklyReports({ status: "published" });
-  return rows.map(toListCard);
+  return rows.filter((row) => isCompletedReportWeek(row.weekId)).map(toListCard);
 }
 
 export async function getWeeklyReport(
@@ -123,6 +124,7 @@ export async function getPublishedWeeklyReport(
 ): Promise<WeeklyReportRow | null> {
   const row = await getWeeklyReport(weekId);
   if (!row || row.status !== "published") return null;
+  if (!isCompletedReportWeek(row.weekId)) return null;
   return row;
 }
 

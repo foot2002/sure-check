@@ -40,8 +40,9 @@ export default async function WeeklyIndexPage() {
               SURE Check 주간 리포트
             </p>
             <h1 className="mt-2 max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-4xl">
-              공개 온라인 설문에서 확인된 개인정보 수집·고지 미흡 신호를 주간
-              단위로 분석합니다.
+              대한민국 온라인 수집 개인정보 보호지수가 100이 될때까지,
+              <br />
+              소중한 우리의 개인정보를 지킵니다
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 md:text-base">
               주간 리포트는 개별 기관이나 기업을 지목하지 않고, 공개 설문 화면

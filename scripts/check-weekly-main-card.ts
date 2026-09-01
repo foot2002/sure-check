@@ -34,8 +34,9 @@ function main() {
 
   check("page title", page.includes("SURE Check 주간 리포트"));
   check(
-    "page subtitle",
-    page.includes("공개 온라인 설문에서 확인된 개인정보 수집·고지 미흡 신호를 주간"),
+    "page headline",
+    page.includes("대한민국 온라인 수집 개인정보 보호지수가 100이 될때까지") &&
+      page.includes("소중한 우리의 개인정보를 지킵니다"),
   );
   check("disclaimer copy", page.includes("개별 기관이나 기업을 지목하지 않고"));
   check("featured card", list.includes("최신 주간 리포트"));

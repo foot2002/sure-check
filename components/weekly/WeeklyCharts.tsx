@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { roundScore1 } from "@/lib/weekly/privacyIndex";
+import { roundScore1, privacyIndexChartRange } from "@/lib/weekly/privacyIndex";
 
 export function WeeklyBarList({
   items,
@@ -52,12 +52,33 @@ function formatPointValue(value: number, suffix: string): string {
   return `${rounded.toFixed(1)}${suffix}`;
 }
 
+function formatTick(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function yTicks(yMin: number, yMax: number): number[] {
+  const span = yMax - yMin;
+  const step = span <= 30 ? 5 : span <= 60 ? 10 : 20;
+  const start = Math.ceil(yMin / step) * step;
+  const ticks: number[] = [];
+  for (let tick = start; tick <= yMax + 1e-9; tick += step) {
+    ticks.push(tick);
+  }
+  if (ticks.length === 0 || ticks[0] - yMin > step * 0.45) {
+    ticks.unshift(Math.round(yMin * 10) / 10);
+  }
+  if (yMax - ticks[ticks.length - 1] > step * 0.45) {
+    ticks.push(Math.round(yMax * 10) / 10);
+  }
+  return [...new Set(ticks.map((tick) => Math.round(tick * 10) / 10))];
+}
+
 export function WeeklyTrendChart({
   title,
   points,
   valueSuffix = "",
-  yMin = 0,
-  yMax = 100,
+  yMin: yMinProp,
+  yMax: yMaxProp,
   variant = "compact",
   showGradeBands = false,
 }: {
@@ -79,6 +100,10 @@ export function WeeklyTrendChart({
       <p className="text-sm text-slate-500">{title} 데이터가 충분하지 않습니다.</p>
     );
   }
+
+  const auto = privacyIndexChartRange(usable);
+  const yMin = yMinProp ?? auto.yMin;
+  const yMax = yMaxProp ?? auto.yMax;
 
   const width = variant === "hero" ? 720 : 560;
   const height = variant === "hero" ? 300 : 220;
@@ -120,7 +145,13 @@ export function WeeklyTrendChart({
       ? ""
       : `${line} L${drawn[drawn.length - 1].x.toFixed(2)},${baseline.toFixed(2)} L${drawn[0].x.toFixed(2)},${baseline.toFixed(2)} Z`;
 
-  const ticks = showGradeBands ? [100, 80, 60, 40, 0] : [yMax, (yMin + yMax) / 2, yMin];
+  const ticks = yTicks(yMin, yMax);
+  const visibleBands = GRADE_BANDS.map((band) => {
+    const overlapMin = Math.max(band.min, yMin);
+    const overlapMax = Math.min(band.max, yMax);
+    if (overlapMax <= overlapMin) return null;
+    return { ...band, overlapMin, overlapMax };
+  }).filter((band): band is NonNullable<typeof band> => band != null);
   const labelEvery = n > 8 ? 2 : 1;
   const showValueLabels = n <= 8;
 
@@ -156,9 +187,9 @@ export function WeeklyTrendChart({
         </defs>
 
         {showGradeBands
-          ? GRADE_BANDS.map((band) => {
-              const yTop = yFor(band.max);
-              const yBot = yFor(band.min);
+          ? visibleBands.map((band) => {
+              const yTop = yFor(band.overlapMax);
+              const yBot = yFor(band.overlapMin);
               return (
                 <rect
                   key={band.label}
@@ -183,7 +214,7 @@ export function WeeklyTrendChart({
                 y2={y}
                 stroke="#e2e8f0"
                 strokeWidth="1"
-                strokeDasharray={tick === 0 || tick === yMax ? undefined : "3 4"}
+                strokeDasharray={tick === yMin || tick === yMax ? undefined : "3 4"}
               />
               <text
                 x={padL - 8}
@@ -192,15 +223,15 @@ export function WeeklyTrendChart({
                 fontSize="10"
                 fill="#94a3b8"
               >
-                {tick}
+                {formatTick(tick)}
               </text>
             </g>
           );
         })}
 
         {showGradeBands
-          ? GRADE_BANDS.map((band) => {
-              const y = (yFor(band.min) + yFor(band.max)) / 2;
+          ? visibleBands.map((band) => {
+              const y = (yFor(band.overlapMin) + yFor(band.overlapMax)) / 2;
               return (
                 <text
                   key={`band-${band.label}`}

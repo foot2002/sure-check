@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { formatWeekLabel, getKstWeek, mondayOfIso } from "../lib/weekly/week";
-import { weeklyPrivacyGrade, monthlyPrivacyIndexSeries, roundScore1 } from "../lib/weekly/privacyIndex";
+import { formatWeekLabel, getKstWeek, isCompletedReportWeek, latestCompletedKstWeek, mondayOfIso } from "../lib/weekly/week";
+import { weeklyPrivacyGrade, monthlyPrivacyIndexSeries, privacyIndexChartRange, roundScore1 } from "../lib/weekly/privacyIndex";
 import { buildHeadline, buildPressSummary, buildWeeklyInsights } from "../lib/weekly/copy";
 import { buildAnonymousCases } from "../lib/weekly/anonymousCases";
 import { isPublicWeeklyIssue } from "../lib/weekly/issueCopy";
@@ -58,6 +58,28 @@ function main() {
       "2026년 7월 4주차 (7.27~8.02)",
   );
   check("mondayOfIso normalizes Friday", mondayOfIso("2026-08-28") === "2026-08-24");
+  check(
+    "in-progress week is not complete on Sep 1",
+    isCompletedReportWeek("2026-08-31", "2026-09-01") === false,
+  );
+  check(
+    "in-progress week is not complete on Sunday",
+    isCompletedReportWeek("2026-08-31", "2026-09-06") === false,
+  );
+  check(
+    "week becomes complete the next day",
+    isCompletedReportWeek("2026-08-31", "2026-09-07") === true,
+  );
+  check(
+    "latest completed on Sep 1 is Aug 24 week",
+    latestCompletedKstWeek(new Date("2026-09-01T05:00:00.000Z")).weekId ===
+      "2026-08-24",
+  );
+  check(
+    "chart range uses min-15 max+15",
+    JSON.stringify(privacyIndexChartRange([40.8, 49.3])) ===
+      JSON.stringify({ yMin: 25.8, yMax: 64.3 }),
+  );
 
   check("grade 47.9 is 주의", weeklyPrivacyGrade(47.9) === "주의");
   check("grade 62 is 보통", weeklyPrivacyGrade(62) === "보통");
@@ -172,6 +194,25 @@ function main() {
   check("stores snapshot", read("lib/weekly/repository.ts").includes("snapshot_json"));
   check("admin generate route", exists("app/api/report/admin/weekly/generate/route.ts"));
   check("published-only public list", read("lib/weekly/repository.ts").includes('status: "published"'));
+  check(
+    "public list hides in-progress weeks",
+    read("lib/weekly/repository.ts").includes("isCompletedReportWeek"),
+  );
+  check(
+    "completed-week snapshots only",
+    read("lib/weekly/generateWeeklyReport.ts").includes("listRecentCompletedKstWeeks"),
+  );
+  check(
+    "auto publish helper",
+    read("lib/weekly/generateWeeklyReport.ts").includes("publishCompletedWeeklyReports"),
+  );
+  check("weekly publish cron route", exists("app/api/internal/weekly/publish/route.ts"));
+  const vercel = read("vercel.json");
+  check(
+    "vercel weekly publish cron",
+    vercel.includes('"/api/internal/weekly/publish"') &&
+      vercel.includes('"30 15 * * *"'),
+  );
 
   const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
   check(

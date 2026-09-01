@@ -19,12 +19,14 @@ import type {
   WeeklyReportSnapshot,
   WeeklyTrendPoint,
 } from "@/lib/weekly/types";
-import { listWeeklyReports } from "@/lib/weekly/repository";
+import { listWeeklyReports, updateWeeklyReportStatus, upsertWeeklyReport } from "@/lib/weekly/repository";
 import {
   getKstWeek,
+  isCompletedReportWeek,
   isPartialWeek,
   kstTodayIso,
-  listRecentKstWeeks,
+  latestCompletedKstWeek,
+  listRecentCompletedKstWeeks,
   type KstWeek,
 } from "@/lib/weekly/week";
 
@@ -329,7 +331,7 @@ export async function generateRecentWeeklySnapshots(
 ): Promise<WeeklyReportSnapshot[]> {
   const todayIso = kstTodayIso();
   const earliestDataIso = await earliestObservedDate();
-  const weeks = listRecentKstWeeks(count).reverse();
+  const weeks = listRecentCompletedKstWeeks(count).reverse();
   const snapshots: WeeklyReportSnapshot[] = [];
   for (const week of weeks) {
     if (earliestDataIso && week.weekEnd < earliestDataIso) continue;
@@ -350,10 +352,35 @@ export async function generateWeekSnapshot(
     const rows = await listWeeklyReports({ status: "all" });
     neighbors = rows
       .filter((row) => row.weekId !== week.weekId)
+      .filter((row) => isCompletedReportWeek(row.weekId))
       .map((row) => row.snapshot);
   } catch {
     neighbors = [];
   }
   const merged = attachTrends([...neighbors, snap]);
   return merged.find((row) => row.weekId === week.weekId) ?? snap;
+}
+
+export async function publishCompletedWeeklyReports(now: Date = new Date()): Promise<{
+  publishedWeekId: string;
+  unpublishedWeekIds: string[];
+}> {
+  const todayIso = kstTodayIso(now);
+  const unpublishedWeekIds: string[] = [];
+  try {
+    const published = await listWeeklyReports({ status: "published" });
+    for (const row of published) {
+      if (!isCompletedReportWeek(row.weekId, todayIso)) {
+        await updateWeeklyReportStatus(row.weekId, "draft");
+        unpublishedWeekIds.push(row.weekId);
+      }
+    }
+  } catch (error) {
+    console.error("[weekly-publish] unpublish in-progress", error);
+  }
+
+  const week = latestCompletedKstWeek(now);
+  const snapshot = await generateWeekSnapshot(week.weekId);
+  const saved = await upsertWeeklyReport({ snapshot, status: "published" });
+  return { publishedWeekId: saved.weekId, unpublishedWeekIds };
 }

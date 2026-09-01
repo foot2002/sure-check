@@ -105,6 +105,24 @@ export const WEEKLY_PRIVACY_GRADE_BANDS: Array<{
   },
 ];
 
+/** Y-axis window: lowest score − 15, highest score + 15, clamped to 0–100. */
+export function privacyIndexChartRange(values: number[]): {
+  yMin: number;
+  yMax: number;
+} {
+  const nums = values.filter((value) => Number.isFinite(value));
+  if (nums.length === 0) return { yMin: 0, yMax: 100 };
+  const yMin = Math.max(0, Math.round((Math.min(...nums) - 15) * 10) / 10);
+  const yMax = Math.min(100, Math.round((Math.max(...nums) + 15) * 10) / 10);
+  if (yMax <= yMin) {
+    return {
+      yMin: Math.max(0, yMin - 5),
+      yMax: Math.min(100, yMax + 5),
+    };
+  }
+  return { yMin, yMax };
+}
+
 export function weeklyPrivacyIndexSeries(
   rows: Array<Pick<PrivacyIndexTrendRow, "weekId" | "shortRange" | "avgScore">>,
   limit = 12,

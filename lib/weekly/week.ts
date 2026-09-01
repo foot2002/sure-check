@@ -97,6 +97,34 @@ export function currentKstWeek(now: Date = new Date()): KstWeek {
   return getKstWeek(kstTodayIso(now));
 }
 
+/** A week is reportable the calendar day after its Sunday (KST). */
+export function isCompletedReportWeek(
+  weekId: string,
+  todayIso: string = kstTodayIso(),
+): boolean {
+  return getKstWeek(weekId).weekEnd < todayIso;
+}
+
+export function latestCompletedKstWeek(now: Date = new Date()): KstWeek {
+  const today = kstTodayIso(now);
+  const current = currentKstWeek(now);
+  if (current.weekEnd < today) return current;
+  return previousKstWeek(current);
+}
+
+export function listRecentCompletedKstWeeks(
+  count: number,
+  now: Date = new Date(),
+): KstWeek[] {
+  const out: KstWeek[] = [];
+  let week = latestCompletedKstWeek(now);
+  for (let i = 0; i < Math.max(1, count); i += 1) {
+    out.push(week);
+    week = previousKstWeek(week);
+  }
+  return out;
+}
+
 export function previousKstWeek(week: KstWeek): KstWeek {
   return getKstWeek(addDaysIso(week.weekStart, -7));
 }
