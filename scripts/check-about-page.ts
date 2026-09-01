@@ -68,6 +68,8 @@ function main() {
     "자율 개선",
     "공개 설문 화면 기준",
     "/images/kcf_logo.jpg",
+    "개인정보보호진흥원 바로가기",
+    "https://www.kcf-korea.org/privacy-center",
   ];
   for (const text of required) {
     check(`copy includes ${text}`, page.includes(text));
@@ -80,6 +82,10 @@ function main() {
   check("inquiry section removed", !page.includes("소명·정정 및 문의"));
   check("inquiry buttons removed", !page.includes("소명·정정 요청하기"));
   check("about uses reveal", page.includes("Reveal"));
+  check(
+    "privacy center opens in a new tab",
+    page.includes('href={PRIVACY_CENTER_URL}') && page.includes('target="_blank"'),
+  );
 
   const footer = read("components/SiteFooter.tsx");
   check("footer includes kcf logo", footer.includes("/images/kcf_logo.jpg") || footer.includes("KcfLogo"));

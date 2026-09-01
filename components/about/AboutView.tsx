@@ -3,6 +3,7 @@ import {
   BarChart3,
   Building2,
   ClipboardCheck,
+  ExternalLink,
   Eye,
   Handshake,
   Info,
@@ -16,6 +17,8 @@ import { Reveal } from "@/components/about/Reveal";
 import { KcfLogo } from "@/components/KcfLogo";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+
+const PRIVACY_CENTER_URL = "https://www.kcf-korea.org/privacy-center";
 
 const ROLE_CARDS = [
   {
@@ -155,10 +158,21 @@ export function AboutView() {
         >
           <div className="mx-auto max-w-[72rem] px-5 py-8 md:px-8 md:py-12">
             <Reveal>
-              <p className="text-xs font-semibold tracking-wide text-teal-800">
-                개인정보보호진흥원 소개
-              </p>
-              <h1 className="mt-2 max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-4xl md:leading-tight">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-semibold tracking-wide text-teal-800">
+                  개인정보보호진흥원 소개
+                </p>
+                <a
+                  href={PRIVACY_CENTER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-teal-800 px-3.5 py-2 text-sm font-semibold text-white hover:bg-teal-900"
+                >
+                  개인정보보호진흥원 바로가기
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </a>
+              </div>
+              <h1 className="mt-3 max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:mt-4 md:text-4xl md:leading-tight">
                 대한민국 온라인 개인정보 보호 수준을 높입니다
               </h1>
               <div className="mt-4 max-w-3xl space-y-3 text-sm leading-relaxed text-slate-600 md:text-base">
