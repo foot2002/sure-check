@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  PUBLIC_INDIVIDUAL_CASES_ENABLED,
+  assertPublicCaseSafe,
+} from "@/lib/report/publicCasePolicy";
 import { getPublishedPublicCase } from "@/lib/report/publicCases";
-import { assertPublicCaseSafe } from "@/lib/report/publicCasePolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +17,16 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ publicId: string }> },
 ) {
+  if (!PUBLIC_INDIVIDUAL_CASES_ENABLED) {
+    return NextResponse.json(
+      {
+        redirectedTo: "/weekly",
+        message:
+          "해당 공개 사례 페이지는 주간 리포트로 개편되었습니다. 개별 기관·설문은 공개하지 않습니다.",
+      },
+      { status: 410, headers: NO_STORE },
+    );
+  }
   try {
     const { publicId } = await context.params;
     const detail = await getPublishedPublicCase(publicId);

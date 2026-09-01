@@ -9,6 +9,12 @@ const pdfTracingIncludes = [
 ];
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: "/cases", destination: "/weekly", permanent: false },
+      { source: "/cases/:path*", destination: "/weekly", permanent: false },
+    ];
+  },
   serverExternalPackages: [
     "pdf-parse",
     "pdfjs-dist",

@@ -40,7 +40,8 @@ function main() {
     items.length === 4 &&
       items[0]?.href === "/" &&
       items[1]?.href === "/report" &&
-      items[2]?.href === "/cases" &&
+      items[2]?.href === "/weekly" &&
+      items[2]?.label === "주간 리포트" &&
       items[3]?.href === "/about" &&
       items[3]?.label === "개인정보보호진흥원 소개",
   );
@@ -63,7 +64,7 @@ function main() {
     "유의사항",
     "설문 진단하기",
     "수집실태 리포트 보기",
-    "공개 진단 사례 보기",
+    "주간 리포트 보기",
     "공익형 모니터링",
     "자율 개선",
     "공개 설문 화면 기준",

@@ -68,7 +68,7 @@ const ACTIVITIES = [
   "Google Forms, Naver Form, Moaform 등 외부 설문도구 사용 여부 확인",
   "공공기관·학교·기업 등의 온라인 설문 수집 실태 분석",
   "개선안내 후보 검토 및 자율 개선 요청 지원",
-  "수집실태 리포트 및 공개 진단 사례 제공",
+  "수집실태 리포트 및 주간 리포트 제공",
 ];
 
 const PRINCIPLES = [
@@ -93,8 +93,8 @@ const PRINCIPLES = [
     icon: Handshake,
   },
   {
-    title: "공개 사례 신중 검토",
-    body: "개별 공개 사례는 별도 검토와 승인 절차를 거친 경우에만 공개하며, 필요 시 기관명, 설문 제목, URL, 캡처 범위를 조정합니다.",
+    title: "익명 통계 중심 공개",
+    body: "주간 리포트는 개별 기관명, 설문 제목, URL, 캡처를 공개하지 않고, 집계 통계와 익명화된 위험 유형 중심으로 제공합니다.",
     icon: ShieldCheck,
   },
 ];
@@ -138,10 +138,10 @@ function HeroCtas() {
         수집실태 리포트 보기
       </Link>
       <Link
-        href="/cases"
+        href="/weekly"
         className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:border-teal-300 hover:bg-teal-50"
       >
-        공개 진단 사례 보기
+        주간 리포트 보기
       </Link>
     </div>
   );
@@ -414,9 +414,9 @@ export function AboutView() {
                       아닙니다.
                     </p>
                     <p>
-                      공개 진단 사례는 별도의 검토와 승인 절차를 거친 경우에만
-                      게시됩니다. 기관명, 설문 제목, URL, 캡처 이미지 등은 공개
-                      범위에 따라 일부 조정될 수 있습니다.
+                      주간 리포트는 익명 통계와 대표 위험 유형 중심으로
+                      게시됩니다. 기관명, 설문 제목, URL, 캡처 이미지 등은
+                      공개하지 않습니다.
                     </p>
                     <p>
                       본 서비스는 법률 자문, 수사, 행정처분, 과태료 부과를 위한
@@ -443,7 +443,7 @@ export function AboutView() {
                 title="공개 설문 화면 기준 자동진단을 확인해 보세요"
               />
               <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
-                설문 링크를 진단하거나, 수집실태 리포트와 공개 검토 사례를 통해
+                설문 링크를 진단하거나, 수집실태 리포트와 주간 리포트를 통해
                 공익형 모니터링 결과를 확인할 수 있습니다.
               </p>
               <HeroCtas />

@@ -21,17 +21,16 @@ export function Reveal({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setShown(true);
-      return;
-    }
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return;
         setShown(true);
         observer.disconnect();
       },
-      { threshold: 0.12, rootMargin: "0px 0px -48px 0px" },
+      reduced
+        ? { threshold: 0 }
+        : { threshold: 0.12, rootMargin: "0px 0px -48px 0px" },
     );
     observer.observe(el);
     return () => observer.disconnect();

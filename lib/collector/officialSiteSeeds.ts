@@ -41,8 +41,9 @@ export function crawlPriorityForType(
 }
 
 export function crawlIntervalDaysForPriority(
-  _priority: OfficialSiteCrawlPriority,
+  priority: OfficialSiteCrawlPriority,
 ): number {
+  void priority;
   return 30;
 }
 

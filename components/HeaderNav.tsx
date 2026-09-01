@@ -6,16 +6,16 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { href: "/", label: "설문 진단", id: "scan" as const },
   { href: "/report", label: "수집실태 리포트", id: "report" as const },
-  { href: "/cases", label: "공개 진단 사례", id: "cases" as const },
+  { href: "/weekly", label: "주간 리포트", id: "weekly" as const },
   { href: "/about", label: "개인정보보호진흥원 소개", id: "about" as const },
 ];
 
 function resolveActive(
   pathname: string,
-): "scan" | "report" | "cases" | "about" | null {
+): "scan" | "report" | "weekly" | "about" | null {
   if (pathname.startsWith("/report/admin")) return null;
   if (pathname === "/about" || pathname.startsWith("/about/")) return "about";
-  if (pathname === "/cases" || pathname.startsWith("/cases/")) return "cases";
+  if (pathname === "/weekly" || pathname.startsWith("/weekly/")) return "weekly";
   if (pathname === "/report") return "report";
   // Individual diagnosis result lives under /report/[scanId]
   if (pathname.startsWith("/report/")) return "scan";

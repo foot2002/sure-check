@@ -348,11 +348,16 @@ export function AdminConsoleView({
             수집함
           </Link>
           <Link
-            href="/cases"
-            target="_blank"
+            href="/report/admin/weekly"
+            className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
+          >
+            주간 리포트 관리
+          </Link>
+          <Link
+            href="/weekly"
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
-            공개 사례 /cases
+            주간 리포트 /weekly
           </Link>
           <Link
             href="/report"
@@ -623,8 +628,8 @@ export function AdminConsoleView({
             <KpiCard
               label="공개중"
               value={payload.kpi.publishedCaseCount}
-              hint="지금 /cases에 올라 있는 공개 사례입니다."
-              help="관리자가 승인한 개별 공개 사례입니다. 위반 확정은 아닙니다."
+              hint="내부 검토용 공개 사례 기록입니다. 외부 /cases 공개는 운영하지 않습니다."
+              help="개별 공개 사례 기능은 현재 운영하지 않습니다. 주간 리포트는 익명 통계와 대표 위험 유형 중심으로 제공합니다."
               active={form.view === "published"}
               onClick={() => applyView("published")}
             />

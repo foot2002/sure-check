@@ -142,22 +142,27 @@ function main() {
   }
 
   const header = read("components/HeaderNav.tsx");
-  check("nav adds 공개 진단 사례", header.includes('label: "공개 진단 사례"'));
-  check("nav active on /cases", header.includes('pathname.startsWith("/cases/")'));
+  check("nav removed 공개 진단 사례", !header.includes("공개 진단 사례"));
+  check("nav adds 주간 리포트", header.includes('label: "주간 리포트"') && header.includes('href: "/weekly"'));
   check(
     "nav adds 개인정보보호진흥원 소개 last",
-    /label: "공개 진단 사례"[\s\S]*label: "개인정보보호진흥원 소개"/.test(header) &&
+    /label: "주간 리포트"[\s\S]*label: "개인정보보호진흥원 소개"/.test(header) &&
       header.includes('href: "/about"'),
   );
+  check("nav active on /weekly", header.includes('pathname.startsWith("/weekly/")'));
   check("nav active on /about", header.includes('pathname.startsWith("/about/")'));
   check("about page exists", exists("app/about/page.tsx"));
+  check(
+    "individual public cases disabled",
+    read("lib/report/publicCasePolicy.ts").includes(
+      "export const PUBLIC_INDIVIDUAL_CASES_ENABLED = false",
+    ),
+  );
 
   const listPage = read("app/cases/page.tsx");
-  check("list page title", listPage.includes("공개 진단 사례"));
-  check("list published-only fetch", /listPublishedPublicCases/.test(listPage));
-  check("list has disclaimer", listPage.includes("PUBLIC_CASE_DISCLAIMER"));
+  check("list page redirects to weekly", listPage.includes('redirect("/weekly")'));
   check(
-    "disclaimer copy",
+    "disclaimer copy kept",
     read("lib/report/publicCasePolicy.ts").includes(
       "위법 여부를 확정하는 자료가 아니며",
     ),
@@ -165,7 +170,7 @@ function main() {
   check("list has no 위반 확정 claim", !/위반 확정입니다/.test(listPage));
 
   const detailPage = read("app/cases/[publicId]/page.tsx");
-  check("detail uses publicId", detailPage.includes("getPublishedPublicCase"));
+  check("detail redirects to weekly", detailPage.includes('redirect("/weekly")'));
   check("detail no 불법", !detailPage.includes("불법"));
   check("detail no storage_path", !detailPage.includes("storage_path"));
   check("detail no signed URL", !/signedUrl|signed_url/.test(detailPage));
@@ -177,7 +182,12 @@ function main() {
     read("app/api/public/cases/[publicId]/evidence/[evidenceId]/route.ts"),
     read("lib/report/publicCases.ts"),
   ].join("\n");
-  check("public API uses published-only", /public_case_status., .published/.test(publicApi) || publicApi.includes('eq("public_case_status", "published")'));
+  check(
+    "public API gated or published-only",
+    publicApi.includes("PUBLIC_INDIVIDUAL_CASES_ENABLED") &&
+      (publicApi.includes("status: 410") ||
+        publicApi.includes('eq("public_case_status", "published")')),
+  );
   check("public API does not return storage_path", !/storage_path:/.test(publicApi.split("return")[0] || "") && !publicApi.includes("storage_path: file"));
   check(
     "evidence proxy checks selected ids",
@@ -202,9 +212,13 @@ function main() {
   check("URL warning copy", modal.includes("설문 URL을 공개하면 외부 사용자가"));
 
   const actionBar = read("components/report/admin/AdminCaseActionBar.tsx");
-  check("publish button in action bar", actionBar.includes("공개 사례 등록"));
+  check("publish button remains in code for legal re-enable", actionBar.includes("공개 사례 등록"));
   check("pause button", actionBar.includes("공개 중지"));
   check("resume via modal", actionBar.includes("다시 공개"));
+  check(
+    "individual cases retired notice",
+    actionBar.includes("개별 공개 사례 기능은 현재 운영하지 않습니다"),
+  );
   check("summary DOCX still wired", actionBar.includes("reviewReportDownloadUrl"));
   check("detail HTML report button", actionBar.includes("상세리포트"));
 

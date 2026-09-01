@@ -1,7 +1,13 @@
 /**
  * Public /cases disclosure policy.
  * Approved individual cases only — never dump admin internals.
+ *
+ * Individual public-case pages are retired (legal risk). Keep DB rows and
+ * admin review records. Re-enable PUBLIC_INDIVIDUAL_CASES_ENABLED after
+ * legal review if needed. Public traffic now goes to /weekly.
  */
+
+export const PUBLIC_INDIVIDUAL_CASES_ENABLED = false;
 
 export type PublicCaseStatus =
   | "private"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
 import { loadPublishedEvidenceFile } from "@/lib/report/publicCases";
 
 export const runtime = "nodejs";
@@ -9,6 +10,15 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ publicId: string; evidenceId: string }> },
 ) {
+  if (!PUBLIC_INDIVIDUAL_CASES_ENABLED) {
+    return NextResponse.json(
+      {
+        redirectedTo: "/weekly",
+        message: "개별 공개 사례 캡처는 제공하지 않습니다.",
+      },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   try {
     const { publicId, evidenceId } = await context.params;
     const file = await loadPublishedEvidenceFile({ publicId, evidenceId });

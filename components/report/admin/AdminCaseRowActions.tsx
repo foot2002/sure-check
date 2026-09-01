@@ -11,6 +11,7 @@ import {
   reviewReportDownloadUrl,
   reviewReportFilename,
 } from "@/components/report/admin/adminDownloads";
+import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
 
 export function AdminCaseRowActions({
   row,
@@ -236,64 +237,73 @@ export function AdminCaseRowActions({
             >
               {hasZip || hasShots ? "증빙" : evidenceLabel}
             </button>
-            {isPublished ? (
+            {PUBLIC_INDIVIDUAL_CASES_ENABLED ? (
               <>
-                <button
-                  type="button"
-                  className={menuItem}
-                  onClick={() => {
-                    setOpen(false);
-                    onPublish();
-                  }}
-                >
-                  공개 사례 수정
-                </button>
-                <button
-                  type="button"
-                  className={menuItem}
-                  disabled={busy}
-                  onClick={() => {
-                    setOpen(false);
-                    void pausePublicCase();
-                  }}
-                >
-                  공개 중지
-                </button>
+                {isPublished ? (
+                  <>
+                    <button
+                      type="button"
+                      className={menuItem}
+                      onClick={() => {
+                        setOpen(false);
+                        onPublish();
+                      }}
+                    >
+                      공개 사례 수정
+                    </button>
+                    <button
+                      type="button"
+                      className={menuItem}
+                      disabled={busy}
+                      onClick={() => {
+                        setOpen(false);
+                        void pausePublicCase();
+                      }}
+                    >
+                      공개 중지
+                    </button>
+                  </>
+                ) : isPaused ? (
+                  <button
+                    type="button"
+                    className={menuItem}
+                    onClick={() => {
+                      setOpen(false);
+                      onPublish();
+                    }}
+                  >
+                    다시 공개
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={menuItem}
+                    onClick={() => {
+                      setOpen(false);
+                      onPublish();
+                    }}
+                  >
+                    공개 사례 등록
+                  </button>
+                )}
+                {canOpenPublicPage ? (
+                  <a
+                    href={`/cases/${row.publicId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={menuItem}
+                    onClick={() => setOpen(false)}
+                  >
+                    공개 페이지 열기
+                  </a>
+                ) : null}
               </>
-            ) : isPaused ? (
-              <button
-                type="button"
-                className={menuItem}
-                onClick={() => {
-                  setOpen(false);
-                  onPublish();
-                }}
-              >
-                다시 공개
-              </button>
             ) : (
-              <button
-                type="button"
-                className={menuItem}
-                onClick={() => {
-                  setOpen(false);
-                  onPublish();
-                }}
-              >
-                공개 사례 등록
-              </button>
+              <p className="px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                개별 공개 사례 기능은 현재 운영하지 않습니다. 주간 리포트는 익명
+                통계와 대표 위험 유형 중심으로 제공합니다.
+              </p>
             )}
-            {canOpenPublicPage ? (
-              <a
-                href={`/cases/${row.publicId}`}
-                target="_blank"
-                rel="noreferrer"
-                className={menuItem}
-                onClick={() => setOpen(false)}
-              >
-                공개 페이지 열기
-              </a>
-            ) : null}
             {(isPublished || isPaused) && hasUrl ? (
               <a
                 href={row.surveyUrl || undefined}
