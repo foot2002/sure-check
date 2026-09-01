@@ -62,10 +62,16 @@ function main() {
   check("list is two columns not three", !list.includes("xl:grid-cols-3"));
   check("featured hero photo", list.includes("/images/weekly/hero.jpg"));
   check("list card cover photos", list.includes("/images/weekly/cover-civic.jpg"));
-  check("featured compact stats list", list.includes("max-w-md divide-y"));
+  check(
+    "featured compact stats list",
+    list.includes("건 분석") &&
+      list.includes("건 개인정보 수집") &&
+      list.includes("건 응답 전 확인 필요"),
+  );
   check("list uses 1-decimal scores", list.includes("formatScore1"));
   check("list shows diagnosis counts", list.includes("personalInfoCount") && list.includes("attentionNeededCount"));
-  check("featured key findings", list.includes("buildKeyFindings") && list.includes("WeeklyKeyFindings"));
+  check("featured article lead", list.includes("cardLead"));
+  check("list card keywords", list.includes("keywords"));
   check("list has no 공개 진단 사례", !list.includes("공개 진단 사례"));
   check("list case compact whyRisky", list.includes("whyRisky"));
 
@@ -77,7 +83,7 @@ function main() {
     : "";
   check("shared privacy index panel exists", panel.includes("export function PrivacyIndexTrendPanel"));
   check("weekly monthly toggle", panel.includes("주간") && panel.includes("월간"));
-  check("formula box", panel.includes("WEEKLY_PRIVACY_INDEX_FORMULA") || panel.includes("계산 산식"));
+  check("formula box", panel.includes("WEEKLY_PRIVACY_INDEX_FORMULA") || panel.includes("산정 방식"));
   check("grade meaning box", panel.includes("점수대별 의미"));
   check("animated svg chart", charts.includes("weekly-chart-line") && charts.includes("pathLength"));
   check("no chart library import", !charts.includes("recharts") && !charts.includes("chart.js"));
@@ -92,34 +98,36 @@ function main() {
   check("press copy button", exists("components/weekly/WeeklyPressCopy.tsx"));
   check("press copy label", read("components/weekly/WeeklyPressCopy.tsx").includes("요약 복사"));
   check("detail quality section", detail.includes("진단 신뢰도 및 한계"));
-  check("detail insights", detail.includes("정책적 인사이트"));
-  check("detail checklist", detail.includes("기관·기업 개선 체크리스트"));
+  check("detail insights", detail.includes("정책적 시사점"));
+  const editorialUi = exists("components/weekly/WeeklyEditorial.tsx")
+    ? read("components/weekly/WeeklyEditorial.tsx")
+    : "";
+  check(
+    "detail checklist",
+    detail.includes("기관·기업 개선 체크리스트") ||
+      (detail.includes("<WeeklyCollapsedChecklists") &&
+        editorialUi.includes("기관·기업 개선 체크리스트")),
+  );
   check("no chart library import", !detail.includes("recharts") && !detail.includes("chart.js"));
   check("detail 1-decimal scores", detail.includes("formatScore1"));
   check("detail key findings", detail.includes("<WeeklyKeyFindings"));
+  check("detail weekly narrative", detail.includes("이번 주 해설"));
   check("detail press box", detail.includes("<WeeklyPressBox"));
   check("detail public sector", detail.includes("<WeeklyPublicSectorBlock"));
   check("detail evidence survey card", detail.includes("증빙 확보 설문"));
   check("detail evidence image quality", detail.includes("증빙 캡처 이미지"));
 
   const findingsAt = detail.indexOf("<WeeklyKeyFindings");
-  const pressAt = detail.indexOf("<WeeklyPressBox");
+  const narrativeAt = detail.indexOf("이번 주 해설");
   const indexAt = detail.indexOf("<PrivacyIndexTrendPanel");
-  const statsAt = detail.indexOf("핵심 통계");
-  const publicAt = detail.indexOf("<WeeklyPublicSectorBlock");
-  const casesAt = detail.indexOf("대표 개인정보 위험 사례");
-  const platformAt = detail.indexOf("플랫폼별 분석");
-  const orgAt = detail.indexOf("기관유형별 분석");
+  const pressAt = detail.indexOf("<WeeklyPressBox");
   check(
-    "detail section order: findings then press then index",
-    findingsAt >= 0 && pressAt > findingsAt && indexAt > pressAt,
+    "detail section order: findings then narrative then index",
+    findingsAt >= 0 && narrativeAt > findingsAt && indexAt > narrativeAt,
   );
   check(
-    "detail section order: public and cases before platform/org",
-    publicAt > statsAt &&
-      casesAt > publicAt &&
-      platformAt > casesAt &&
-      orgAt > platformAt,
+    "press summary is after checklists",
+    pressAt > detail.indexOf("<WeeklyCollapsedChecklists"),
   );
 
   if (failures.length > 0) {

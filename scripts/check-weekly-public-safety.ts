@@ -162,6 +162,9 @@ function mockSnapshot(): WeeklyReportSnapshot {
         weakNoticeExample: "이름과 연락처를 입력해 주세요.",
         improvedNoticeExample:
           "본 설문은 안내 발송을 위해 이름과 연락처를 수집합니다. 목적 달성 후 30일 이내 파기하며, 문의는 담당부서로 안내합니다.",
+        whyThisWeek:
+          "이번 주 참가신청형 설문에서 보유기간·파기 기준 안내 확인 필요 신호가 반복됐습니다.",
+        signalKind: "type",
       },
     ],
     insights: [

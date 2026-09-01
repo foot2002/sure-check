@@ -4,9 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
-import { WeeklyKeyFindings } from "@/components/weekly/WeeklyEditorial";
 import { enrichAnonymousCase } from "@/lib/weekly/anonymousCases";
-import { buildKeyFindings } from "@/lib/weekly/copy";
 import { formatScore1 } from "@/lib/weekly/privacyIndex";
 import type { WeeklyAnonymousCase, WeeklyListCard } from "@/lib/weekly/types";
 
@@ -59,15 +57,6 @@ export function WeeklyListView({
   const [filter, setFilter] = useState<FilterId>("all");
   const [sort, setSort] = useState<SortId>("recent");
   const latest = cards[0] || null;
-  const latestFindings = latest
-    ? buildKeyFindings({
-        analyzable: latest.analyzableCount,
-        personalInfoCount: latest.personalInfoCount,
-        attentionNeededCount: latest.attentionNeededCount,
-        publicPersonalInfoCount: latest.publicExternalToolCount,
-        publicExternalToolCount: latest.publicExternalToolCount,
-      })
-    : [];
   const compactCases = useMemo(
     () => cases.map(enrichAnonymousCase),
     [cases],
@@ -98,25 +87,6 @@ export function WeeklyListView({
     return rows;
   }, [cards, filter, sort]);
 
-  const latestStats = latest
-    ? [
-        ["분석 완료", `${latest.analyzableCount.toLocaleString("ko-KR")}건`],
-        [
-          "개인정보 포함",
-          `${latest.personalInfoCount.toLocaleString("ko-KR")}건 / ${latest.personalInfoRate}%`,
-        ],
-        [
-          "주의 필요",
-          `${latest.attentionNeededCount.toLocaleString("ko-KR")}건 / ${latest.attentionNeededRate}%`,
-        ],
-        ["보호 수준지수", formatScore1(latest.avgScore)],
-        [
-          "공공부문 확인 필요",
-          `${latest.publicExternalToolCount.toLocaleString("ko-KR")}건`,
-        ],
-      ]
-    : [];
-
   return (
     <div className="space-y-10">
       {cards.length > 0 ? (
@@ -143,22 +113,19 @@ export function WeeklyListView({
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
                 {latest.headline}
               </h2>
-              <ul className="mt-4 max-w-md divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                {latestStats.map(([label, value]) => (
-                  <li
-                    key={label}
-                    className="flex items-baseline justify-between gap-4 px-3 py-1.5"
-                  >
-                    <span className="text-sm font-bold tabular-nums text-slate-900">
-                      {value}
-                    </span>
-                    <span className="shrink-0 text-xs text-slate-500">{label}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-5">
-                <WeeklyKeyFindings findings={latestFindings} compact />
-              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 line-clamp-2">
+                {latest.cardLead || latest.bullets[0]}
+              </p>
+              <p className="mt-3 text-sm font-semibold tabular-nums text-slate-800">
+                {latest.analyzableCount.toLocaleString("ko-KR")}건 분석 ·{" "}
+                {latest.personalInfoCount.toLocaleString("ko-KR")}건 개인정보 수집 ·{" "}
+                {latest.attentionNeededCount.toLocaleString("ko-KR")}건 응답 전 확인 필요
+              </p>
+              {latest.keywords.length > 0 ? (
+                <p className="mt-2 text-xs font-semibold text-teal-800">
+                  {latest.keywords.join(" · ")}
+                </p>
+              ) : null}
               <Link
                 href={`/weekly/${latest.weekId}`}
                 className="mt-5 inline-flex rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900"
@@ -249,38 +216,22 @@ export function WeeklyListView({
                 <h3 className="text-lg font-bold leading-snug text-slate-900">
                   {card.headline}
                 </h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  개인정보 보호 수준지수 {formatScore1(card.avgScore)}
-                  {card.grade ? ` · ${card.grade}` : ""}
+                <p className="mt-2 text-sm leading-relaxed text-slate-600 line-clamp-2">
+                  {card.cardLead ||
+                    `개인정보 보호 수준지수 ${formatScore1(card.avgScore)}${
+                      card.grade ? ` · ${card.grade}` : ""
+                    }`}
                 </p>
-                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500">
-                  <div>
-                    분석 완료{" "}
-                    <span className="font-semibold text-slate-800">
-                      {card.analyzableCount.toLocaleString("ko-KR")}건
-                    </span>
-                  </div>
-                  <div>
-                    개인정보 포함{" "}
-                    <span className="font-semibold text-slate-800">
-                      {card.personalInfoCount.toLocaleString("ko-KR")}건 (
-                      {card.personalInfoRate}%)
-                    </span>
-                  </div>
-                  <div>
-                    주의 필요{" "}
-                    <span className="font-semibold text-slate-800">
-                      {card.attentionNeededCount.toLocaleString("ko-KR")}건 (
-                      {card.attentionNeededRate}%)
-                    </span>
-                  </div>
-                  <div>
-                    공공부문 확인 필요{" "}
-                    <span className="font-semibold text-slate-800">
-                      {card.publicExternalToolCount.toLocaleString("ko-KR")}건
-                    </span>
-                  </div>
-                </dl>
+                <p className="mt-3 text-sm font-semibold tabular-nums text-slate-800">
+                  {card.analyzableCount.toLocaleString("ko-KR")}건 분석 ·{" "}
+                  {card.personalInfoCount.toLocaleString("ko-KR")}건 개인정보 수집 ·{" "}
+                  {card.attentionNeededCount.toLocaleString("ko-KR")}건 응답 전 확인 필요
+                </p>
+                {card.keywords.length > 0 ? (
+                  <p className="mt-2 text-xs font-semibold text-teal-800">
+                    {card.keywords.join(" · ")}
+                  </p>
+                ) : null}
                 <Link
                   href={`/weekly/${card.weekId}`}
                   className="mt-4 text-sm font-semibold text-teal-800 hover:underline"
@@ -295,10 +246,11 @@ export function WeeklyListView({
 
       {compactCases.length > 0 ? (
         <section>
-          <h2 className="text-xl font-bold text-slate-900">대표 개인정보 위험 사례</h2>
+          <h2 className="text-xl font-bold text-slate-900">대표 개인정보 위험 사례 유형</h2>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
             개별 기관명, 설문 제목, URL, 캡처는 공개하지 않습니다. 반복되는 위험
-            유형을 익명화해 보여줍니다.
+            유형을 익명화해 참고자료로 보여줍니다. 각 주차 상세 리포트에는 해당 주
+            두드러진 2~3개만 선별합니다.
           </p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {compactCases.map((item) => (
@@ -319,7 +271,7 @@ export function WeeklyListView({
                   </p>
                 ) : null}
                 <p className="mt-3 text-xs font-semibold text-teal-800">
-                  최근 주간 유사 신호 {item.similarCount}건
+                  유형 참고자료 · 주차별 유사 신호는 상세 리포트에서 확인
                 </p>
               </article>
             ))}

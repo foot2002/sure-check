@@ -70,14 +70,18 @@ function main() {
   );
 
   const copy = read("lib/weekly/copy.ts");
-  check("normalize rebuilds insights", copy.includes("insights: buildWeeklyInsights"));
+  check(
+    "normalize rebuilds insights",
+    copy.includes("insights: buildWeeklyInsights") ||
+      copy.includes("const insights = buildWeeklyInsights"),
+  );
   check(
     "generate uses buildWeeklyInsights",
     read("lib/weekly/generateWeeklyReport.ts").includes("insights: buildWeeklyInsights"),
   );
   check(
-    "detail renders 정책적 인사이트",
-    read("components/weekly/WeeklyDetailView.tsx").includes("정책적 인사이트"),
+    "detail renders 정책적 시사점",
+    read("components/weekly/WeeklyDetailView.tsx").includes("정책적 시사점"),
   );
 
   if (failures.length > 0) {

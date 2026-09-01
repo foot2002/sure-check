@@ -1,5 +1,6 @@
 import type { WeeklyInsight, WeeklyReportSnapshot } from "@/lib/weekly/types";
-import { enrichAnonymousCase } from "@/lib/weekly/anonymousCases";
+import { enrichAnonymousCase, selectWeeklyFeaturedCases } from "@/lib/weekly/anonymousCases";
+import { composeWeeklyEditorial } from "@/lib/weekly/narrative";
 
 export function formatWeeklyCount(n: number): string {
   return n.toLocaleString("ko-KR");
@@ -25,23 +26,44 @@ export function buildWeeklyInsights(input: {
   schoolCount: number;
   retentionGapCount: number;
   destructionGapCount: number;
+  topIssue?: string | null;
+  grade?: string | null;
+  scoreDelta?: number | null;
+  sensitiveRate?: number;
 }): WeeklyInsight[] {
   const out: WeeklyInsight[] = [];
+  const topIssue = input.topIssue || "";
 
-  out.push({
-    order: out.length + 1,
-    text: "온라인 설문도구는 누구나 쉽게 개인정보 수집 창구를 만들 수 있게 했지만, 고지문 작성과 보관·파기 책임은 여전히 운영자에게 맡겨져 있는 경우가 많습니다.",
-  });
-
-  out.push({
-    order: out.length + 1,
-    text: "반복적으로 누락되는 항목은 기술 문제가 아니라 표준 고지문 부재의 문제입니다. 기관 차원의 표준 설문 양식과 사전 점검 체계가 필요합니다.",
-  });
+  if (/고지/.test(topIssue) || input.personalInfoRate >= 80) {
+    out.push({
+      order: out.length + 1,
+      text: topIssue
+        ? `이번 주 가장 많이 확인된 문제는 ${topIssue}이었습니다. 이는 개별 설문 운영자의 실수가 아니라, 온라인 설문을 만들 때 개인정보 고지문을 표준으로 삽입하는 체계가 부족하다는 신호로 볼 수 있습니다.`
+        : "반복적으로 누락되는 항목은 기술 문제가 아니라 표준 고지문 부재의 문제입니다. 기관 차원의 표준 설문 양식과 사전 점검 체계가 필요합니다.",
+    });
+  } else {
+    out.push({
+      order: out.length + 1,
+      text: "온라인 설문도구는 누구나 쉽게 개인정보 수집 창구를 만들 수 있게 했지만, 고지문 작성과 보관·파기 책임은 여전히 운영자에게 맡겨져 있는 경우가 많습니다.",
+    });
+  }
 
   if (input.publicCount > 0 || input.publicExternalToolCount > 0) {
     out.push({
       order: out.length + 1,
-      text: "공공부문 설문은 국민이 기관 신뢰를 전제로 응답하는 만큼, 외부 설문도구 사용 여부와 개인정보 처리경로를 민간보다 더 명확히 안내해야 합니다.",
+      text: "공공부문 설문에서 외부 설문도구 확인 필요 신호가 반복된 것은, 기관이 외부 도구를 사용하지 말아야 한다는 뜻이 아니라, 국민이 개인정보 처리경로와 보안 기준을 화면에서 확인할 수 있어야 한다는 의미입니다. 공공부문 설문은 국민이 기관 신뢰를 전제로 응답하는 만큼, 외부 설문도구 사용 여부와 개인정보 처리경로를 민간보다 더 명확히 안내해야 합니다.",
+    });
+  }
+
+  if ((input.scoreDelta ?? 0) < 0) {
+    out.push({
+      order: out.length + 1,
+      text: "이번 주 개인정보 보호 수준지수가 하락한 것은 고지 품질이 나빠졌거나 확인 필요 신호가 늘어났을 수 있으므로, 설문 첫 화면의 고지 항목을 다시 점검할 필요가 있습니다.",
+    });
+  } else if ((input.scoreDelta ?? 0) > 0 && (input.grade === "주의" || input.grade === "위험")) {
+    out.push({
+      order: out.length + 1,
+      text: "이번 주 개인정보 보호 수준지수가 소폭 상승했지만 여전히 주의 구간에 머문 것은, 일부 항목의 개선 가능성에도 불구하고 보유기간·파기 기준 안내가 충분히 자리 잡지 못했음을 보여줍니다.",
     });
   }
 
@@ -59,12 +81,21 @@ export function buildWeeklyInsights(input: {
     });
   }
 
-  out.push({
-    order: out.length + 1,
-    text: "기관·기업은 설문 첫 화면에 최소 고지 항목을 표준 문구로 제공하는 것만으로도 상당수 위험 신호를 줄일 수 있습니다.",
-  });
+  if ((input.sensitiveRate || 0) > 5) {
+    out.push({
+      order: out.length + 1,
+      text: "민감정보 포함 신호가 확인된 설문은 꼭 필요한 항목만 받고, 동의 안내를 더 분명하게 표시해야 합니다.",
+    });
+  }
 
-  return out.slice(0, 5);
+  if (out.length < 3) {
+    out.push({
+      order: out.length + 1,
+      text: "기관·기업은 설문 첫 화면에 최소 고지 항목을 표준 문구로 제공하는 것만으로도 상당수 위험 신호를 줄일 수 있습니다.",
+    });
+  }
+
+  return out.slice(0, 5).map((row, index) => ({ ...row, order: index + 1 }));
 }
 
 export const WEEKLY_CHECKLIST = [
@@ -236,7 +267,25 @@ export function normalizeWeeklySnapshotCopy(
     attentionNeededCount: m.attentionNeededCount,
     thirdBullet,
   });
-  return {
+  const schoolCount =
+    snapshot.organizationStats.find((row) => row.typeLabel === "학교/교육기관")
+      ?.surveyCount ?? 0;
+  const insights = buildWeeklyInsights({
+    personalInfoRate,
+    attentionNeededRate,
+    publicCount: snapshot.publicSector.publicPersonalInfoSurveyCount,
+    publicExternalToolCount: m.publicExternalToolCount,
+    schoolCount,
+    retentionGapCount: snapshot.publicSector.retentionGapCount,
+    destructionGapCount: snapshot.publicSector.destructionGapCount,
+    topIssue: snapshot.issueTop5[0]?.label || null,
+    grade: snapshot.summary.grade || m.grade,
+    scoreDelta: snapshot.summary.scoreDelta,
+    sensitiveRate: sensitiveInfoRate,
+  });
+  const enrichedCases = snapshot.anonymousCases.map(enrichAnonymousCase);
+  const featuredCases = selectWeeklyFeaturedCases(enrichedCases, 3);
+  const withCopy: WeeklyReportSnapshot = {
     ...snapshot,
     summary: {
       ...snapshot.summary,
@@ -273,18 +322,14 @@ export function normalizeWeeklySnapshotCopy(
         m.evidenceCaptureCount ??
         0,
     },
-    insights: buildWeeklyInsights({
-      personalInfoRate,
-      attentionNeededRate,
-      publicCount: snapshot.publicSector.publicPersonalInfoSurveyCount,
-      publicExternalToolCount: m.publicExternalToolCount,
-      schoolCount:
-        snapshot.organizationStats.find((row) => row.typeLabel === "학교/교육기관")
-          ?.surveyCount ?? 0,
-      retentionGapCount: snapshot.publicSector.retentionGapCount,
-      destructionGapCount: snapshot.publicSector.destructionGapCount,
-    }),
-    anonymousCases: snapshot.anonymousCases.map(enrichAnonymousCase),
+    insights,
+    anonymousCases: featuredCases,
+    pressSummary: "",
+  };
+  const editorial = composeWeeklyEditorial(withCopy);
+  return {
+    ...withCopy,
+    editorial,
     pressSummary: buildPressSummary({
       weekLabel: snapshot.weekLabel,
       headline,
@@ -295,6 +340,7 @@ export function normalizeWeeklySnapshotCopy(
       attentionNeededRate,
       publicExternalToolCount: m.publicExternalToolCount,
       publicNarrative: snapshot.publicSector.narrative || null,
+      interpretation: editorial.pressInterpretation,
     }),
   };
 }
@@ -309,6 +355,7 @@ export function buildPressSummary(input: {
   attentionNeededRate?: number;
   publicExternalToolCount?: number;
   publicNarrative: string | null;
+  interpretation?: string;
 }): string {
   const n = formatWeeklyCount;
   const personalRate =
@@ -319,7 +366,7 @@ export function buildPressSummary(input: {
   const lines = [
     `보도 제목 후보: ${input.headline}`,
     "",
-    `리드문: SURE Check가 ${input.weekLabel} 공개 온라인 설문 자동진단 결과를 분석한 결과, 분석 완료 설문 ${n(input.analyzable)}건 중 ${n(input.personalInfoCount)}건에서 개인정보 수집 신호가 확인됐다. 이 중 ${n(input.attentionNeededCount)}건은 응답자가 개인정보 제공 여부를 판단하기 전 추가 확인이 필요한 설문으로 분류됐다.`,
+    `리드문: SURE Check가 ${input.weekLabel} 공개 온라인 설문 자동진단 결과를 분석한 결과, 분석 완료 설문 ${n(input.analyzable)}건 중 ${n(input.personalInfoCount)}건에서 개인정보 수집 신호가 확인됐다. 이 가운데 ${n(input.attentionNeededCount)}건은 응답자가 개인정보 제공 여부를 판단하기 전 추가 확인이 필요한 설문으로 분류됐다.`,
     "",
     "핵심 통계:",
     `- 개인정보 수집 신호: ${n(input.personalInfoCount)}건, ${personalRate}%`,
@@ -330,6 +377,13 @@ export function buildPressSummary(input: {
       `- 공공부문 외부도구 확인 필요: ${n(input.publicExternalToolCount || 0)}건`,
     );
   }
+  lines.push("");
+  lines.push(
+    `주요 해석: ${
+      input.interpretation ||
+      "이번 주 결과에서 가장 두드러진 신호는 고지 항목 확인 필요였다. 온라인 설문이 일상적인 정보 수집 수단으로 자리 잡았지만, 보유기간과 파기 기준 등 기본 안내 항목은 여전히 충분히 확인되지 않는 경우가 많았다."
+    }`,
+  );
   if (input.publicNarrative) {
     lines.push("");
     lines.push(

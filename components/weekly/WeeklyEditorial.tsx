@@ -1,13 +1,16 @@
 import { WeeklyPressCopy } from "@/components/weekly/WeeklyPressCopy";
 import {
+  WEEKLY_CHECKLIST,
   WEEKLY_NOTICE_EXAMPLE_NOTE,
   WEEKLY_OPERATOR_QUOTE,
   WEEKLY_PUBLIC_SECTOR_POLICY,
   WEEKLY_PUBLIC_SECTOR_SUBTITLE,
+  WEEKLY_RESPONDENT_TIPS,
   WEEKLY_TOP_DISCLAIMER,
   formatWeeklyCount,
   type WeeklyKeyFinding,
 } from "@/lib/weekly/copy";
+import { caseSignalLabel } from "@/lib/weekly/narrative";
 import { formatScore1 } from "@/lib/weekly/privacyIndex";
 import {
   weeklySampleBadge,
@@ -270,23 +273,32 @@ export function WeeklyRiskCaseCard({ item }: { item: WeeklyAnonymousCase }) {
       <p className="mt-1 text-sm text-slate-500">
         {item.orgType} · {item.surveyPattern} · {item.tool}
       </p>
-      <p className="mt-3 text-sm text-slate-700">
-        수집 정보: {item.collectedInfo.join(", ")}
-      </p>
-      <p className="mt-1 text-sm text-slate-700">
-        확인 필요 항목: {item.noticeGaps.join(", ")}
+      <p className="mt-2 text-xs font-semibold text-teal-800">
+        {caseSignalLabel(item)}
       </p>
       <dl className="mt-4 space-y-2 text-sm leading-relaxed text-slate-700">
+        <div>
+          <dt className="font-semibold text-slate-900">왜 이번 주에 주목해야 하는가</dt>
+          <dd>{item.whyThisWeek || item.whyRisky}</dd>
+        </div>
+        <div>
+          <dt className="font-semibold text-slate-900">수집되는 정보</dt>
+          <dd>{item.collectedInfo.join(", ")}</dd>
+        </div>
+        <div>
+          <dt className="font-semibold text-slate-900">빠진 고지 항목</dt>
+          <dd>{item.noticeGaps.join(", ")}</dd>
+        </div>
         <div>
           <dt className="font-semibold text-slate-900">왜 위험한가</dt>
           <dd>{item.whyRisky}</dd>
         </div>
         <div>
-          <dt className="font-semibold text-slate-900">응답자는 무엇을 알기 어려운가</dt>
+          <dt className="font-semibold text-slate-900">응답자가 알기 어려운 점</dt>
           <dd>{item.respondentBlindSpot}</dd>
         </div>
         <div>
-          <dt className="font-semibold text-slate-900">운영자가 빠뜨린 것</dt>
+          <dt className="font-semibold text-slate-900">운영자가 바로 고칠 항목</dt>
           <dd>{item.operatorMissed.join(", ")}</dd>
         </div>
         <div>
@@ -307,9 +319,83 @@ export function WeeklyRiskCaseCard({ item }: { item: WeeklyAnonymousCase }) {
           {item.improvedNoticeExample}
         </p>
       </div>
-      <p className="mt-3 text-xs font-semibold text-teal-800">
-        이번 주 유사 신호 {formatWeeklyCount(item.similarCount)}건
-      </p>
     </article>
+  );
+}
+
+export function WeeklyWeekOverWeekCard({
+  interpretation,
+  scoreDelta,
+  personalInfoRateDelta,
+  attentionNeededRateDelta,
+  publicExternalToolDelta,
+  currentTopIssue,
+  previousTopIssue,
+}: {
+  interpretation: string;
+  scoreDelta: number | null;
+  personalInfoRateDelta: number | null;
+  attentionNeededRateDelta: number | null;
+  publicExternalToolDelta: number | null;
+  currentTopIssue: string | null;
+  previousTopIssue: string | null;
+}) {
+  const fmtDelta = (value: number | null, suffix: string) => {
+    if (value == null) return "비교 불가";
+    if (value === 0) return "변동 없음";
+    return value > 0 ? `+${value}${suffix}` : `${value}${suffix}`;
+  };
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h2 className="text-xl font-bold text-slate-900">전주 대비 무엇이 달라졌나</h2>
+      <p className="mt-3 text-sm leading-relaxed text-slate-700">{interpretation}</p>
+      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        <div>개인정보 보호 수준지수 {fmtDelta(scoreDelta, "점")}</div>
+        <div>개인정보 포함 비율 {fmtDelta(personalInfoRateDelta, "%p")}</div>
+        <div>주의 필요 비율 {fmtDelta(attentionNeededRateDelta, "%p")}</div>
+        <div>공공부문 외부도구 {fmtDelta(publicExternalToolDelta, "건")}</div>
+        <div className="sm:col-span-2">
+          TOP 이슈 {previousTopIssue ? `${previousTopIssue} → ` : ""}
+          {currentTopIssue || "데이터 부족"}
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+export function WeeklyCollapsedChecklists() {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <h2 className="text-xl font-bold text-slate-900">응답자·기관 체크리스트 요약</h2>
+      <p className="mt-3 text-sm leading-relaxed text-slate-700">
+        설문에 이름·연락처를 쓰기 전, 최소 3가지를 확인하세요. 1. 왜 필요한 정보인지
+        설명이 있는가 2. 언제까지 보관하고 파기하는지 보이는가 3. 누가 관리하고 어디로
+        문의해야 하는지 확인되는가
+      </p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-700">
+        개인정보를 수집하는 설문이라면 첫 화면에 최소 고지 항목을 표시해야 합니다.
+        수집 목적, 수집 항목, 보유기간, 파기 기준, 담당자 연락처, 외부도구 사용 여부를
+        확인하세요.
+      </p>
+      <details className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-teal-800">
+          전체 체크리스트 보기
+        </summary>
+        <div className="mt-3">
+          <h3 className="text-sm font-bold text-slate-900">{WEEKLY_RESPONDENT_TIPS.title}</h3>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+            {WEEKLY_RESPONDENT_TIPS.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ol>
+          <h3 className="mt-4 text-sm font-bold text-slate-900">기관·기업 개선 체크리스트</h3>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+            {WEEKLY_CHECKLIST.map((item) => (
+              <li key={item}>□ {item}</li>
+            ))}
+          </ul>
+        </div>
+      </details>
+    </section>
   );
 }

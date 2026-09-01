@@ -32,11 +32,16 @@ export function PrivacyIndexGuide() {
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           {WEEKLY_PRIVACY_INDEX_FORMULA.intro}
         </p>
-        <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
-          {WEEKLY_PRIVACY_INDEX_FORMULA.steps.map((step) => (
-            <li key={step}>{step}</li>
-          ))}
-        </ol>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm font-semibold text-teal-800">
+            배점 산정 세부 단계 보기
+          </summary>
+          <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
+            {WEEKLY_PRIVACY_INDEX_FORMULA.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </details>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 md:px-5">
         <h3 className="text-sm font-bold text-slate-900">점수대별 의미</h3>

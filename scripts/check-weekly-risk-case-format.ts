@@ -39,7 +39,7 @@ function main() {
     noticeGaps: ["수집 목적 안내", "보유기간 안내"],
     topTool: "외부 설문도구",
   });
-  check("builds 3-5 cases", cases.length >= 3 && cases.length <= 5);
+  check("builds catalog cases", cases.length >= 3 && cases.length <= 6);
 
   const fields: Array<keyof WeeklyAnonymousCase> = [
     "whyRisky",
@@ -71,11 +71,13 @@ function main() {
     operatorFix: "고지 항목을 첫 화면에 안내해야 합니다.",
     similarCount: 12,
     whyRisky: "",
+    whyThisWeek: "",
     respondentBlindSpot: "",
     operatorMissed: [],
     quickFixNotice: "",
     weakNoticeExample: "",
     improvedNoticeExample: "",
+    signalKind: "type",
   });
   check("enrich fills whyRisky", legacy.whyRisky.length > 0);
   check("enrich fills respondentBlindSpot", legacy.respondentBlindSpot.length > 0);
@@ -83,8 +85,8 @@ function main() {
 
   const editorial = read("components/weekly/WeeklyEditorial.tsx");
   check("card renders 왜 위험한가", editorial.includes("왜 위험한가"));
-  check("card renders 응답자는 무엇을 알기 어려운가", editorial.includes("응답자는 무엇을 알기 어려운가"));
-  check("card renders 운영자가 빠뜨린 것", editorial.includes("운영자가 빠뜨린 것"));
+  check("card renders 응답자가 알기 어려운 점", editorial.includes("응답자가 알기 어려운 점"));
+  check("card renders 운영자가 바로 고칠 항목", editorial.includes("운영자가 바로 고칠 항목"));
   check("card renders 바로 고치는 문구", editorial.includes("바로 고치는 문구"));
   check("card renders 미흡한 안내 예시", editorial.includes("미흡한 안내 예시"));
   check("card renders 개선된 안내 예시", editorial.includes("개선된 안내 예시"));

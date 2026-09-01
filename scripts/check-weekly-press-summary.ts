@@ -44,11 +44,17 @@ function main() {
 
   const detail = read("components/weekly/WeeklyDetailView.tsx");
   const findingsAt = detail.indexOf("<WeeklyKeyFindings");
-  const pressAt = detail.indexOf("<WeeklyPressBox");
+  const narrativeAt = detail.indexOf("이번 주 해설");
   const indexAt = detail.indexOf("<PrivacyIndexTrendPanel");
+  const pressAt = detail.indexOf("<WeeklyPressBox");
+  check("has 주요 해석", press.includes("주요 해석"));
   check(
-    "WeeklyPressBox is after findings and before index",
-    findingsAt >= 0 && pressAt > findingsAt && pressAt < indexAt,
+    "WeeklyPressBox is after findings",
+    findingsAt >= 0 && pressAt > findingsAt,
+  );
+  check(
+    "narrative comes before index",
+    narrativeAt > findingsAt && indexAt > narrativeAt,
   );
 
   const pressCopy = read("components/weekly/WeeklyPressCopy.tsx");

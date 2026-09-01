@@ -10,6 +10,7 @@ export type WeeklyTrendPoint = {
   personalInfoRate: number;
   attentionNeededRate: number;
   analyzableCount: number;
+  publicExternalToolCount?: number;
 };
 
 export type WeeklyIssueRow = {
@@ -67,11 +68,38 @@ export type WeeklyAnonymousCase = {
   operatorFix: string;
   similarCount: number;
   whyRisky: string;
+  whyThisWeek: string;
   respondentBlindSpot: string;
   operatorMissed: string[];
   quickFixNotice: string;
   weakNoticeExample: string;
   improvedNoticeExample: string;
+  signalKind: "type" | "related";
+  signalLabel?: string;
+};
+
+export type WeeklyWeekOverWeek = {
+  hasPrior: boolean;
+  scoreDelta: number | null;
+  personalInfoRateDelta: number | null;
+  attentionNeededRateDelta: number | null;
+  publicExternalToolDelta: number | null;
+  previousTopIssue: string | null;
+  currentTopIssue: string | null;
+  interpretation: string;
+};
+
+export type WeeklyEditorial = {
+  leadParagraphs: string[];
+  bodyParagraphs: string[];
+  weekOverWeek: WeeklyWeekOverWeek;
+  platformNarrative: string;
+  organizationNarrative: string;
+  questionNarrative: string;
+  nextWeekWatch: string[];
+  keywords: string[];
+  cardLead: string;
+  pressInterpretation: string;
 };
 
 export type WeeklyInsight = {
@@ -160,6 +188,7 @@ export type WeeklyReportSnapshot = {
     frequentCategories: WeeklyQuestionCategoryRow[];
   };
   anonymousCases: WeeklyAnonymousCase[];
+  editorial?: WeeklyEditorial;
   insights: WeeklyInsight[];
   checklist: string[];
   pressSummary: string;
@@ -186,6 +215,8 @@ export type WeeklyListCard = {
   hasSchoolIssue: boolean;
   hasNoticeGap: boolean;
   bullets: [string, string, string];
+  cardLead: string;
+  keywords: string[];
 };
 
 export type WeeklyReportRow = {

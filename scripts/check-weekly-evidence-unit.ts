@@ -28,15 +28,19 @@ function main() {
   check("metrics have evidenceSurveyCount", types.includes("evidenceSurveyCount: number"));
   check("metrics have evidenceImageCount", types.includes("evidenceImageCount: number"));
   check(
-    "core stats use 증빙 확보 설문",
-    detail.includes('["증빙 확보 설문"') || detail.includes('"증빙 확보 설문"'),
+    "core stats or quality use 증빙 확보 설문",
+    detail.includes("증빙 확보 설문"),
   );
   check("quality uses 증빙 캡처 이미지", detail.includes("증빙 캡처 이미지"));
-  check("core stats use 건 for surveys", detail.includes('fmt(evidenceSurveyCount, "건")'));
+  check("survey unit uses 건", detail.includes('fmt(evidenceSurveyCount, "건")'));
   check("quality uses 개 for images", detail.includes('fmt(evidenceImageCount, "개")'));
   check(
     "quality explains survey vs image unit",
     detail.includes("설문 건수와 다른 단위입니다"),
+  );
+  check(
+    "evidence period labeled",
+    detail.includes("이번 주") && detail.includes("전체 누적"),
   );
   check(
     "generate maps evidence survey and image",

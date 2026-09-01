@@ -21,6 +21,22 @@ function cap(input: CaseInput, value: number): number {
   return Math.min(input.analyzableCount, Math.max(value, 0));
 }
 
+function typeSignal(
+  input: CaseInput,
+  value: number,
+  relatedLabel: string,
+): Pick<WeeklyAnonymousCase, "similarCount" | "signalKind" | "signalLabel"> {
+  const similarCount = cap(input, value);
+  const weekWide =
+    input.analyzableCount > 0 &&
+    (similarCount >= input.analyzableCount || similarCount === input.personalInfoCount);
+  return {
+    similarCount,
+    signalKind: weekWide ? "related" : "type",
+    signalLabel: weekWide ? relatedLabel : undefined,
+  };
+}
+
 function gapList(input: CaseInput, extra: string[]): string[] {
   const base =
     input.noticeGaps.length > 0
@@ -45,43 +61,49 @@ function collected(
 export function enrichAnonymousCase(
   row: WeeklyAnonymousCase,
 ): WeeklyAnonymousCase {
-  if (row.whyRisky && row.respondentBlindSpot && row.quickFixNotice) {
-    return row;
-  }
   const filled = CASE_BY_ID[row.id];
-  if (!filled) {
-    return {
-      ...row,
-      whyRisky:
-        row.whyRisky ||
-        "공개 화면에서 수집 목적과 보관·파기 기준을 확인하기 어려우면 응답자가 제공 여부를 판단하기 어렵습니다.",
-      respondentBlindSpot:
-        row.respondentBlindSpot ||
-        row.respondentRisk ||
-        "정보가 언제까지 보관되고 누구에게 문의해야 하는지 확인하기 어렵습니다.",
-      operatorMissed: row.operatorMissed || row.noticeGaps,
-      quickFixNotice:
-        row.quickFixNotice ||
-        "본 설문은 안내 목적에 필요한 범위에서만 개인정보를 수집하며, 목적 달성 후 정해진 기간 내 파기합니다. 문의는 담당부서로 안내합니다.",
-      weakNoticeExample:
-        row.weakNoticeExample || "이름, 연락처, 소속을 입력해 주세요.",
-      improvedNoticeExample:
-        row.improvedNoticeExample ||
-        "본 설문은 안내 발송을 위해 이름, 연락처, 소속을 수집합니다. 수집된 정보는 목적 달성 후 30일 이내 파기하며, 문의는 담당부서로 연락해 주시기 바랍니다.",
-    };
-  }
-  return {
-    ...filled,
-    ...row,
-    whyRisky: row.whyRisky || filled.whyRisky,
-    respondentBlindSpot: row.respondentBlindSpot || filled.respondentBlindSpot,
-    operatorMissed:
-      row.operatorMissed?.length ? row.operatorMissed : filled.operatorMissed,
-    quickFixNotice: row.quickFixNotice || filled.quickFixNotice,
-    weakNoticeExample: row.weakNoticeExample || filled.weakNoticeExample,
-    improvedNoticeExample:
-      row.improvedNoticeExample || filled.improvedNoticeExample,
-  };
+  const base = filled
+    ? {
+        ...filled,
+        ...row,
+        whyRisky: row.whyRisky || filled.whyRisky,
+        whyThisWeek: row.whyThisWeek || filled.whyThisWeek,
+        respondentBlindSpot: row.respondentBlindSpot || filled.respondentBlindSpot,
+        operatorMissed:
+          row.operatorMissed?.length ? row.operatorMissed : filled.operatorMissed,
+        quickFixNotice: row.quickFixNotice || filled.quickFixNotice,
+        weakNoticeExample: row.weakNoticeExample || filled.weakNoticeExample,
+        improvedNoticeExample:
+          row.improvedNoticeExample || filled.improvedNoticeExample,
+        signalKind: row.signalKind || filled.signalKind || "type",
+        signalLabel: row.signalLabel || filled.signalLabel,
+      }
+    : {
+        ...row,
+        whyRisky:
+          row.whyRisky ||
+          "공개 화면에서 수집 목적과 보관·파기 기준을 확인하기 어려우면 응답자가 제공 여부를 판단하기 어렵습니다.",
+        whyThisWeek:
+          row.whyThisWeek ||
+          "이번 주 공개 설문에서 같은 유형의 고지 미흡 가능성이 반복적으로 나타났습니다.",
+        respondentBlindSpot:
+          row.respondentBlindSpot ||
+          row.respondentRisk ||
+          "정보가 언제까지 보관되고 누구에게 문의해야 하는지 확인하기 어렵습니다.",
+        operatorMissed: row.operatorMissed?.length
+          ? row.operatorMissed
+          : row.noticeGaps,
+        quickFixNotice:
+          row.quickFixNotice ||
+          "본 설문은 안내 목적에 필요한 범위에서만 개인정보를 수집하며, 목적 달성 후 정해진 기간 내 파기합니다. 문의는 담당부서로 안내합니다.",
+        weakNoticeExample:
+          row.weakNoticeExample || "이름, 연락처, 소속을 입력해 주세요.",
+        improvedNoticeExample:
+          row.improvedNoticeExample ||
+          "본 설문은 안내 발송을 위해 이름, 연락처, 소속을 수집합니다. 수집된 정보는 목적 달성 후 30일 이내 파기하며, 문의는 담당부서로 연락해 주시기 바랍니다.",
+        signalKind: row.signalKind || "type",
+      };
+  return base;
 }
 
 const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
@@ -94,6 +116,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "행사 신청 설문은 이름과 연락처를 자연스럽게 요구하지만, 보유기간과 파기 기준 안내가 빠지면 응답자는 행사 종료 후에도 정보가 계속 보관되는지 판단하기 어렵습니다.",
     respondentRisk:
       "이름과 연락처가 행사 종료 후에도 보관되는지, 삭제 요청은 어디에 해야 하는지 확인하기 어렵습니다.",
     operatorFix:
@@ -124,6 +149,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "학교·교육기관 설문은 학생·보호자 정보가 포함될 수 있어, 수집 목적과 동의 안내가 이번 주에도 확인 필요 신호로 나타났습니다.",
     respondentRisk:
       "학생·보호자 정보가 포함될 수 있는데, 수집 목적과 동의 안내가 불분명할 수 있습니다.",
     operatorFix:
@@ -148,6 +176,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "만족도 조사처럼 보여도 연락처가 함께 수집되면, 이번 주에도 보유기간·파기 기준을 화면에서 확인하기 어려운 신호가 나타났습니다.",
     respondentRisk:
       "의견 조사처럼 보여도 연락처가 함께 수집되면 보관·파기 기준을 알기 어렵습니다.",
     operatorFix:
@@ -172,6 +203,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "경품·이벤트 응모는 연락처 수집이 자연스럽게 보이지만, 이용 범위와 보유기간 안내 미흡 가능성이 이번 주에도 확인됐습니다.",
     respondentRisk:
       "당첨 안내에 필요하다는 이유로 연락처가 수집되지만, 이후 이용 범위를 알기 어렵습니다.",
     operatorFix:
@@ -196,6 +230,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "건강·민원 정보가 포함될 수 있는 설문이 확인되어, 최소수집과 동의 안내가 이번 주 정책적으로 의미가 큽니다.",
     respondentRisk:
       "건강·민원 정보가 포함될 수 있어, 목적과 동의 안내가 없으면 제공 여부를 판단하기 어렵습니다.",
     operatorFix:
@@ -220,6 +257,9 @@ const CASE_BY_ID: Record<string, WeeklyAnonymousCase> = {
     collectedInfo: [],
     noticeGaps: [],
     similarCount: 0,
+    signalKind: "type",
+    whyThisWeek:
+      "공공부문 설문이 외부 설문도구로 운영되는 확인 필요 신호가 반복되어, 처리경로와 보안 기준 안내가 이번 주 핵심 이슈입니다.",
     respondentRisk:
       "공공 서비스로 보이지만 외부 도구로 정보가 처리될 수 있는지 화면에서 알기 어렵습니다.",
     operatorFix:
@@ -254,7 +294,11 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         tool,
         collectedInfo: collected(input, ["이름", "연락처", "소속", "이메일"]),
         noticeGaps: gaps,
-        similarCount: cap(input, Math.max(input.personalInfoCount, 1)),
+        ...typeSignal(
+          input,
+          Math.max(input.nameCount, input.phoneCount, input.affiliationCount, 1),
+          "이름·연락처 수집 신호",
+        ),
       }),
     );
   }
@@ -269,7 +313,7 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
           input.affiliationCount > 0 ? 3 : 2,
         ),
         noticeGaps: gapList(input, ["수집 목적 안내", "동의 안내"]),
-        similarCount: cap(input, input.schoolCount),
+        ...typeSignal(input, input.schoolCount, "학교·교육기관 설문 신호"),
       }),
     );
   }
@@ -281,7 +325,7 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         tool,
         collectedInfo: collected(input, ["연락처", "이메일", "소속"]).slice(0, 2),
         noticeGaps: gapList(input, ["보유기간 안내", "파기 기준 안내"]),
-        similarCount: cap(input, Math.max(1, input.emailCount)),
+        ...typeSignal(input, Math.max(1, input.emailCount), "연락처·이메일 수집 신호"),
       }),
     );
   }
@@ -293,9 +337,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         tool,
         collectedInfo: ["이름", "연락처", "이메일"],
         noticeGaps: gapList(input, ["수집 목적 안내", "담당자 연락처"]),
-        similarCount: cap(
+        ...typeSignal(
           input,
           Math.min(input.nameCount, input.phoneCount, input.emailCount),
+          "이름·연락처·이메일 수집 신호",
         ),
       }),
     );
@@ -309,9 +354,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         tool,
         collectedInfo: ["이름", "연락처", "건강 관련 정보"],
         noticeGaps: gapList(input, ["수집 목적 안내", "동의 안내"]),
-        similarCount: cap(
+        ...typeSignal(
           input,
           Math.max(input.sensitiveCount, input.highRiskCount, input.medicalCount, 1),
+          "민감정보 수집 신호",
         ),
       }),
     );
@@ -327,9 +373,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
           "외부 설문도구·처리경로",
           "공공부문 클라우드 보안 기준",
         ]),
-        similarCount: cap(
+        ...typeSignal(
           input,
           Math.max(input.publicExternalToolCount, input.publicCount, 1),
+          "공공부문 외부도구 확인 필요 신호",
         ),
       }),
     );
@@ -337,6 +384,44 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
 
   return cases
     .filter((row) => row.similarCount > 0 && row.collectedInfo.length > 0)
-    .sort((a, b) => b.similarCount - a.similarCount)
-    .slice(0, 5);
+    .sort((a, b) => b.similarCount - a.similarCount);
+}
+
+function policyBoost(id: string): number {
+  if (id === "public-external-tool") return 40;
+  if (id === "school-program") return 25;
+  if (id === "counseling-health") return 20;
+  return 0;
+}
+
+export function selectWeeklyFeaturedCases(
+  cases: WeeklyAnonymousCase[],
+  limit = 3,
+): WeeklyAnonymousCase[] {
+  const ranked = [...cases].sort(
+    (a, b) => b.similarCount + policyBoost(b.id) - (a.similarCount + policyBoost(a.id)),
+  );
+  const picked: WeeklyAnonymousCase[] = [];
+  const usedCounts = new Set<number>();
+  for (const row of ranked) {
+    if (picked.length >= limit) break;
+    if (usedCounts.has(row.similarCount) && picked.length >= 2) continue;
+    picked.push(row);
+    usedCounts.add(row.similarCount);
+  }
+  return picked.slice(0, Math.min(limit, Math.max(2, picked.length)));
+}
+
+export function weeklyCaseCatalog(): WeeklyAnonymousCase[] {
+  return Object.values(CASE_BY_ID).map((row) =>
+    enrichAnonymousCase({
+      ...row,
+      collectedInfo:
+        row.collectedInfo.length > 0 ? row.collectedInfo : ["이름", "연락처"],
+      noticeGaps:
+        row.noticeGaps.length > 0
+          ? row.noticeGaps
+          : ["수집 목적 안내", "보유기간 안내"],
+    }),
+  );
 }

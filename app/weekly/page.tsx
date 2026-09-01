@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WeeklyListView } from "@/components/weekly/WeeklyListView";
+import { weeklyCaseCatalog } from "@/lib/weekly/anonymousCases";
 import type { WeeklyAnonymousCase, WeeklyListCard } from "@/lib/weekly/types";
-import { listPublishedWeeklyCards, getPublishedWeeklyReport } from "@/lib/weekly/repository";
+import { listPublishedWeeklyCards } from "@/lib/weekly/repository";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,11 +20,7 @@ export default async function WeeklyIndexPage() {
   let cases: WeeklyAnonymousCase[] = [];
   try {
     cards = await listPublishedWeeklyCards();
-    const latest = cards[0];
-    if (latest) {
-      const detail = await getPublishedWeeklyReport(latest.weekId);
-      cases = detail?.snapshot.anonymousCases || [];
-    }
+    cases = weeklyCaseCatalog();
   } catch (err) {
     console.error("[weekly-index]", err);
     cards = [];

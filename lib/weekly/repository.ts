@@ -74,6 +74,8 @@ function toListCard(row: WeeklyReportRow): WeeklyListCard {
       /고지|안내 미흡/.test(item.label),
     ),
     bullets: s.bullets,
+    cardLead: row.snapshot.editorial?.cardLead || s.oneLiner,
+    keywords: row.snapshot.editorial?.keywords || [],
   };
 }
 

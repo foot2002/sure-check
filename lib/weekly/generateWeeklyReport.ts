@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildPublicDashboard } from "@/lib/report/buildPublicDashboard";
-import { buildAnonymousCases } from "@/lib/weekly/anonymousCases";
+import { buildAnonymousCases, selectWeeklyFeaturedCases } from "@/lib/weekly/anonymousCases";
 import {
   WEEKLY_CHECKLIST,
   WEEKLY_DISCLAIMER,
@@ -10,6 +10,7 @@ import {
   buildWeeklyInsights,
   buildWeeklyOneLiner,
 } from "@/lib/weekly/copy";
+import { composeWeeklyEditorial } from "@/lib/weekly/narrative";
 import { isPublicWeeklyIssue, weeklyIssueDescription } from "@/lib/weekly/issueCopy";
 import {
   fourWeekWeightedPrivacyAverage,
@@ -113,22 +114,25 @@ export async function buildWeeklySnapshot(
     dash.publicSectorToolStats.publicPersonalInfoSurveyCount,
   );
 
-  const anonymousCases = buildAnonymousCases({
-    schoolCount,
-    publicCount,
-    medicalCount,
-    personalInfoCount: dash.summary.personalInfoCount,
-    sensitiveCount: dash.summary.sensitiveInfoCount,
-    highRiskCount: dash.summary.highRiskInfoCount,
-    publicExternalToolCount: dash.publicSectorToolStats.externalToolReviewCount,
-    nameCount: categoryCount(dash.dataCategoryStats, "name"),
-    phoneCount: categoryCount(dash.dataCategoryStats, "phone"),
-    emailCount: categoryCount(dash.dataCategoryStats, "email"),
-    affiliationCount: categoryCount(dash.dataCategoryStats, "affiliation"),
-    analyzableCount: analyzable,
-    noticeGaps,
-    topTool,
-  });
+  const anonymousCases = selectWeeklyFeaturedCases(
+    buildAnonymousCases({
+      schoolCount,
+      publicCount,
+      medicalCount,
+      personalInfoCount: dash.summary.personalInfoCount,
+      sensitiveCount: dash.summary.sensitiveInfoCount,
+      highRiskCount: dash.summary.highRiskInfoCount,
+      publicExternalToolCount: dash.publicSectorToolStats.externalToolReviewCount,
+      nameCount: categoryCount(dash.dataCategoryStats, "name"),
+      phoneCount: categoryCount(dash.dataCategoryStats, "phone"),
+      emailCount: categoryCount(dash.dataCategoryStats, "email"),
+      affiliationCount: categoryCount(dash.dataCategoryStats, "affiliation"),
+      analyzableCount: analyzable,
+      noticeGaps,
+      topTool,
+    }),
+    3,
+  );
 
   const purposeGap = gapCount(dash.noticeComplianceStats, "purpose");
   const itemsGap = gapCount(dash.noticeComplianceStats, "items");
@@ -278,6 +282,10 @@ export async function buildWeeklySnapshot(
       schoolCount,
       retentionGapCount: retentionGap,
       destructionGapCount: destructionGap,
+      topIssue: issueTop5[0]?.label || null,
+      grade,
+      scoreDelta: null,
+      sensitiveRate: dash.summary.sensitiveInfoRate,
     }),
     checklist: WEEKLY_CHECKLIST,
     pressSummary: buildPressSummary({
@@ -303,6 +311,19 @@ export async function buildWeeklySnapshot(
     },
     disclaimer: WEEKLY_DISCLAIMER,
   };
+  snapshot.editorial = composeWeeklyEditorial(snapshot);
+  snapshot.pressSummary = buildPressSummary({
+    weekLabel: week.label,
+    headline,
+    analyzable,
+    personalInfoCount: dash.summary.personalInfoCount,
+    personalInfoRate: dash.summary.personalInfoRate,
+    attentionNeededCount: dash.summary.attentionNeededCount,
+    attentionNeededRate: dash.summary.attentionNeededRate,
+    publicExternalToolCount: dash.publicSectorToolStats.externalToolReviewCount,
+    publicNarrative: publicNarrative || null,
+    interpretation: snapshot.editorial.pressInterpretation,
+  });
 
   assertWeeklySnapshotSafe(snapshot);
   return snapshot;
@@ -324,6 +345,7 @@ export function attachTrends(
       personalInfoRate: row.metrics.personalInfoRate,
       attentionNeededRate: row.metrics.attentionNeededRate,
       analyzableCount: row.metrics.analyzableCount,
+      publicExternalToolCount: row.metrics.publicExternalToolCount,
     }));
     const prev = index > 0 ? chronological[index - 1] : null;
     const fourWeekAvg = fourWeekWeightedPrivacyAverage(
@@ -336,7 +358,7 @@ export function attachTrends(
       snap.metrics.avgScore != null && prev?.metrics.avgScore != null
         ? roundScore1(snap.metrics.avgScore - prev.metrics.avgScore)
         : null;
-    return {
+    const withTrends: WeeklyReportSnapshot = {
       ...snap,
       trends,
       summary: {
@@ -344,6 +366,38 @@ export function attachTrends(
         scoreDelta,
         fourWeekAvgScore: fourWeekAvg,
       },
+    };
+    const editorial = composeWeeklyEditorial(withTrends, prev);
+    return {
+      ...withTrends,
+      editorial,
+      insights: buildWeeklyInsights({
+        personalInfoRate: snap.metrics.personalInfoRate,
+        attentionNeededRate: snap.metrics.attentionNeededRate,
+        publicCount: snap.publicSector.publicPersonalInfoSurveyCount,
+        publicExternalToolCount: snap.metrics.publicExternalToolCount,
+        schoolCount:
+          snap.organizationStats.find((row) => row.typeLabel === "학교/교육기관")
+            ?.surveyCount ?? 0,
+        retentionGapCount: snap.publicSector.retentionGapCount,
+        destructionGapCount: snap.publicSector.destructionGapCount,
+        topIssue: snap.issueTop5[0]?.label || null,
+        grade: snap.metrics.grade,
+        scoreDelta,
+        sensitiveRate: snap.metrics.sensitiveInfoRate,
+      }),
+      pressSummary: buildPressSummary({
+        weekLabel: snap.weekLabel,
+        headline: snap.summary.headline,
+        analyzable: snap.metrics.analyzableCount,
+        personalInfoCount: snap.metrics.personalInfoCount,
+        personalInfoRate: snap.metrics.personalInfoRate,
+        attentionNeededCount: snap.metrics.attentionNeededCount,
+        attentionNeededRate: snap.metrics.attentionNeededRate,
+        publicExternalToolCount: snap.metrics.publicExternalToolCount,
+        publicNarrative: snap.publicSector.narrative || null,
+        interpretation: editorial.pressInterpretation,
+      }),
     };
   });
 }

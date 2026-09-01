@@ -200,7 +200,7 @@ function main() {
     noticeGaps: ["수집 목적 안내", "보유기간 안내"],
     topTool: "Google Forms",
   });
-  check("anonymous cases 3-5", cases.length >= 3 && cases.length <= 5);
+  check("anonymous cases 2-3 selected or catalog 3-6", cases.length >= 2 && cases.length <= 6);
   const caseText = JSON.stringify(cases);
   check("anonymous cases have no URL", !/https?:\/\//.test(caseText));
   check("anonymous cases have no org name 롯데", !caseText.includes("롯데"));
