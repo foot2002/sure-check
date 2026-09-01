@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { WeeklyTrendSvg } from "@/components/weekly/WeeklyCharts";
+import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
+import { formatScore1 } from "@/lib/weekly/privacyIndex";
 import type { WeeklyAnonymousCase, WeeklyListCard } from "@/lib/weekly/types";
 
 const FILTERS = [
@@ -69,6 +70,17 @@ export function WeeklyListView({
 
   return (
     <div className="space-y-10">
+      {cards.length > 0 ? (
+        <PrivacyIndexTrendPanel
+          rows={cards.map((card) => ({
+            weekId: card.weekId,
+            shortRange: card.shortRange,
+            avgScore: card.avgScore,
+            analyzableCount: card.analyzableCount,
+          }))}
+        />
+      ) : null}
+
       {latest ? (
         <section className="overflow-hidden rounded-2xl border border-teal-100 bg-white">
           <div className="bg-teal-800 px-5 py-3 text-sm font-semibold text-white md:px-8">
@@ -85,7 +97,7 @@ export function WeeklyListView({
               <p className="mt-3 text-sm leading-relaxed text-slate-600">
                 분석 완료 {latest.analyzableCount}건 · 개인정보 포함{" "}
                 {latest.personalInfoRate}% · 주의 필요 {latest.attentionNeededRate}% ·
-                개인정보 보호 수준지수 {latest.avgScore ?? "-"}점
+                개인정보 보호 수준지수 {formatScore1(latest.avgScore)}
                 {latest.grade ? ` · ${latest.grade}` : ""} · 공공부문 외부도구 확인
                 필요 {latest.publicExternalToolCount}건
               </p>
@@ -106,7 +118,7 @@ export function WeeklyListView({
                 ["분석 완료", `${latest.analyzableCount}건`],
                 ["개인정보 포함", `${latest.personalInfoRate}%`],
                 ["주의 필요", `${latest.attentionNeededRate}%`],
-                ["보호 수준지수", `${latest.avgScore ?? "-"}점`],
+                ["보호 수준지수", formatScore1(latest.avgScore)],
                 ["공공부문 확인 필요", `${latest.publicExternalToolCount}건`],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -122,32 +134,6 @@ export function WeeklyListView({
           아직 공개된 주간 리포트가 없습니다.
         </p>
       )}
-
-      {cards.length > 0 ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
-          <h2 className="text-xl font-bold text-slate-900">
-            개인정보 보호 수준지수 추세 요약
-          </h2>
-          <p className="mt-2 text-sm text-slate-600">
-            공개된 주간 리포트 스냅샷 기준입니다. 본 지수는 위법 여부를 확정하는
-            기준이 아닙니다.
-          </p>
-          <div className="mt-5">
-            <WeeklyTrendSvg
-              title="주차별 개인정보 보호 수준지수"
-              points={[...cards]
-                .slice()
-                .sort((a, b) => a.weekId.localeCompare(b.weekId))
-                .slice(-6)
-                .map((row) => ({
-                  label: row.shortRange,
-                  value: row.avgScore,
-                }))}
-              valueSuffix="점"
-            />
-          </div>
-        </section>
-      ) : null}
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -198,7 +184,7 @@ export function WeeklyListView({
                 {card.headline}
               </h3>
               <p className="mt-3 text-sm text-slate-600">
-                개인정보 보호 수준지수 {card.avgScore ?? "-"}점
+                개인정보 보호 수준지수 {formatScore1(card.avgScore)}
                 {card.grade ? ` · ${card.grade}` : ""}
               </p>
               <p className="mt-1 text-sm text-slate-500">

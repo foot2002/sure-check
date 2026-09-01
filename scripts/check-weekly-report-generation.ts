@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { formatWeekLabel, getKstWeek, mondayOfIso } from "../lib/weekly/week";
-import { weeklyPrivacyGrade } from "../lib/weekly/privacyIndex";
+import { weeklyPrivacyGrade, monthlyPrivacyIndexSeries, roundScore1 } from "../lib/weekly/privacyIndex";
 import { buildHeadline, buildPressSummary, buildWeeklyInsights } from "../lib/weekly/copy";
 import { buildAnonymousCases } from "../lib/weekly/anonymousCases";
 import { isPublicWeeklyIssue } from "../lib/weekly/issueCopy";
@@ -63,6 +63,23 @@ function main() {
   check("grade 62 is 보통", weeklyPrivacyGrade(62) === "보통");
   check("grade 80 is 양호", weeklyPrivacyGrade(80) === "양호");
   check("grade 39 is 위험", weeklyPrivacyGrade(39) === "위험");
+  check("round 49.32 to 1 decimal", roundScore1(49.32) === 49.3);
+  check("round 47.67 to 1 decimal", roundScore1(47.67) === 47.7);
+  check("round 40.82 to 1 decimal", roundScore1(40.82) === 40.8);
+
+  const monthly = monthlyPrivacyIndexSeries([
+    { weekId: "2026-07-27", avgScore: 47.67, analyzableCount: 6 },
+    { weekId: "2026-08-03", avgScore: 47.46, analyzableCount: 71 },
+    { weekId: "2026-08-24", avgScore: 49.19, analyzableCount: 144 },
+  ]);
+  check("monthly series groups by weekStart month", monthly.length === 2);
+  check("july monthly label", monthly[0]?.label === "2026년 7월");
+  check("august monthly label", monthly[1]?.label === "2026년 8월");
+  check(
+    "august is analyzable-count weighted",
+    monthly[1]?.value ===
+      roundScore1((47.46 * 71 + 49.19 * 144) / (71 + 144)),
+  );
 
   const headline = buildHeadline(84, 81);
   check("headline 10중 9", headline.includes("10건 중 9건"));

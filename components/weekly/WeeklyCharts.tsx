@@ -1,3 +1,8 @@
+"use client";
+
+import { useId } from "react";
+import { roundScore1 } from "@/lib/weekly/privacyIndex";
+
 export function WeeklyBarList({
   items,
   emphasizeLast = false,
@@ -34,6 +39,267 @@ export function WeeklyBarList({
   );
 }
 
+const GRADE_BANDS = [
+  { min: 80, max: 100, fill: "rgba(16, 185, 129, 0.12)", label: "양호" },
+  { min: 60, max: 80, fill: "rgba(14, 165, 233, 0.10)", label: "보통" },
+  { min: 40, max: 60, fill: "rgba(245, 158, 11, 0.12)", label: "주의" },
+  { min: 0, max: 40, fill: "rgba(234, 88, 12, 0.10)", label: "위험" },
+];
+
+function formatPointValue(value: number, suffix: string): string {
+  const rounded = roundScore1(value);
+  if (rounded == null) return "";
+  return `${rounded.toFixed(1)}${suffix}`;
+}
+
+export function WeeklyTrendChart({
+  title,
+  points,
+  valueSuffix = "",
+  yMin = 0,
+  yMax = 100,
+  variant = "compact",
+  showGradeBands = false,
+}: {
+  title: string;
+  points: Array<{ id?: string; label: string; value: number | null }>;
+  valueSuffix?: string;
+  yMin?: number;
+  yMax?: number;
+  variant?: "hero" | "compact";
+  showGradeBands?: boolean;
+}) {
+  const uid = useId().replace(/:/g, "");
+  const usable = points
+    .map((point) => point.value)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+
+  if (usable.length === 0) {
+    return (
+      <p className="text-sm text-slate-500">{title} 데이터가 충분하지 않습니다.</p>
+    );
+  }
+
+  const width = variant === "hero" ? 720 : 560;
+  const height = variant === "hero" ? 300 : 220;
+  const padL = 46;
+  const padR = 18;
+  const padT = 32;
+  const padB = 38;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const span = yMax - yMin || 1;
+
+  const yFor = (value: number) => padT + (1 - (value - yMin) / span) * plotH;
+  const baseline = yFor(yMin);
+  const n = points.length;
+  const coords = points.map((point, index) => {
+    const x = n === 1 ? padL + plotW / 2 : padL + (index * plotW) / (n - 1);
+    const value = point.value;
+    return {
+      key: point.id || `${point.label}-${index}`,
+      x,
+      y: value == null ? null : yFor(value),
+      label: point.label,
+      value,
+    };
+  });
+  const drawn = coords.filter(
+    (coord): coord is typeof coord & { y: number; value: number } =>
+      coord.y != null && coord.value != null,
+  );
+
+  const line =
+    drawn.length === 0
+      ? ""
+      : drawn
+          .map((coord, index) => `${index === 0 ? "M" : "L"}${coord.x.toFixed(2)},${coord.y.toFixed(2)}`)
+          .join(" ");
+  const area =
+    drawn.length === 0
+      ? ""
+      : `${line} L${drawn[drawn.length - 1].x.toFixed(2)},${baseline.toFixed(2)} L${drawn[0].x.toFixed(2)},${baseline.toFixed(2)} Z`;
+
+  const ticks = showGradeBands ? [100, 80, 60, 40, 0] : [yMax, (yMin + yMax) / 2, yMin];
+  const labelEvery = n > 8 ? 2 : 1;
+  const showValueLabels = n <= 8;
+
+  return (
+    <figure className="weekly-trend-chart">
+      {title ? (
+        <figcaption className="mb-3 text-sm font-semibold text-slate-800">{title}</figcaption>
+      ) : null}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-auto w-full overflow-visible"
+        role="img"
+        aria-label={title || "추세 그래프"}
+      >
+        <defs>
+          <linearGradient id={`weekly-fill-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0f766e" stopOpacity="0.28" />
+            <stop offset="70%" stopColor="#0f766e" stopOpacity="0.06" />
+            <stop offset="100%" stopColor="#0f766e" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id={`weekly-stroke-${uid}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#14b8a6" />
+            <stop offset="55%" stopColor="#0f766e" />
+            <stop offset="100%" stopColor="#134e4a" />
+          </linearGradient>
+          <filter id={`weekly-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {showGradeBands
+          ? GRADE_BANDS.map((band) => {
+              const yTop = yFor(band.max);
+              const yBot = yFor(band.min);
+              return (
+                <rect
+                  key={band.label}
+                  x={padL}
+                  y={yTop}
+                  width={plotW}
+                  height={Math.max(0, yBot - yTop)}
+                  fill={band.fill}
+                />
+              );
+            })
+          : null}
+
+        {ticks.map((tick) => {
+          const y = yFor(tick);
+          return (
+            <g key={tick}>
+              <line
+                x1={padL}
+                x2={width - padR}
+                y1={y}
+                y2={y}
+                stroke="#e2e8f0"
+                strokeWidth="1"
+                strokeDasharray={tick === 0 || tick === yMax ? undefined : "3 4"}
+              />
+              <text
+                x={padL - 8}
+                y={y + 4}
+                textAnchor="end"
+                fontSize="10"
+                fill="#94a3b8"
+              >
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+
+        {showGradeBands
+          ? GRADE_BANDS.map((band) => {
+              const y = (yFor(band.min) + yFor(band.max)) / 2;
+              return (
+                <text
+                  key={`band-${band.label}`}
+                  x={width - padR - 4}
+                  y={y + 3}
+                  textAnchor="end"
+                  fontSize="10"
+                  fill="#64748b"
+                  opacity="0.7"
+                >
+                  {band.label}
+                </text>
+              );
+            })
+          : null}
+
+        {area ? (
+          <path
+            className="weekly-chart-area"
+            d={area}
+            fill={`url(#weekly-fill-${uid})`}
+          />
+        ) : null}
+        {line ? (
+          <path
+            className="weekly-chart-line"
+            d={line}
+            fill="none"
+            stroke={`url(#weekly-stroke-${uid})`}
+            strokeWidth={variant === "hero" ? 3.2 : 2.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={1}
+            filter={`url(#weekly-glow-${uid})`}
+          />
+        ) : null}
+
+        {drawn.map((coord, index) => {
+          const last = index === drawn.length - 1;
+          const delay = 0.85 + index * 0.07;
+          const showAxisLabel =
+            index % labelEvery === 0 || index === drawn.length - 1;
+          const showScore = showValueLabels || last;
+          return (
+            <g key={coord.key}>
+              {last ? (
+                <circle
+                  className="weekly-chart-pulse"
+                  cx={coord.x}
+                  cy={coord.y}
+                  r="8"
+                  fill="#0f766e"
+                />
+              ) : null}
+              <circle
+                className="weekly-chart-point"
+                cx={coord.x}
+                cy={coord.y}
+                r={last ? 6 : 4.2}
+                fill={last ? "#134e4a" : "#14b8a6"}
+                stroke="#ffffff"
+                strokeWidth="2"
+                style={{ animationDelay: `${delay}s` }}
+              />
+              {showScore ? (
+                <text
+                  className="weekly-chart-label"
+                  x={coord.x}
+                  y={coord.y - 12}
+                  textAnchor="middle"
+                  fontSize={variant === "hero" ? 12 : 11}
+                  fontWeight={last ? 700 : 500}
+                  fill={last ? "#134e4a" : "#0f172a"}
+                  style={{ animationDelay: `${delay + 0.12}s` }}
+                >
+                  {formatPointValue(coord.value, valueSuffix)}
+                </text>
+              ) : null}
+              {showAxisLabel ? (
+                <text
+                  className="weekly-chart-label"
+                  x={coord.x}
+                  y={height - 12}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill="#64748b"
+                  style={{ animationDelay: `${delay + 0.12}s` }}
+                >
+                  {coord.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}
+
 export function WeeklyTrendSvg({
   title,
   points,
@@ -43,69 +309,12 @@ export function WeeklyTrendSvg({
   points: Array<{ label: string; value: number | null }>;
   valueSuffix?: string;
 }) {
-  const usable = points.map((p) => p.value).filter((v): v is number => v != null);
-  if (usable.length === 0) {
-    return (
-      <p className="text-sm text-slate-500">{title} 데이터가 충분하지 않습니다.</p>
-    );
-  }
-  const width = 560;
-  const height = 180;
-  const padX = 28;
-  const padY = 24;
-  const min = Math.min(...usable);
-  const max = Math.max(...usable);
-  const span = max - min || 1;
-  const step = points.length > 1 ? (width - padX * 2) / (points.length - 1) : 0;
-  const coords = points.map((p, i) => {
-    const x = padX + i * step;
-    const v = p.value == null ? min : p.value;
-    const y = height - padY - ((v - min) / span) * (height - padY * 2);
-    return { x, y, ...p };
-  });
-  const line = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c.x},${c.y}`).join(" ");
   return (
-    <figure>
-      <figcaption className="mb-2 text-sm font-semibold text-slate-800">{title}</figcaption>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-auto w-full"
-        role="img"
-        aria-label={title}
-      >
-        <path d={line} fill="none" stroke="#0f766e" strokeWidth="3" />
-        {coords.map((c, i) => (
-          <g key={c.label}>
-            <circle
-              cx={c.x}
-              cy={c.y}
-              r={i === coords.length - 1 ? 5.5 : 3.5}
-              fill={i === coords.length - 1 ? "#115e59" : "#14b8a6"}
-            />
-            <text
-              x={c.x}
-              y={height - 6}
-              textAnchor="middle"
-              fontSize="11"
-              fill="#64748b"
-            >
-              {c.label}
-            </text>
-            {c.value != null ? (
-              <text
-                x={c.x}
-                y={c.y - 10}
-                textAnchor="middle"
-                fontSize="11"
-                fill="#0f172a"
-              >
-                {c.value}
-                {valueSuffix}
-              </text>
-            ) : null}
-          </g>
-        ))}
-      </svg>
-    </figure>
+    <WeeklyTrendChart
+      title={title}
+      points={points}
+      valueSuffix={valueSuffix}
+      variant="compact"
+    />
   );
 }

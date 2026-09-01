@@ -51,8 +51,29 @@ function main() {
   check("anonymous cases section", list.includes("대표 개인정보 위험 사례"));
   check("checklist summary", list.includes("운영자 개선 체크리스트 요약"));
   check("report shortcut", list.includes("수집실태 리포트 바로가기"));
-  check("privacy trend", list.includes("개인정보 보호 수준지수 추세 요약"));
+  check("privacy trend panel", list.includes("PrivacyIndexTrendPanel"));
+  check(
+    "privacy trend before featured card",
+    list.lastIndexOf("<PrivacyIndexTrendPanel") >= 0 &&
+      list.lastIndexOf("<PrivacyIndexTrendPanel") < list.indexOf("최신 주간 리포트"),
+  );
   check("grid cards", list.includes("md:grid-cols-2"));
+  check("list uses 1-decimal scores", list.includes("formatScore1"));
+
+  const panel = exists("components/weekly/PrivacyIndexTrendPanel.tsx")
+    ? read("components/weekly/PrivacyIndexTrendPanel.tsx")
+    : "";
+  const charts = exists("components/weekly/WeeklyCharts.tsx")
+    ? read("components/weekly/WeeklyCharts.tsx")
+    : "";
+  check("shared privacy index panel exists", panel.includes("export function PrivacyIndexTrendPanel"));
+  check("weekly monthly toggle", panel.includes("주간") && panel.includes("월간"));
+  check("formula box", panel.includes("WEEKLY_PRIVACY_INDEX_FORMULA") || panel.includes("계산 산식"));
+  check("grade meaning box", panel.includes("점수대별 의미"));
+  check("animated svg chart", charts.includes("weekly-chart-line") && charts.includes("pathLength"));
+  check("no chart library import", !charts.includes("recharts") && !charts.includes("chart.js"));
+  check("detail uses same panel", detail.includes("PrivacyIndexTrendPanel"));
+  check("detail uses shared chart", detail.includes("WeeklyTrendChart"));
 
   check("detail list button", detail.includes("목록보기") && detail.includes('href="/weekly"'));
   check("detail report button", detail.includes("수집실태 리포트 보기"));
@@ -62,6 +83,7 @@ function main() {
   check("detail insights", detail.includes("정책적 인사이트"));
   check("detail checklist", detail.includes("기관·기업 개선 체크리스트"));
   check("no chart library import", !detail.includes("recharts") && !detail.includes("chart.js"));
+  check("detail 1-decimal scores", detail.includes("formatScore1"));
 
   if (failures.length > 0) {
     console.error(`\n${failures.length} check(s) failed`);

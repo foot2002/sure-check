@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { WeeklyBarList, WeeklyTrendSvg } from "@/components/weekly/WeeklyCharts";
+import { WeeklyBarList, WeeklyTrendChart } from "@/components/weekly/WeeklyCharts";
+import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
 import { WeeklyPressCopy } from "@/components/weekly/WeeklyPressCopy";
-import type { WeeklyReportSnapshot } from "@/lib/weekly/types";
+import { formatScore1, roundScore1 } from "@/lib/weekly/privacyIndex";
+import type { WeeklyListCard, WeeklyReportSnapshot } from "@/lib/weekly/types";
 
 function fmt(n: number | null | undefined, suffix = ""): string {
   if (n == null) return "-";
@@ -9,9 +11,12 @@ function fmt(n: number | null | undefined, suffix = ""): string {
 }
 
 function deltaText(delta: number | null): string {
-  if (delta == null) return "전주 대비 비교 불가";
-  if (delta === 0) return "전주 대비 변동 없음";
-  return delta > 0 ? `전주 대비 +${delta}점` : `전주 대비 ${delta}점`;
+  const rounded = roundScore1(delta);
+  if (rounded == null) return "전주 대비 비교 불가";
+  if (rounded === 0) return "전주 대비 변동 없음";
+  return rounded > 0
+    ? `전주 대비 +${rounded.toFixed(1)}점`
+    : `전주 대비 ${rounded.toFixed(1)}점`;
 }
 
 function gradeClass(grade: string | null): string {
@@ -22,11 +27,30 @@ function gradeClass(grade: string | null): string {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
-export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot }) {
+export function WeeklyDetailView({
+  snapshot,
+  trendCards,
+}: {
+  snapshot: WeeklyReportSnapshot;
+  trendCards?: WeeklyListCard[];
+}) {
   const m = snapshot.metrics;
+  const trendRows =
+    trendCards && trendCards.length > 0
+      ? trendCards.map((card) => ({
+          weekId: card.weekId,
+          shortRange: card.shortRange,
+          avgScore: card.avgScore,
+          analyzableCount: card.analyzableCount,
+        }))
+      : snapshot.trends.map((row) => ({
+          weekId: row.weekId,
+          shortRange: row.shortRange,
+          avgScore: row.avgScore,
+          analyzableCount: row.analyzableCount,
+        }));
   const trendShort = snapshot.trends.map((row) => ({
     label: row.shortRange,
-    score: row.avgScore,
     pii: row.personalInfoRate,
     attention: row.attentionNeededRate,
   }));
@@ -49,17 +73,20 @@ export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot 
       <section className={`rounded-2xl border px-5 py-5 md:px-6 ${gradeClass(m.grade)}`}>
         <p className="text-xs font-semibold">이번 주 온라인 수집 개인정보 보호 수준지수</p>
         <p className="mt-2 text-3xl font-bold">
-          {m.avgScore ?? "-"}점{m.grade ? ` · ${m.grade}` : ""}
+          {formatScore1(m.avgScore)}
+          {m.grade ? ` · ${m.grade}` : ""}
         </p>
         <p className="mt-2 text-sm">
           {deltaText(snapshot.summary.scoreDelta)} · 4주 평균{" "}
-          {snapshot.summary.fourWeekAvgScore ?? "-"}점
+          {formatScore1(snapshot.summary.fourWeekAvgScore)}
         </p>
         <p className="mt-3 text-xs leading-relaxed opacity-80">
           본 지수는 공개 설문 화면 기준 자동진단 결과를 바탕으로 산출한 참고
           지표이며, 개별 설문의 위법 여부를 확정하는 기준은 아닙니다.
         </p>
       </section>
+
+      <PrivacyIndexTrendPanel rows={trendRows} currentWeekId={snapshot.weekId} />
 
       <section>
         <h2 className="text-xl font-bold text-slate-900">핵심 통계</h2>
@@ -70,7 +97,7 @@ export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot 
             ["민감정보 포함", `${fmt(m.sensitiveInfoCount, "건")} / ${m.sensitiveInfoRate}%`, "건강 등 민감정보로 볼 수 있는 문항이 확인된 설문입니다."],
             ["고위험정보 포함", `${fmt(m.highRiskInfoCount, "건")} / ${m.highRiskInfoRate}%`, "주민등록번호 등 고위험정보 신호가 확인된 설문입니다."],
             ["주의 필요", `${fmt(m.attentionNeededCount, "건")} / ${m.attentionNeededRate}%`, "응답자 관점에서 주의 또는 추가 확인이 필요한 설문입니다."],
-            ["평균 개인정보 보호 점수", `${m.avgScore ?? "-"}점`, "자동진단 점수 평균입니다."],
+            ["평균 개인정보 보호 점수", formatScore1(m.avgScore), "자동진단 점수 평균입니다."],
             ["공공부문 외부도구 확인 필요", fmt(m.publicExternalToolCount, "건"), "공공부문 설문이 외부 도구로 운영되어 확인이 필요한 건수입니다."],
             ["증빙 캡처 확보", fmt(m.evidenceCaptureCount, "건"), "운영 검토용 화면 캡처가 확보된 건수입니다. 원본은 공개하지 않습니다."],
           ].map(([title, value, hint]) => (
@@ -88,26 +115,21 @@ export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot 
         <p className="mt-1 text-sm text-slate-500">
           최근 {snapshot.trends.length}주 · 출처: 주간 리포트 스냅샷
         </p>
-        <div className="mt-4 grid gap-6 lg:grid-cols-3">
+        <div className="mt-4 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <WeeklyTrendSvg
-              title="개인정보 보호 수준지수"
-              points={trendShort.map((row) => ({ label: row.label, value: row.score }))}
-              valueSuffix="점"
-            />
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <WeeklyTrendSvg
+            <WeeklyTrendChart
               title="개인정보 포함 비율"
               points={trendShort.map((row) => ({ label: row.label, value: row.pii }))}
               valueSuffix="%"
+              variant="compact"
             />
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <WeeklyTrendSvg
+            <WeeklyTrendChart
               title="주의 필요 설문 비율"
               points={trendShort.map((row) => ({ label: row.label, value: row.attention }))}
               valueSuffix="%"
+              variant="compact"
             />
           </div>
         </div>
@@ -165,7 +187,7 @@ export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot 
                   <td className="px-4 py-3">{row.sensitiveInfoRate}%</td>
                   <td className="px-4 py-3">{row.highRiskInfoRate}%</td>
                   <td className="px-4 py-3">{row.attentionNeededRate}%</td>
-                  <td className="px-4 py-3">{row.avgOverallScore ?? "-"}</td>
+                  <td className="px-4 py-3">{formatScore1(row.avgOverallScore, "")}</td>
                 </tr>
               ))}
             </tbody>
@@ -204,7 +226,7 @@ export function WeeklyDetailView({ snapshot }: { snapshot: WeeklyReportSnapshot 
               <h3 className="font-bold text-slate-900">{row.typeLabel}</h3>
               <p className="mt-2 text-sm text-slate-600">
                 {row.surveyCount}건 · 개인정보 {row.personalInfoRate}% · 주의 필요{" "}
-                {row.attentionNeededRate}% · 평균 {row.avgOverallScore ?? "-"}점
+                {row.attentionNeededRate}% · 평균 {formatScore1(row.avgOverallScore)}
               </p>
             </article>
           ))}

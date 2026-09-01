@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WeeklyDetailView } from "@/components/weekly/WeeklyDetailView";
-import { getPublishedWeeklyReport } from "@/lib/weekly/repository";
+import { getPublishedWeeklyReport, listPublishedWeeklyCards } from "@/lib/weekly/repository";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,11 +37,13 @@ export default async function WeeklyDetailPage({
   }
   if (!row) notFound();
 
+  const trendCards = await listPublishedWeeklyCards().catch(() => []);
+
   return (
     <div className="flex min-h-screen flex-col bg-[#f8fafc]">
       <SiteHeader />
       <main className="mx-auto w-full max-w-[72rem] flex-1 px-5 py-8 md:px-8 md:py-10">
-        <WeeklyDetailView snapshot={row.snapshot} />
+        <WeeklyDetailView snapshot={row.snapshot} trendCards={trendCards} />
       </main>
       <SiteFooter />
     </div>

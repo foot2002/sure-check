@@ -219,8 +219,11 @@ function main() {
   const weeklyUi = [
     read("components/weekly/WeeklyListView.tsx"),
     read("components/weekly/WeeklyDetailView.tsx"),
+    read("components/weekly/PrivacyIndexTrendPanel.tsx"),
+    read("components/weekly/WeeklyCharts.tsx"),
     read("lib/weekly/copy.ts"),
     read("lib/weekly/anonymousCases.ts"),
+    read("lib/weekly/privacyIndex.ts"),
   ].join("\n");
   const forbidden = ["불법 설문", "위반 기관", "위반 확정", "신고 대상 확정"];
   for (const phrase of forbidden) {
