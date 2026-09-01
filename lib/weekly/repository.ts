@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { normalizeWeeklySnapshotCopy } from "@/lib/weekly/copy";
 import { assertWeeklySnapshotSafe } from "@/lib/weekly/safety";
 import { isCompletedReportWeek } from "@/lib/weekly/week";
 import type {
@@ -34,8 +35,8 @@ function isMissingWeeklyTable(message: string): boolean {
 }
 
 function mapRow(row: DbRow): WeeklyReportRow {
-  const snapshot = row.snapshot_json;
-  assertWeeklySnapshotSafe(snapshot);
+  assertWeeklySnapshotSafe(row.snapshot_json);
+  const snapshot = normalizeWeeklySnapshotCopy(row.snapshot_json);
   return {
     id: row.id,
     weekId: row.week_id,
@@ -56,7 +57,9 @@ function toListCard(row: WeeklyReportRow): WeeklyListCard {
     shortRange: row.snapshot.shortRange,
     headline: s.headline,
     analyzableCount: s.analyzableCount,
+    personalInfoCount: s.personalInfoCount,
     personalInfoRate: s.personalInfoRate,
+    attentionNeededCount: s.attentionNeededCount,
     attentionNeededRate: s.attentionNeededRate,
     avgScore: s.avgScore,
     grade: s.grade,

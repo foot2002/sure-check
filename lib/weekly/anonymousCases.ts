@@ -48,7 +48,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "내 정보가 언제까지 보관되고 누가 관리하는지 알기 어렵습니다.",
       operatorFix:
         "설문 첫 화면에 개인정보 수집·이용 안내문을 명확히 표시해야 합니다.",
-      similarCount: Math.max(input.personalInfoCount, 1),
+      similarCount: Math.min(
+        input.analyzableCount,
+        Math.max(input.personalInfoCount, 1),
+      ),
     });
   }
 
@@ -68,7 +71,7 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "학생·보호자 정보가 포함될 수 있는데, 수집 목적과 동의 안내가 불분명할 수 있습니다.",
       operatorFix:
         "수집 목적과 보호자 동의 안내를 설문 첫 화면에 구체적으로 적어야 합니다.",
-      similarCount: input.schoolCount,
+      similarCount: Math.min(input.analyzableCount, input.schoolCount),
     });
   }
 
@@ -85,7 +88,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "의견 조사처럼 보여도 연락처가 함께 수집되면 보관·파기 기준을 알기 어렵습니다.",
       operatorFix:
         "만족도 조사라도 개인정보를 받으면 보유기간과 파기 기준을 안내해야 합니다.",
-      similarCount: Math.max(1, Math.round(input.personalInfoCount * 0.4)),
+      similarCount: Math.min(
+        input.analyzableCount,
+        Math.max(1, input.emailCount),
+      ),
     });
   }
 
@@ -102,7 +108,12 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "당첨 안내에 필요하다는 이유로 연락처가 수집되지만, 이후 이용 범위를 알기 어렵습니다.",
       operatorFix:
         "경품 안내 목적과 보유기간, 담당자 연락처를 응모 화면에 함께 표시해야 합니다.",
-      similarCount: Math.max(1, Math.round(input.personalInfoCount * 0.25)),
+      similarCount: Math.min(
+        input.analyzableCount,
+        input.nameCount,
+        input.phoneCount,
+        input.emailCount,
+      ),
     });
   }
 
@@ -119,7 +130,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "건강·민원 정보가 포함될 수 있어, 목적과 동의 안내가 없으면 제공 여부를 판단하기 어렵습니다.",
       operatorFix:
         "민감정보가 포함될 수 있으면 수집 목적과 동의 안내를 더 구체적으로 적어야 합니다.",
-      similarCount: Math.max(input.sensitiveCount + input.highRiskCount, input.medicalCount, 1),
+      similarCount: Math.min(
+        input.analyzableCount,
+        Math.max(input.sensitiveCount, input.highRiskCount, input.medicalCount, 1),
+      ),
     });
   }
 
@@ -139,7 +153,10 @@ export function buildAnonymousCases(input: CaseInput): WeeklyAnonymousCase[] {
         "공공 서비스로 보이지만 외부 도구로 정보가 처리될 수 있는지 화면에서 알기 어렵습니다.",
       operatorFix:
         "외부 설문도구 사용 여부와 처리경로, 보안 기준 확인 사항을 안내해야 합니다.",
-      similarCount: Math.max(input.publicExternalToolCount, input.publicCount, 1),
+      similarCount: Math.min(
+        input.analyzableCount,
+        Math.max(input.publicExternalToolCount, input.publicCount, 1),
+      ),
     });
   }
 

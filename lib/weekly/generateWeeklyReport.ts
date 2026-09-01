@@ -6,11 +6,15 @@ import {
   WEEKLY_DISCLAIMER,
   buildHeadline,
   buildPressSummary,
+  buildWeeklyCountBullets,
   buildWeeklyInsights,
+  buildWeeklyOneLiner,
 } from "@/lib/weekly/copy";
 import { isPublicWeeklyIssue, weeklyIssueDescription } from "@/lib/weekly/issueCopy";
 import {
   WEEKLY_PRIVACY_INDEX_DISCLAIMER,
+  fourWeekWeightedPrivacyAverage,
+  roundScore1,
   weeklyPrivacyGrade,
 } from "@/lib/weekly/privacyIndex";
 import { assertWeeklySnapshotSafe } from "@/lib/weekly/safety";
@@ -140,10 +144,14 @@ export async function buildWeeklySnapshot(
 
   const headline = buildHeadline(analyzable, dash.summary.personalInfoCount);
   const grade = weeklyPrivacyGrade(dash.summary.avgOverallScore);
-  const oneLiner =
-    analyzable > 0
-      ? `${week.label} 분석 완료 설문 ${analyzable}건 중 ${dash.summary.personalInfoCount}건에서 개인정보 수집 신호가 확인되었습니다.`
-      : `${week.label}에는 분석 가능한 진단 완료 설문이 충분하지 않습니다.`;
+  const oneLiner = buildWeeklyOneLiner(
+    week.label,
+    analyzable,
+    dash.summary.personalInfoCount,
+  );
+  const thirdBullet = publicNarrative
+    ? "공공부문 설문에서는 외부 설문도구 사용 및 보안 기준 확인 필요 신호가 반복적으로 나타났습니다."
+    : "고지 항목 미흡과 확인 필요 신호가 반복적으로 나타났습니다.";
 
   const metrics: WeeklyMetrics = {
     analyzableCount: analyzable,
@@ -172,13 +180,12 @@ export async function buildWeeklySnapshot(
     summary: {
       headline,
       oneLiner,
-      bullets: [
-        `이번 주 분석 완료 설문 ${analyzable}건 중 ${dash.summary.personalInfoCount}건에서 개인정보 수집 신호가 확인되었습니다.`,
-        `${dash.summary.attentionNeededCount}건은 응답자 관점에서 주의 또는 추가 확인이 필요한 설문으로 분류되었습니다.`,
-        publicNarrative
-          ? "공공부문 설문에서는 외부 설문도구 사용 및 보안 기준 확인 필요 신호가 반복적으로 나타났습니다."
-          : "고지 항목 미흡과 확인 필요 신호가 반복적으로 나타났습니다.",
-      ],
+      bullets: buildWeeklyCountBullets({
+        analyzable,
+        personalInfoCount: dash.summary.personalInfoCount,
+        attentionNeededCount: dash.summary.attentionNeededCount,
+        thirdBullet,
+      }),
       analyzableCount: analyzable,
       personalInfoCount: dash.summary.personalInfoCount,
       personalInfoRate: dash.summary.personalInfoRate,
@@ -210,7 +217,7 @@ export async function buildWeeklySnapshot(
       personalInfoRate: row.personalInfoRate,
       sensitiveInfoRate: row.sensitiveInfoRate,
       highRiskInfoRate: row.highRiskInfoRate,
-      attentionNeededRate: dash.summary.attentionNeededRate,
+      attentionNeededRate: row.attentionNeededRate,
       avgOverallScore: row.avgOverallScore,
     })),
     organizationStats: dash.organizationTypeStats.map((row) => ({
@@ -219,7 +226,7 @@ export async function buildWeeklySnapshot(
       personalInfoRate: row.personalInfoRate,
       sensitiveInfoRate: row.sensitiveInfoRate,
       highRiskInfoRate: row.highRiskInfoRate,
-      attentionNeededRate: dash.summary.attentionNeededRate,
+      attentionNeededRate: row.attentionNeededRate,
       avgOverallScore: row.avgOverallScore,
     })),
     publicSector: {
@@ -268,14 +275,11 @@ export async function buildWeeklySnapshot(
       publicNarrative: publicNarrative || null,
     }),
     quality: {
-      completedDiagnosisCount: dash.diagnosisQualityStats.completedDiagnosisCount,
+      completedDiagnosisCount: analyzable,
       limitedQuestionAnalysisCount:
         dash.diagnosisQualityStats.limitedQuestionAnalysisCount,
-      closedExcludedCount: Math.max(
-        0,
-        dash.rawTotalScans - analyzable - dash.summary.judgmentUnknownCount,
-      ),
-      restrictedExcludedCount: dash.summary.judgmentUnknownCount,
+      closedExcludedCount: Math.max(0, dash.rawTotalScans - analyzable),
+      restrictedExcludedCount: 0,
       evidenceCaptureCount: dash.diagnosisQualityStats.evidenceCaptureCount,
     },
     disclaimer: `${WEEKLY_DISCLAIMER} ${WEEKLY_PRIVACY_INDEX_DISCLAIMER}`,
@@ -303,16 +307,15 @@ export function attachTrends(
       analyzableCount: row.metrics.analyzableCount,
     }));
     const prev = index > 0 ? chronological[index - 1] : null;
-    const four = window
-      .map((row) => row.metrics.avgScore)
-      .filter((v): v is number => v != null);
-    const fourWeekAvg =
-      four.length > 0
-        ? Math.round((four.reduce((a, b) => a + b, 0) / four.length) * 10) / 10
-        : snap.metrics.avgScore;
+    const fourWeekAvg = fourWeekWeightedPrivacyAverage(
+      chronological.slice(Math.max(0, index - 3), index + 1).map((row) => ({
+        avgScore: row.metrics.avgScore,
+        analyzableCount: row.metrics.analyzableCount,
+      })),
+    );
     const scoreDelta =
       snap.metrics.avgScore != null && prev?.metrics.avgScore != null
-        ? Math.round((snap.metrics.avgScore - prev.metrics.avgScore) * 10) / 10
+        ? roundScore1(snap.metrics.avgScore - prev.metrics.avgScore)
         : null;
     return {
       ...snap,

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { formatWeekLabel, getKstWeek, isCompletedReportWeek, latestCompletedKstWeek, mondayOfIso } from "../lib/weekly/week";
-import { weeklyPrivacyGrade, monthlyPrivacyIndexSeries, privacyIndexChartRange, roundScore1 } from "../lib/weekly/privacyIndex";
+import { weeklyPrivacyGrade, monthlyPrivacyIndexSeries, privacyIndexChartRange, roundScore1, fourWeekWeightedPrivacyAverage } from "../lib/weekly/privacyIndex";
 import { buildHeadline, buildPressSummary, buildWeeklyInsights } from "../lib/weekly/copy";
 import { buildAnonymousCases } from "../lib/weekly/anonymousCases";
 import { isPublicWeeklyIssue } from "../lib/weekly/issueCopy";
@@ -104,7 +104,29 @@ function main() {
   );
 
   const headline = buildHeadline(84, 81);
-  check("headline 10중 9", headline.includes("10건 중 9건"));
+  check("headline uses actual counts", headline.includes("84건 중 81건"));
+  check("headline does not use 10건 ratio", !headline.includes("10건 중"));
+  check(
+    "headline empty week",
+    buildHeadline(0, 0).includes("진단이 충분하지 않습니다"),
+  );
+  check(
+    "headline 144/132",
+    buildHeadline(144, 132) ===
+      "공개 온라인 설문 144건 중 132건에서 개인정보 수집 신호 확인",
+  );
+
+  const fourAvg = fourWeekWeightedPrivacyAverage([
+    { avgScore: 40, analyzableCount: 10 },
+    { avgScore: 50, analyzableCount: 30 },
+    { avgScore: 60, analyzableCount: 10 },
+    { avgScore: 70, analyzableCount: 50 },
+    { avgScore: 80, analyzableCount: 10 },
+  ]);
+  check(
+    "4-week avg uses last 4 weeks weighted by diagnosis count",
+    fourAvg === roundScore1((50 * 30 + 60 * 10 + 70 * 50 + 80 * 10) / 100),
+  );
 
   const insights = buildWeeklyInsights({
     personalInfoRate: 96,
@@ -192,6 +214,19 @@ function main() {
   const gen = read("lib/weekly/generateWeeklyReport.ts");
   check("uses completed dashboard range", gen.includes("buildPublicDashboard"));
   check("stores snapshot", read("lib/weekly/repository.ts").includes("snapshot_json"));
+  check(
+    "headline helper has no 10-survey ratio",
+    !read("lib/weekly/copy.ts").includes("10건 중") &&
+      !read("lib/weekly/copy.ts").includes("perTen"),
+  );
+  check(
+    "reads normalize stored copy",
+    read("lib/weekly/repository.ts").includes("normalizeWeeklySnapshotCopy"),
+  );
+  check(
+    "platform attention is per-group",
+    gen.includes("attentionNeededRate: row.attentionNeededRate"),
+  );
   check("admin generate route", exists("app/api/report/admin/weekly/generate/route.ts"));
   check("published-only public list", read("lib/weekly/repository.ts").includes('status: "published"'));
   check(

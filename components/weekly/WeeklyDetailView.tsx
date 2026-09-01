@@ -2,7 +2,7 @@ import Link from "next/link";
 import { WeeklyBarList, WeeklyTrendChart } from "@/components/weekly/WeeklyCharts";
 import { PrivacyIndexTrendPanel } from "@/components/weekly/PrivacyIndexTrendPanel";
 import { WeeklyPressCopy } from "@/components/weekly/WeeklyPressCopy";
-import { formatScore1, roundScore1 } from "@/lib/weekly/privacyIndex";
+import { formatScore1, fourWeekWeightedPrivacyAverage, roundScore1 } from "@/lib/weekly/privacyIndex";
 import type { WeeklyListCard, WeeklyReportSnapshot } from "@/lib/weekly/types";
 import { isCompletedReportWeek } from "@/lib/weekly/week";
 
@@ -53,6 +53,15 @@ export function WeeklyDetailView({
           analyzableCount: row.analyzableCount,
         }))
   ).filter((row) => keepTrend(row.weekId));
+  const fourWeekAvgScore = fourWeekWeightedPrivacyAverage(
+    [...trendRows]
+      .sort((a, b) => a.weekId.localeCompare(b.weekId))
+      .filter((row) => row.weekId <= snapshot.weekId)
+      .map((row) => ({
+        avgScore: row.avgScore,
+        analyzableCount: row.analyzableCount,
+      })),
+  );
   const trendShort = snapshot.trends
     .filter((row) => keepTrend(row.weekId))
     .map((row) => ({
@@ -84,7 +93,7 @@ export function WeeklyDetailView({
         </p>
         <p className="mt-2 text-sm">
           {deltaText(snapshot.summary.scoreDelta)} · 4주 평균{" "}
-          {formatScore1(snapshot.summary.fourWeekAvgScore)}
+          {formatScore1(fourWeekAvgScore ?? snapshot.summary.fourWeekAvgScore)}
         </p>
         <p className="mt-3 text-xs leading-relaxed opacity-80">
           본 지수는 공개 설문 화면 기준 자동진단 결과를 바탕으로 산출한 참고
@@ -350,11 +359,15 @@ export function WeeklyDetailView({
       <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 text-sm leading-relaxed text-amber-950">
         <h2 className="text-base font-bold">진단 신뢰도 및 한계</h2>
         <p className="mt-3">
-          분석 완료 {snapshot.quality.completedDiagnosisCount}건 · 문항 분석 제한{" "}
-          {snapshot.quality.limitedQuestionAnalysisCount}건 · 종료 설문 제외{" "}
-          {snapshot.quality.closedExcludedCount}건 · 접근제한 제외{" "}
-          {snapshot.quality.restrictedExcludedCount}건 · 증빙 캡처 확보{" "}
-          {snapshot.quality.evidenceCaptureCount}건
+          분석 완료 {fmt(snapshot.quality.completedDiagnosisCount, "건")} · 분석 제외{" "}
+          {fmt(snapshot.quality.closedExcludedCount, "건")}
+          {snapshot.quality.limitedQuestionAnalysisCount > 0
+            ? ` · 문항 분석 제한 ${fmt(snapshot.quality.limitedQuestionAnalysisCount, "건")}`
+            : ""}
+          {snapshot.quality.restrictedExcludedCount > 0
+            ? ` · 접근제한 제외 ${fmt(snapshot.quality.restrictedExcludedCount, "건")}`
+            : ""}{" "}
+          · 증빙 캡처 확보 {fmt(snapshot.quality.evidenceCaptureCount, "건")}
         </p>
         <p className="mt-3">{snapshot.disclaimer}</p>
       </section>

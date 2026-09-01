@@ -34,7 +34,7 @@ function mockSnapshot(): WeeklyReportSnapshot {
     generatedAt: "2026-09-01T00:00:00.000Z",
     isPartial: false,
     summary: {
-      headline: "공개 온라인 설문 10건 중 9건에서 개인정보 수집 신호 확인",
+      headline: "공개 온라인 설문 84건 중 81건에서 개인정보 수집 신호 확인",
       oneLiner: "분석 완료 설문 84건 중 81건에서 개인정보 수집 신호가 확인되었습니다.",
       bullets: [
         "이번 주 분석 완료 설문 84건 중 81건에서 개인정보 수집 신호가 확인되었습니다.",
@@ -152,7 +152,7 @@ function mockSnapshot(): WeeklyReportSnapshot {
     ],
     checklist: ["수집 목적을 명확히 안내했는가"],
     pressSummary:
-      "공개 온라인 설문 10건 중 9건에서 개인정보 수집 신호 확인\n본 통계는 공개 설문 화면 기준 자동진단 결과이며, 개별 설문의 위법 여부를 확정하는 자료는 아닙니다.",
+      "공개 온라인 설문 84건 중 81건에서 개인정보 수집 신호 확인\n본 통계는 공개 설문 화면 기준 자동진단 결과이며, 개별 설문의 위법 여부를 확정하는 자료는 아닙니다.",
     quality: {
       completedDiagnosisCount: 84,
       limitedQuestionAnalysisCount: 3,

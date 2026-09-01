@@ -1,4 +1,14 @@
-import type { WeeklyInsight } from "@/lib/weekly/types";
+import type { WeeklyInsight, WeeklyReportSnapshot } from "@/lib/weekly/types";
+
+export function formatWeeklyCount(n: number): string {
+  return n.toLocaleString("ko-KR");
+}
+
+/** Count / total as a one-decimal percent, matching dashboard rounding. */
+export function weeklyRate(count: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((count / total) * 1000) / 10;
+}
 
 export function buildWeeklyInsights(input: {
   personalInfoRate: number;
@@ -64,13 +74,87 @@ export function buildHeadline(analyzable: number, personalInfoCount: number): st
   if (analyzable <= 0) {
     return "이번 주 분석 가능한 공개 설문 진단이 충분하지 않습니다";
   }
-  const rate = personalInfoCount / analyzable;
-  if (rate >= 0.85) {
-    const perTen =
-      rate >= 1 ? 10 : Math.max(1, Math.min(9, Math.floor(rate * 10)));
-    return `공개 온라인 설문 10건 중 ${perTen}건에서 개인정보 수집 신호 확인`;
+  return `공개 온라인 설문 ${formatWeeklyCount(analyzable)}건 중 ${formatWeeklyCount(personalInfoCount)}건에서 개인정보 수집 신호 확인`;
+}
+
+export function buildWeeklyOneLiner(
+  weekLabel: string,
+  analyzable: number,
+  personalInfoCount: number,
+): string {
+  if (analyzable <= 0) {
+    return `${weekLabel}에는 분석 가능한 진단 완료 설문이 충분하지 않습니다.`;
   }
-  return `공개 온라인 설문 ${analyzable}건 중 ${personalInfoCount}건에서 개인정보 수집 신호 확인`;
+  return `${weekLabel} 분석 완료 설문 ${formatWeeklyCount(analyzable)}건 중 ${formatWeeklyCount(personalInfoCount)}건에서 개인정보 수집 신호가 확인되었습니다.`;
+}
+
+export function buildWeeklyCountBullets(input: {
+  analyzable: number;
+  personalInfoCount: number;
+  attentionNeededCount: number;
+  thirdBullet: string;
+}): [string, string, string] {
+  return [
+    `이번 주 분석 완료 설문 ${formatWeeklyCount(input.analyzable)}건 중 ${formatWeeklyCount(input.personalInfoCount)}건에서 개인정보 수집 신호가 확인되었습니다.`,
+    `${formatWeeklyCount(input.attentionNeededCount)}건은 응답자 관점에서 주의 또는 추가 확인이 필요한 설문으로 분류되었습니다.`,
+    input.thirdBullet,
+  ];
+}
+
+/** Rebuild title/copy from stored diagnosis counts so old 10-건 비율 제목도 즉시 교정됩니다. */
+export function normalizeWeeklySnapshotCopy(
+  snapshot: WeeklyReportSnapshot,
+): WeeklyReportSnapshot {
+  const m = snapshot.metrics;
+  const analyzable = m.analyzableCount;
+  const personalInfoRate = weeklyRate(m.personalInfoCount, analyzable);
+  const attentionNeededRate = weeklyRate(m.attentionNeededCount, analyzable);
+  const sensitiveInfoRate = weeklyRate(m.sensitiveInfoCount, analyzable);
+  const highRiskInfoRate = weeklyRate(m.highRiskInfoCount, analyzable);
+  const headline = buildHeadline(analyzable, m.personalInfoCount);
+  const oneLiner = buildWeeklyOneLiner(
+    snapshot.weekLabel,
+    analyzable,
+    m.personalInfoCount,
+  );
+  const thirdBullet =
+    snapshot.summary.bullets[2] ||
+    "고지 항목 미흡과 확인 필요 신호가 반복적으로 나타났습니다.";
+  const bullets = buildWeeklyCountBullets({
+    analyzable,
+    personalInfoCount: m.personalInfoCount,
+    attentionNeededCount: m.attentionNeededCount,
+    thirdBullet,
+  });
+  return {
+    ...snapshot,
+    summary: {
+      ...snapshot.summary,
+      headline,
+      oneLiner,
+      bullets,
+      analyzableCount: analyzable,
+      personalInfoCount: m.personalInfoCount,
+      personalInfoRate,
+      attentionNeededCount: m.attentionNeededCount,
+      attentionNeededRate,
+    },
+    metrics: {
+      ...m,
+      personalInfoRate,
+      attentionNeededRate,
+      sensitiveInfoRate,
+      highRiskInfoRate,
+    },
+    pressSummary: buildPressSummary({
+      weekLabel: snapshot.weekLabel,
+      headline,
+      analyzable,
+      personalInfoCount: m.personalInfoCount,
+      attentionNeededCount: m.attentionNeededCount,
+      publicNarrative: snapshot.publicSector.narrative || null,
+    }),
+  };
 }
 
 export function buildPressSummary(input: {
@@ -84,8 +168,8 @@ export function buildPressSummary(input: {
   const lines = [
     input.headline,
     "",
-    `- 이번 주 분석 완료 설문 ${input.analyzable}건 중 ${input.personalInfoCount}건에서 개인정보 수집 신호가 확인되었습니다.`,
-    `- ${input.attentionNeededCount}건은 응답자 관점에서 주의 또는 추가 확인이 필요한 설문으로 분류되었습니다.`,
+    `- 이번 주 분석 완료 설문 ${formatWeeklyCount(input.analyzable)}건 중 ${formatWeeklyCount(input.personalInfoCount)}건에서 개인정보 수집 신호가 확인되었습니다.`,
+    `- ${formatWeeklyCount(input.attentionNeededCount)}건은 응답자 관점에서 주의 또는 추가 확인이 필요한 설문으로 분류되었습니다.`,
   ];
   if (input.publicNarrative) {
     lines.push(`- ${input.publicNarrative}`);

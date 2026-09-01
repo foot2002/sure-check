@@ -55,6 +55,7 @@ export interface PublicDashboardPlatformRow {
   personalInfoRate: number;
   sensitiveInfoRate: number;
   highRiskInfoRate: number;
+  attentionNeededRate: number;
   avgOverallScore: number | null;
 }
 
@@ -71,6 +72,7 @@ export interface PublicDashboardOrgTypeRow {
   personalInfoRate: number;
   sensitiveInfoRate: number;
   highRiskInfoRate: number;
+  attentionNeededRate: number;
   avgOverallScore: number | null;
 }
 
@@ -384,6 +386,17 @@ const ATTENTION_NEEDED_KEYS = [
   "NOTICE_CHECK",
   "SECURITY_CHECK",
 ] as const;
+
+function surveyNeedsAttention(survey: {
+  safety_type_id: string | null;
+  user_decision_label: string | null;
+}): boolean {
+  const resolved = resolveDecision(
+    survey.safety_type_id,
+    survey.user_decision_label,
+  );
+  return (ATTENTION_NEEDED_KEYS as readonly string[]).includes(resolved.key);
+}
 
 function buildInsights(input: {
   range: PublicDashboardRange;
@@ -1026,6 +1039,7 @@ export async function buildPublicDashboard(
       personalInfoCount: number;
       sensitiveInfoCount: number;
       highRiskInfoCount: number;
+      attentionNeededCount: number;
       scores: number[];
     }
   >();
@@ -1035,6 +1049,7 @@ export async function buildPublicDashboard(
       personalInfoCount: 0,
       sensitiveInfoCount: 0,
       highRiskInfoCount: 0,
+      attentionNeededCount: 0,
       scores: [],
     });
   }
@@ -1048,6 +1063,7 @@ export async function buildPublicDashboard(
     if (survey.has_personal_info) bucket.personalInfoCount += 1;
     if (survey.has_sensitive_info) bucket.sensitiveInfoCount += 1;
     if (survey.has_high_risk_info) bucket.highRiskInfoCount += 1;
+    if (surveyNeedsAttention(survey)) bucket.attentionNeededCount += 1;
     const score = scoreBySurveyId.get(survey.id);
     if (score != null) bucket.scores.push(score);
   }
@@ -1058,6 +1074,7 @@ export async function buildPublicDashboard(
       personalInfoRate: rate(bucket.personalInfoCount, bucket.surveyCount),
       sensitiveInfoRate: rate(bucket.sensitiveInfoCount, bucket.surveyCount),
       highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
+      attentionNeededRate: rate(bucket.attentionNeededCount, bucket.surveyCount),
       avgOverallScore: avg(bucket.scores),
     }))
     .filter((row) => row.surveyCount > 0 || totalScans === 0)
@@ -1327,6 +1344,8 @@ export async function buildPublicDashboard(
       personalInfoCount: number;
       sensitiveInfoCount: number;
       highRiskInfoCount: number;
+      attentionNeededCount: number;
+      scores: number[];
     }
   >();
   for (const label of Object.values(SUBJECT_LABEL)) {
@@ -1335,6 +1354,8 @@ export async function buildPublicDashboard(
       personalInfoCount: 0,
       sensitiveInfoCount: 0,
       highRiskInfoCount: 0,
+      attentionNeededCount: 0,
+      scores: [],
     });
   }
   for (const row of surveys) {
@@ -1344,6 +1365,9 @@ export async function buildPublicDashboard(
     if (row.has_personal_info) bucket.personalInfoCount += 1;
     if (row.has_sensitive_info) bucket.sensitiveInfoCount += 1;
     if (row.has_high_risk_info) bucket.highRiskInfoCount += 1;
+    if (surveyNeedsAttention(row)) bucket.attentionNeededCount += 1;
+    const score = scoreBySurveyId.get(row.id);
+    if (score != null) bucket.scores.push(score);
   }
   const organizationTypeStats: PublicDashboardOrgTypeRow[] = [...orgMap.entries()]
     .map(([typeLabel, bucket]) => ({
@@ -1352,7 +1376,8 @@ export async function buildPublicDashboard(
       personalInfoRate: rate(bucket.personalInfoCount, bucket.surveyCount),
       sensitiveInfoRate: rate(bucket.sensitiveInfoCount, bucket.surveyCount),
       highRiskInfoRate: rate(bucket.highRiskInfoCount, bucket.surveyCount),
-      avgOverallScore: null,
+      attentionNeededRate: rate(bucket.attentionNeededCount, bucket.surveyCount),
+      avgOverallScore: avg(bucket.scores),
     }))
     .filter((row) => row.surveyCount > 0)
     .sort((a, b) => b.surveyCount - a.surveyCount);
@@ -1385,6 +1410,7 @@ export async function buildPublicDashboard(
     personalInfoRate: 0,
     sensitiveInfoRate: 0,
     highRiskInfoRate: 0,
+    attentionNeededRate: 0,
     avgOverallScore: null,
   }));
 

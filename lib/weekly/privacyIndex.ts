@@ -170,3 +170,20 @@ export function monthlyPrivacyIndexSeries(
       value: roundScore1(bucket.weighted / bucket.weight),
     }));
 }
+
+/** Last 4 weeks, weighted by analyzable diagnosis count. */
+export function fourWeekWeightedPrivacyAverage(
+  rows: Array<{ avgScore: number | null; analyzableCount: number }>,
+): number | null {
+  const window = rows.slice(-4);
+  let weighted = 0;
+  let weight = 0;
+  for (const row of window) {
+    if (row.avgScore == null || !Number.isFinite(row.avgScore)) continue;
+    const w = row.analyzableCount > 0 ? row.analyzableCount : 1;
+    weighted += row.avgScore * w;
+    weight += w;
+  }
+  if (weight <= 0) return null;
+  return roundScore1(weighted / weight);
+}

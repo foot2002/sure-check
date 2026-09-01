@@ -60,6 +60,7 @@ function main() {
   );
   check("grid cards", list.includes("md:grid-cols-2"));
   check("list uses 1-decimal scores", list.includes("formatScore1"));
+  check("list shows diagnosis counts", list.includes("personalInfoCount") && list.includes("attentionNeededCount"));
 
   const panel = exists("components/weekly/PrivacyIndexTrendPanel.tsx")
     ? read("components/weekly/PrivacyIndexTrendPanel.tsx")

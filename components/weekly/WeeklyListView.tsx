@@ -95,11 +95,14 @@ export function WeeklyListView({
                 {latest.headline}
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                분석 완료 {latest.analyzableCount}건 · 개인정보 포함{" "}
-                {latest.personalInfoRate}% · 주의 필요 {latest.attentionNeededRate}% ·
-                개인정보 보호 수준지수 {formatScore1(latest.avgScore)}
+                분석 완료 {latest.analyzableCount.toLocaleString("ko-KR")}건 · 개인정보 포함{" "}
+                {latest.personalInfoCount.toLocaleString("ko-KR")}건 (
+                {latest.personalInfoRate}%) · 주의 필요{" "}
+                {latest.attentionNeededCount.toLocaleString("ko-KR")}건 (
+                {latest.attentionNeededRate}%) · 개인정보 보호 수준지수{" "}
+                {formatScore1(latest.avgScore)}
                 {latest.grade ? ` · ${latest.grade}` : ""} · 공공부문 외부도구 확인
-                필요 {latest.publicExternalToolCount}건
+                필요 {latest.publicExternalToolCount.toLocaleString("ko-KR")}건
               </p>
               <ul className="mt-4 space-y-1.5 text-sm leading-relaxed text-slate-600">
                 {latest.bullets.map((line) => (
@@ -115,11 +118,20 @@ export function WeeklyListView({
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               {[
-                ["분석 완료", `${latest.analyzableCount}건`],
-                ["개인정보 포함", `${latest.personalInfoRate}%`],
-                ["주의 필요", `${latest.attentionNeededRate}%`],
+                ["분석 완료", `${latest.analyzableCount.toLocaleString("ko-KR")}건`],
+                [
+                  "개인정보 포함",
+                  `${latest.personalInfoCount.toLocaleString("ko-KR")}건 / ${latest.personalInfoRate}%`,
+                ],
+                [
+                  "주의 필요",
+                  `${latest.attentionNeededCount.toLocaleString("ko-KR")}건 / ${latest.attentionNeededRate}%`,
+                ],
                 ["보호 수준지수", formatScore1(latest.avgScore)],
-                ["공공부문 확인 필요", `${latest.publicExternalToolCount}건`],
+                [
+                  "공공부문 확인 필요",
+                  `${latest.publicExternalToolCount.toLocaleString("ko-KR")}건`,
+                ],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                   <dt className="text-xs text-slate-500">{k}</dt>
@@ -188,9 +200,12 @@ export function WeeklyListView({
                 {card.grade ? ` · ${card.grade}` : ""}
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                개인정보 포함 {card.personalInfoRate}% · 주의 필요{" "}
-                {card.attentionNeededRate}% · 공공부문 확인 필요{" "}
-                {card.publicExternalToolCount}건
+                분석 완료 {card.analyzableCount.toLocaleString("ko-KR")}건 · 개인정보
+                포함 {card.personalInfoCount.toLocaleString("ko-KR")}건 (
+                {card.personalInfoRate}%) · 주의 필요{" "}
+                {card.attentionNeededCount.toLocaleString("ko-KR")}건 (
+                {card.attentionNeededRate}%) · 공공부문 확인 필요{" "}
+                {card.publicExternalToolCount.toLocaleString("ko-KR")}건
               </p>
               <span
                 className={`mt-3 inline-flex w-fit rounded-full border px-2 py-0.5 text-xs font-semibold ${gradeClass(card.grade)}`}

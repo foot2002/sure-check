@@ -155,7 +155,9 @@ export type WeeklyListCard = {
   shortRange: string;
   headline: string;
   analyzableCount: number;
+  personalInfoCount: number;
   personalInfoRate: number;
+  attentionNeededCount: number;
   attentionNeededRate: number;
   avgScore: number | null;
   grade: WeeklyPrivacyGrade | null;
