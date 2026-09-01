@@ -63,24 +63,62 @@ export function WeeklyKeyNumberStrip({
   );
 }
 
-export function WeeklyKeyFindings({ findings }: { findings: WeeklyKeyFinding[] }) {
+export function WeeklyKeyFindings({
+  findings,
+  compact = false,
+}: {
+  findings: WeeklyKeyFinding[];
+  compact?: boolean;
+}) {
   if (findings.length === 0) return null;
   return (
     <section>
-      <h2 className="text-xl font-bold text-slate-900">이번 주 핵심 발견</h2>
-      <ol className="mt-4 grid gap-3 md:grid-cols-3">
+      <h2
+        className={
+          compact
+            ? "text-sm font-bold text-slate-900"
+            : "text-xl font-bold text-slate-900"
+        }
+      >
+        이번 주 핵심 발견
+      </h2>
+      <ol
+        className={
+          compact
+            ? "mt-3 grid gap-2 md:grid-cols-3"
+            : "mt-4 grid gap-3 md:grid-cols-3"
+        }
+      >
         {findings.map((item) => (
           <li
             key={item.order}
-            className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5"
+            className={
+              compact
+                ? "rounded-xl border border-slate-200 bg-white px-3 py-3"
+                : "rounded-2xl border border-slate-200 bg-white p-4 md:p-5"
+            }
           >
             <p className="text-xs font-semibold tracking-wide text-teal-800">
               {item.order}
             </p>
-            <h3 className="mt-1 text-base font-bold leading-snug text-slate-900">
+            <h3
+              className={
+                compact
+                  ? "mt-1 text-sm font-bold leading-snug text-slate-900"
+                  : "mt-1 text-base font-bold leading-snug text-slate-900"
+              }
+            >
               {item.title}
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.detail}</p>
+            <p
+              className={
+                compact
+                  ? "mt-1 text-xs leading-relaxed text-slate-600"
+                  : "mt-2 text-sm leading-relaxed text-slate-600"
+              }
+            >
+              {item.detail}
+            </p>
           </li>
         ))}
       </ol>

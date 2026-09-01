@@ -59,6 +59,10 @@ function main() {
       list.lastIndexOf("<PrivacyIndexTrendPanel") < list.indexOf("최신 주간 리포트"),
   );
   check("grid cards", list.includes("md:grid-cols-2"));
+  check("list is two columns not three", !list.includes("xl:grid-cols-3"));
+  check("featured hero photo", list.includes("/images/weekly/hero.jpg"));
+  check("list card cover photos", list.includes("/images/weekly/cover-civic.jpg"));
+  check("featured compact stats list", list.includes("max-w-md divide-y"));
   check("list uses 1-decimal scores", list.includes("formatScore1"));
   check("list shows diagnosis counts", list.includes("personalInfoCount") && list.includes("attentionNeededCount"));
   check("featured key findings", list.includes("buildKeyFindings") && list.includes("WeeklyKeyFindings"));
@@ -78,7 +82,10 @@ function main() {
   check("animated svg chart", charts.includes("weekly-chart-line") && charts.includes("pathLength"));
   check("no chart library import", !charts.includes("recharts") && !charts.includes("chart.js"));
   check("detail uses same panel", detail.includes("PrivacyIndexTrendPanel"));
-  check("detail uses shared chart", detail.includes("WeeklyTrendChart"));
+  check(
+    "detail uses shared chart",
+    charts.includes("WeeklyTrendChart") && detail.includes("PrivacyIndexTrendPanel"),
+  );
 
   check("detail list button", detail.includes("목록보기") && detail.includes('href="/weekly"'));
   check("detail report button", detail.includes("수집실태 리포트 보기"));
