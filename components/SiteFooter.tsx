@@ -1,8 +1,13 @@
+import { KcfLogo } from "@/components/KcfLogo";
+
 export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-border-subtle bg-surface">
       <div className="mx-auto max-w-3xl px-5 py-8 text-center md:px-6">
-        <p className="text-sm font-semibold text-slate-800">
+        <div className="flex justify-center">
+          <KcfLogo size="footer" />
+        </div>
+        <p className="mt-4 text-sm font-semibold text-slate-800">
           한국컨설팅산업재단, 개인정보보호진흥원
         </p>
         <p className="mt-2 text-xs leading-relaxed text-muted">

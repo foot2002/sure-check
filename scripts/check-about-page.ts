@@ -27,6 +27,9 @@ function main() {
   check("about page exists", exists("app/about/page.tsx"));
   check("about layout exists", exists("app/about/layout.tsx"));
   check("about view exists", exists("components/about/AboutView.tsx"));
+  check("about reveal exists", exists("components/about/Reveal.tsx"));
+  check("kcf logo asset exists", exists("public/images/kcf_logo.jpg"));
+  check("kcf logo component exists", exists("components/KcfLogo.tsx"));
 
   const header = read("components/HeaderNav.tsx");
   const items = [
@@ -43,33 +46,44 @@ function main() {
   );
   check("admin header stays inactive", header.includes('pathname.startsWith("/report/admin")'));
 
-  const page = [read("app/about/page.tsx"), read("components/about/AboutView.tsx")].join(
-    "\n",
-  );
+  const page = [
+    read("app/about/page.tsx"),
+    read("components/about/AboutView.tsx"),
+    read("components/KcfLogo.tsx"),
+    read("components/about/Reveal.tsx"),
+  ].join("\n");
   const required = [
-    "공개 온라인 설문의 개인정보 보호 수준을 높입니다",
+    "대한민국 온라인 개인정보 보호 수준을 높입니다",
     "인사말",
     "한국컨설팅산업재단 이사장 정옥래",
     "개인정보보호진흥원 소개",
     "SURE-CHECK 운영 목적",
     "주요 활동",
     "운영 원칙",
-    "소명·정정 및 문의",
     "유의사항",
     "설문 진단하기",
     "수집실태 리포트 보기",
     "공개 진단 사례 보기",
-    "소명·정정 요청하기",
-    "개선 안내 문의하기",
     "공익형 모니터링",
     "자율 개선",
     "공개 설문 화면 기준",
+    "/images/kcf_logo.jpg",
   ];
   for (const text of required) {
     check(`copy includes ${text}`, page.includes(text));
   }
 
-  check("mailto uses org contact", page.includes("mailto:cs@kcf-korea.org"));
+  check(
+    "old hero title removed",
+    !page.includes("공개 온라인 설문의 개인정보 보호 수준을 높입니다"),
+  );
+  check("inquiry section removed", !page.includes("소명·정정 및 문의"));
+  check("inquiry buttons removed", !page.includes("소명·정정 요청하기"));
+  check("about uses reveal", page.includes("Reveal"));
+
+  const footer = read("components/SiteFooter.tsx");
+  check("footer includes kcf logo", footer.includes("/images/kcf_logo.jpg") || footer.includes("KcfLogo"));
+  check("footer mailto uses org contact", footer.includes("mailto:cs@kcf-korea.org"));
 
   const forbidden = [
     "불법 설문 적발",
