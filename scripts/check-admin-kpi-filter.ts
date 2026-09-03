@@ -7,6 +7,13 @@ import {
   type AdminDashboardView,
 } from "@/lib/report/adminDashboardViews";
 import { pickIssueBadges } from "@/lib/report/adminOutreach";
+import {
+  adminExportSheetRows,
+  classifyPublicOrgGroup,
+  collectionToolKo,
+  csapCertifiedYesNo,
+  displayInstitutionName,
+} from "@/lib/report/publicInstitutionColumns";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -62,7 +69,9 @@ function main() {
   check("KPI click applyView", /function applyView/.test(consoleView) && consoleView.includes('applyView("unreviewed")'));
   check("KPI click highOrReport", consoleView.includes('applyView("highOrReport")'));
   check("KPI click evidenceMissing", consoleView.includes('applyView("evidenceMissing")'));
-  check("KPI click published", consoleView.includes('applyView("published")'));
+  check("KPI click publicInstitutions", consoleView.includes('applyView("publicInstitutions")'));
+  check("excel download button", consoleView.includes("목록 엑셀 다운로드"));
+  check("excel export helper", /adminCasesExportUrl/.test(consoleView));
   check("today action section", consoleView.includes("오늘 해야 할 일") && consoleView.includes("오늘 우선 확인할 설문"));
   check("usage guide", consoleView.includes("사용 안내") && consoleView.includes("위법 여부를 확정하지 않습니다"));
   check("filter reset", consoleView.includes("필터 초기화"));
@@ -79,7 +88,8 @@ function main() {
   check("KPI from scopedCases", /totalScans:\s*scopedCases\.length/.test(listLib));
   check("list filters after KPI", /const dashboardView = normalizeAdminDashboardView/.test(listLib));
   check("search applied after KPI", /const q = \(query\.q/.test(listLib));
-  check("view query on admin API", /searchParams\.get\("view"\)/.test(api));
+  check("view query on admin API", /searchParams\.get\("view"\)/.test(listLib));
+  check("cases API uses query helper", /adminCaseListQueryFromSearchParams/.test(api));
   check("todayTasks in payload", /todayTasks/.test(listLib));
   check("drawer technical info collapsed", drawer.includes("기술정보") && /<details/.test(drawer));
   check("drawer keeps 개선안내 판단 order", read("components/report/admin/AdminOutreachSections.tsx").includes("개선안내 판단"));
@@ -97,6 +107,11 @@ function main() {
     "view highOrReport matches critical/high",
     matchesAdminDashboardView(sample({ overallRiskLevel: "critical" }), "highOrReport") &&
       !matchesAdminDashboardView(sample({ overallRiskLevel: "low", userDecisionLabel: "정상" }), "highOrReport"),
+  );
+  check(
+    "view publicInstitutions matches public only",
+    matchesAdminDashboardView(sample(), "publicInstitutions") &&
+      !matchesAdminDashboardView(sample({ publicPrivateType: "private" }), "publicInstitutions"),
   );
   check(
     "view published matches published cases",
@@ -141,8 +156,40 @@ function main() {
     !badges.some((b) => /HTML|platform_parser|parser/i.test(b)),
   );
 
-  const views: AdminDashboardView[] = ["unreviewed", "highOrReport", "outreach", "published"];
+  const views: AdminDashboardView[] = ["unreviewed", "highOrReport", "outreach", "published", "publicInstitutions"];
   check("dashboard views defined", views.every((v) => typeof v === "string"));
+
+  check("classify 기초자치단체 → 지자체", classifyPublicOrgGroup("기초자치단체", "public_agency") === "지자체");
+  check("classify 중앙부처 → 중앙", classifyPublicOrgGroup("중앙부처", null) === "중앙");
+  check("tool label google", collectionToolKo("google_forms") === "구글폼");
+  check("csap google is 아니오", csapCertifiedYesNo("google_forms") === "아니오");
+  check("csap wiseon is 예", csapCertifiedYesNo("wiseon_csap") === "예");
+  check(
+    "institution name prefers matched",
+    displayInstitutionName("서울특별시 서대문구", "공공기관") === "서울특별시 서대문구",
+  );
+  const exportRows = adminExportSheetRows([
+    {
+      surveyTitle: "테스트 설문",
+      institutionName: "전북특별자치도",
+      orgClass: "지자체",
+      originalOrgType: "광역자치단체",
+      platform: "google_forms",
+      csapCertified: false,
+      hasPersonalInfo: true,
+      piiItemLabels: ["이름", "연락처"],
+      surveyUrl: "https://example.com",
+      evidenceCount: 1,
+      hasScreenshots: true,
+      observedDateKst: "2026-09-03",
+    },
+  ]);
+  check("export columns", Boolean(exportRows[0]?.["CSAP/보안인증여부"] === "아니오" && exportRows[0]?.["수집도구"] === "구글폼"));
+  check("export pii", exportRows[0]?.["수집 개인정보"] === "이름, 연락처");
+
+  const exportRoute = read("app/api/report/admin/cases/export/route.ts");
+  check("export requires admin auth", /getAdminSessionFromCookies/.test(exportRoute));
+  check("export is xlsx", /spreadsheetml\.sheet/.test(exportRoute));
 
   assert(!failures.length, `${failures.length} check(s) failed`);
   if (failures.length > 0) {

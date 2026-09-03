@@ -23,6 +23,7 @@ export const ADMIN_DASHBOARD_VIEWS = [
   "highOrReport",
   "outreach",
   "publicSector",
+  "publicInstitutions",
   "evidenceReady",
   "evidenceMissing",
   "captureNeeded",
@@ -74,6 +75,8 @@ export function matchesAdminDashboardView(
       return row.outreachUiStatus === "send" || row.outreachUiStatus === "candidate";
     case "publicSector":
       return isPublicSectorReviewCase(row);
+    case "publicInstitutions":
+      return row.publicPrivateType === "public";
     case "evidenceReady":
       return row.evidenceStatus === "증거 확보" || row.evidenceStatus === "일부 확보";
     case "evidenceMissing":

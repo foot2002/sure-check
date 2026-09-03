@@ -19,10 +19,15 @@ import {
 } from "@/lib/report/publicCasePolicy";
 import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
 import {
+  downloadAdminBlob,
+  adminCasesExportUrl,
+} from "@/components/report/admin/adminDownloads";
+import {
   formatDataCollectionBrief,
   subjectTypeKo,
   type AdminDashboardView,
 } from "@/lib/report/adminDashboardViews";
+import { collectionToolKo } from "@/lib/report/publicInstitutionColumns";
 
 type Filters = {
   range: string;
@@ -192,6 +197,7 @@ export function AdminConsoleView({
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmEvidence, setConfirmEvidence] = useState(false);
   const [enqueueingEvidence, setEnqueueingEvidence] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const payload = clientPayload ?? data;
   const loadError = clientError ?? error;
 
@@ -266,19 +272,31 @@ export function AdminConsoleView({
   }
 
   function setQuick(patch: Partial<Filters>) {
-    void apply({ ...form, view: "all", ...patch });
+    const next = { ...form, view: "all", ...patch };
+    if (next.view === "publicInstitutions" && next.range !== "custom") {
+      next.range = "all";
+      next.from = "";
+      next.to = "";
+    }
+    void apply(next);
   }
 
   function applyView(view: AdminDashboardView) {
     const nextView = form.view === view ? "all" : view;
-    void apply({
+    const next = {
       ...form,
       ...workFilters(),
       range: form.range,
       from: form.from,
       to: form.to,
       view: nextView,
-    });
+    };
+    if (nextView === "publicInstitutions" && next.range !== "custom") {
+      next.range = "all";
+      next.from = "";
+      next.to = "";
+    }
+    void apply(next);
   }
 
   async function enqueuePriorityEvidence() {
@@ -318,6 +336,23 @@ export function AdminConsoleView({
     });
   }
 
+  async function downloadExcel() {
+    setExporting(true);
+    try {
+      const qs = toParams(form).toString();
+      const stamp = kstDateInputValue();
+      await downloadAdminBlob(
+        adminCasesExportUrl(qs),
+        `공공기관_진단완료_설문_${stamp}.xlsx`,
+      );
+      setToast("엑셀 파일을 내려받았습니다.");
+    } catch {
+      setToast("엑셀 다운로드에 실패했습니다.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function logout() {
     await fetch("/api/report/admin/logout", { method: "POST" });
     router.replace("/report/admin/login");
@@ -341,6 +376,14 @@ export function AdminConsoleView({
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void downloadExcel()}
+            disabled={exporting || !payload?.cases.length}
+            className="rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {exporting ? "엑셀 준비 중…" : "목록 엑셀 다운로드"}
+          </button>
           <Link
             href="/report/admin/collector"
             className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
@@ -405,6 +448,7 @@ export function AdminConsoleView({
             <li>증거 확보 상태를 확인하세요.</li>
             <li>원본 설문을 열어 실제 화면을 확인하세요.</li>
             <li>요약리포트 또는 상세리포트를 다운로드하세요.</li>
+            <li>공공기관 진단 목록은 엑셀로 내려받을 수 있습니다.</li>
             <li>공문용 문구를 복사해 개선 요청 공문에 활용하세요.</li>
           </ol>
           <p className="mt-2">
@@ -426,7 +470,7 @@ export function AdminConsoleView({
 
         <section className="mb-5">
           <h2 className="mb-2 text-sm font-bold text-slate-900">오늘 검토해야 할 설문</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <KpiCard
               label="검토 대상 전체"
               value={payload.kpi.totalScans}
@@ -466,6 +510,14 @@ export function AdminConsoleView({
               help="공공기관 또는 공공기관 가능성이 있는 주체가 외부 설문도구를 사용해 개인정보를 수집하는 것으로 판단되어 보안 기준 확인이 필요한 설문입니다."
               active={form.view === "publicSector"}
               onClick={() => applyView("publicSector")}
+            />
+            <KpiCard
+              label="공공기관 진단"
+              value={payload.kpi.publicInstitutionCount}
+              hint="공공으로 분류된 완료 진단입니다. 누르면 전체 기간 목록과 엑셀 다운로드를 쓸 수 있습니다."
+              help="공공/민간이 공공인 진단 결과입니다. 중앙·지자체·공기업 등 기관 분류, 수집도구, CSAP 여부를 확인하고 엑셀로 내려받을 수 있습니다."
+              active={form.view === "publicInstitutions"}
+              onClick={() => applyView("publicInstitutions")}
             />
           </div>
         </section>
@@ -694,7 +746,11 @@ export function AdminConsoleView({
             to: form.to || null,
           })}
         </span>
-        {form.view !== "all" ? (
+        {form.view === "publicInstitutions" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
+            공공기관 진단
+          </span>
+        ) : form.view !== "all" ? (
           <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">
             빠른 보기 {form.view}
           </span>
@@ -751,6 +807,7 @@ export function AdminConsoleView({
             ["증거 확보", form.hasEvidence === "true", { hasEvidence: form.hasEvidence === "true" ? "all" : "true" }],
             ["증거 부족", form.hasEvidence === "false", { hasEvidence: form.hasEvidence === "false" ? "all" : "false" }],
             ["공공기관", form.publicPrivate === "public", { publicPrivate: form.publicPrivate === "public" ? "all" : "public" }],
+            ["공공기관 진단", form.view === "publicInstitutions", { view: form.view === "publicInstitutions" ? "all" : "publicInstitutions" }],
             ["민간기업", form.publicPrivate === "private", { publicPrivate: form.publicPrivate === "private" ? "all" : "private" }],
             ["학교/교육기관", form.subjectType === "school_local", { subjectType: form.subjectType === "school_local" ? "all" : "school_local" }],
             ["의료기관", form.subjectType === "medical", { subjectType: form.subjectType === "medical" ? "all" : "medical" }],
@@ -976,13 +1033,16 @@ export function AdminConsoleView({
       </form>
 
       <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[68rem] table-fixed text-left text-xs">
+        <table className={`w-full table-fixed text-left text-xs ${form.view === "publicInstitutions" ? "min-w-[80rem]" : "min-w-[68rem]"}`}>
           <colgroup>
             <col className="w-[6.2rem]" />
             <col className="w-[2.6rem]" />
             <col className="w-[3.6rem]" />
             <col className="w-[11%]" />
+            {form.view === "publicInstitutions" ? <col className="w-[6%]" /> : null}
             <col className="w-[14%]" />
+            {form.view === "publicInstitutions" ? <col className="w-[6%]" /> : null}
+            {form.view === "publicInstitutions" ? <col className="w-[5%]" /> : null}
             <col className="w-[16%]" />
             <col className="w-[11%]" />
             <col className="w-[5.5rem]" />
@@ -995,7 +1055,10 @@ export function AdminConsoleView({
               <th className="px-1 py-2 text-center">우선순위</th>
               <th className="px-1 py-2">위험도</th>
               <th className="px-2 py-2">기관/기업</th>
+              {form.view === "publicInstitutions" ? <th className="px-2 py-2">분류</th> : null}
               <th className="px-2 py-2">설문 제목</th>
+              {form.view === "publicInstitutions" ? <th className="px-2 py-2">수집도구</th> : null}
+              {form.view === "publicInstitutions" ? <th className="px-2 py-2">CSAP</th> : null}
               <th className="px-2 py-2">문제 요약</th>
               <th className="px-2 py-2">수집 정보</th>
               <th className="px-2 py-2">증빙</th>
@@ -1008,17 +1071,19 @@ export function AdminConsoleView({
               const dataBrief = formatDataCollectionBrief({
                 personalCount: row.personalInfoQuestionCount,
                 sensitiveCount: row.sensitiveQuestionCount,
-                categoryLabels: row.categoryLabels,
+                categoryLabels: row.piiItemLabels.length ? row.piiItemLabels : row.categoryLabels,
                 hasPersonalInfo: row.hasPersonalInfo,
                 hasSensitiveInfo: row.hasSensitiveInfo,
               });
               const orgKind =
+                row.orgClass ||
                 subjectTypeKo(row.subjectType) ||
                 (publicPrivateKo(row.publicPrivateType) === "공공"
                   ? "공공기관"
                   : publicPrivateKo(row.publicPrivateType) === "민간"
                     ? "민간기업"
                     : publicPrivateKo(row.publicPrivateType));
+              const orgName = row.institutionName || row.operatorName || "—";
               return (
               <tr
                 key={row.id}
@@ -1053,19 +1118,39 @@ export function AdminConsoleView({
                 </td>
                 <td
                   className="overflow-hidden px-2 py-2 font-medium text-slate-900"
-                  title={row.operatorName || undefined}
+                  title={orgName}
                 >
-                  <span className="block truncate">{row.operatorName || "—"}</span>
+                  <span className="block truncate">{orgName}</span>
                   <span className="block truncate text-[10px] font-normal text-slate-500">
                     {orgKind}
                   </span>
                 </td>
+                {form.view === "publicInstitutions" ? (
+                  <td className="overflow-hidden px-2 py-2 text-slate-700">
+                    <span className="block truncate">{row.orgClass || "미분류"}</span>
+                    {row.originalOrgType ? (
+                      <span className="block truncate text-[10px] text-slate-500">
+                        {row.originalOrgType}
+                      </span>
+                    ) : null}
+                  </td>
+                ) : null}
                 <td
                   className="overflow-hidden px-2 py-2 text-slate-800"
                   title={row.surveyTitle || undefined}
                 >
                   <span className="block truncate">{row.surveyTitle || "—"}</span>
                 </td>
+                {form.view === "publicInstitutions" ? (
+                  <td className="overflow-hidden truncate px-2 py-2 text-slate-700">
+                    {collectionToolKo(row.platform)}
+                  </td>
+                ) : null}
+                {form.view === "publicInstitutions" ? (
+                  <td className="overflow-hidden truncate px-2 py-2 text-slate-700">
+                    {row.csapCertified ? "예" : "아니오"}
+                  </td>
+                ) : null}
                 <td className="overflow-hidden px-2 py-2">
                   {row.issueBadges.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
@@ -1124,7 +1209,7 @@ export function AdminConsoleView({
             })}
             {payload && payload.cases.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={form.view === "publicInstitutions" ? 13 : 10} className="px-3 py-8 text-center text-slate-500">
                   조건에 맞는 케이스가 없습니다.
                 </td>
               </tr>

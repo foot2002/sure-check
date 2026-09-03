@@ -61,12 +61,16 @@ function main() {
   check("from > to throws AdminRangeError", inverted);
 
   const casesRoute = read("app/api/report/admin/cases/route.ts");
-  check("admin cases no-store header", /Cache-Control.: .no-store/.test(casesRoute));
-  check("admin cases from query", /searchParams.get\("from"\)/.test(casesRoute));
-  check("admin cases to query", /searchParams.get\("to"\)/.test(casesRoute));
-  check("admin cases force-dynamic", /export const dynamic = "force-dynamic"/.test(casesRoute));
-
   const listLib = read("lib/report/adminCases.ts");
+  check("admin cases no-store header", /Cache-Control.: .no-store/.test(casesRoute));
+  check("admin cases from query", /searchParams.get\("from"\)/.test(listLib));
+  check("admin cases to query", /searchParams.get\("to"\)/.test(listLib));
+  check("admin cases force-dynamic", /export const dynamic = "force-dynamic"/.test(casesRoute));
+  check(
+    "admin cases uses shared query helper",
+    /adminCaseListQueryFromSearchParams/.test(casesRoute),
+  );
+
   check(
     "KPI uses same cases array as list",
     /totalScans:\s*scopedCases\.length/.test(listLib),

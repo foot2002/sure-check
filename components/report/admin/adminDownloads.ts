@@ -38,3 +38,7 @@ export function detailReportDownloadUrl(caseId: string): string {
 export function detailReportFilename(caseId: string): string {
   return `sure-check-detail-report-${caseId}.html`;
 }
+
+export function adminCasesExportUrl(query: string): string {
+  return `/api/report/admin/cases/export${query ? `?${query}` : ""}`;
+}

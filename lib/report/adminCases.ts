@@ -32,7 +32,14 @@ import {
   normalizeAdminDashboardView,
   pickTodayPriorityCases,
 } from "@/lib/report/adminDashboardViews";
-import { pickPriorityEvidenceCases } from "@/lib/report/priorityEvidenceQueue";
+import {
+  classifyPublicOrgGroup,
+  csapCertifiedYesNo,
+  displayInstitutionName,
+  institutionEvidenceFromReportJson,
+  piiLabelFromCode,
+  piiLabelsFromReportJson,
+} from "@/lib/report/publicInstitutionColumns";
 
 export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -69,6 +76,8 @@ export interface AdminKpi {
   reviewPendingCount: number;
   highOrReportReviewCount: number;
   publicSectorReviewCount: number;
+  /** All public-sector completed diagnoses in the period (inventory, not only CSAP review). */
+  publicInstitutionCount: number;
   evidenceCaptureCount: number;
   /** Non-reportable limited outcomes (ops reference, not a primary KPI). */
   limitedAnalysisCount: number;
@@ -119,6 +128,11 @@ export interface AdminCaseListItem {
   userDecisionLabel: string | null;
   platform: Platform;
   operatorName: string | null;
+  institutionName: string | null;
+  orgClass: string | null;
+  originalOrgType: string | null;
+  csapCertified: boolean;
+  piiItemLabels: string[];
   subjectType: string | null;
   surveyTitle: string | null;
   surveyUrl: string | null;
@@ -327,6 +341,35 @@ function parsePublicCaseStatusFilter(
 
 const ADMIN_SURVEY_SELECT =
   "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count";
+
+export function adminCaseListQueryFromSearchParams(
+  searchParams: URLSearchParams,
+): AdminCaseListQuery {
+  return {
+    range: searchParams.get("range"),
+    risk: searchParams.get("risk"),
+    reviewStatus: searchParams.get("reviewStatus"),
+    publicationStatus: searchParams.get("publicationStatus"),
+    platform: searchParams.get("platform"),
+    publicPrivate: searchParams.get("publicPrivate"),
+    hasPersonalInfo: searchParams.get("hasPersonalInfo"),
+    hasSensitiveInfo: searchParams.get("hasSensitiveInfo"),
+    hasHighRiskInfo: searchParams.get("hasHighRiskInfo"),
+    hasEvidence: searchParams.get("hasEvidence"),
+    limitedOnly: searchParams.get("limitedOnly"),
+    outreachOnly: searchParams.get("outreachOnly"),
+    priority: searchParams.get("priority"),
+    noticeGap: searchParams.get("noticeGap"),
+    reportReview: searchParams.get("reportReview"),
+    outreachStatus: searchParams.get("outreachStatus"),
+    publicCaseStatus: searchParams.get("publicCaseStatus"),
+    view: searchParams.get("view"),
+    subjectType: searchParams.get("subjectType"),
+    from: searchParams.get("from"),
+    to: searchParams.get("to"),
+    q: searchParams.get("q"),
+  };
+}
 
 export async function listAdminCases(
   query: AdminCaseListQuery = {},
@@ -548,6 +591,10 @@ export async function listAdminCases(
       user_decision_label: string | null;
       limited_reason: string | null;
       summary: string | null;
+      matchedName: string | null;
+      matchedType: string | null;
+      csapCertified: boolean;
+      piiLabels: string[];
     }
   >();
   for (const row of reportsRes.data || []) {
@@ -558,12 +605,19 @@ export async function listAdminCases(
       (typeof form?.limitedReason === "string" && form.limitedReason) ||
       null;
     const summary = typeof rj?.summary === "string" ? rj.summary : null;
+    const institution = institutionEvidenceFromReportJson(rj);
+    const platformHint =
+      typeof form?.platform === "string" ? form.platform : null;
     reportMap.set(row.id, {
       diagnosis_status: row.diagnosis_status,
       score: row.score,
       user_decision_label: row.user_decision_label,
       limited_reason: limitedReason,
       summary,
+      matchedName: institution.matchedName,
+      matchedType: institution.matchedType,
+      csapCertified: csapCertifiedYesNo(platformHint, rj) === "예",
+      piiLabels: piiLabelsFromReportJson(rj),
     });
   }
 
@@ -602,7 +656,7 @@ export async function listAdminCases(
       if (qids.length > 0) {
         const { data: cats } = await supabase
           .from("question_data_categories")
-          .select("survey_question_id, category_label")
+          .select("survey_question_id, category_code, category_label")
           .in("survey_question_id", qids.slice(0, 400));
         const qToSurvey = new Map(
           (qrows || []).map((q) => [String(q.id), String(q.survey_record_id)]),
@@ -610,7 +664,11 @@ export async function listAdminCases(
         for (const cat of cats || []) {
           const surveyId = qToSurvey.get(String(cat.survey_question_id));
           if (!surveyId) continue;
-          const label = String(cat.category_label || "").trim();
+          const label =
+            piiLabelFromCode(
+              String(cat.category_code || ""),
+              String(cat.category_label || ""),
+            ) || "";
           if (!label) continue;
           const cur = categoryLabelsBySurvey.get(surveyId) || [];
           if (!cur.includes(label) && cur.length < 3) cur.push(label);
@@ -660,6 +718,24 @@ export async function listAdminCases(
       issueBadges,
     });
     const outreachCandidate = isOutreachCandidate(outreachPriority);
+    const originalOrgType = report?.matchedType || null;
+    const institutionName = displayInstitutionName(
+      report?.matchedName,
+      (row.operator_name as string | null) || null,
+    );
+    const orgClass =
+      (row.public_private_type as string) === "public"
+        ? classifyPublicOrgGroup(
+            originalOrgType,
+            (row.subject_type as string | null) || null,
+          )
+        : null;
+    const piiItemLabels = [
+      ...new Set([...(report?.piiLabels || []), ...categoryLabels]),
+    ];
+    const csapCertified =
+      report?.csapCertified === true ||
+      csapCertifiedYesNo((row.platform as string) || null) === "예";
     return {
       id: row.id as string,
       observedAt: row.observed_at as string,
@@ -672,6 +748,11 @@ export async function listAdminCases(
       userDecisionLabel,
       platform: (row.platform || "unknown") as Platform,
       operatorName: (row.operator_name as string | null) || null,
+      institutionName,
+      orgClass,
+      originalOrgType,
+      csapCertified,
+      piiItemLabels,
       subjectType: (row.subject_type as string | null) || null,
       surveyTitle: (row.survey_title as string | null) || null,
       surveyUrl: (row.survey_url as string | null) || null,
@@ -820,6 +901,9 @@ export async function listAdminCases(
         c.hasPersonalInfo &&
         c.platform !== "wiseon_csap",
     ).length,
+    publicInstitutionCount: scopedCases.filter(
+      (c) => c.publicPrivateType === "public",
+    ).length,
     evidenceCaptureCount: scopedCases.filter(
       (c) => c.evidenceStatus === "증거 확보" || c.evidenceStatus === "일부 확보",
     ).length,
@@ -918,7 +1002,7 @@ export async function listAdminCases(
   const q = (query.q || "").trim().toLowerCase();
   if (q) {
     cases = cases.filter((c) =>
-      [c.operatorName, c.surveyTitle, c.surveyUrl, c.userDecisionLabel]
+      [c.operatorName, c.institutionName, c.orgClass, c.surveyTitle, c.surveyUrl, c.userDecisionLabel]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q)),
     );
