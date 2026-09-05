@@ -649,8 +649,9 @@ export function CollectorConsoleView({
             </p>
             <div className="mt-3 rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
               <p>
-                계획: 공공 사이트 정기 수집 하루 6회 × 회당 최대 8기관 = 48기관/일
-                (21:30 · 00:30 · 03:30 · 06:30 KST)
+                계획: 미탐색 공공 사이트 스프린트 · 15분 간격 24시간 × 회당 최대 8기관
+                (이론 768기관/일, 이전 웨이브가 끝나지 않으면 skip).
+                네이버 검색 수집·재검증은 일시 중지입니다.
               </p>
               <p>
                 실제: 오늘 전체 탐색 기관 {formatCount(summary.officialSite?.crawledToday)}건.
@@ -663,7 +664,7 @@ export function CollectorConsoleView({
               </p>
               {summary.officialSite?.officialSiteRunRecordsToday ? (
                 <p>
-                  오늘 정기 수집 기관 {formatCount(summary.officialSite.todayCronCrawled)} / 계획 32
+                  오늘 정기 수집 기관 {formatCount(summary.officialSite.todayCronCrawled)} / 계획 {formatCount(summary.officialSite.orgsPerDayTarget)}
                   · 오늘 수동 테스트 수집 기관 {formatCount(summary.officialSite.todayManualCrawled)}
                   · 오늘 전체 탐색 기관 {formatCount(summary.officialSite.crawledToday)}
                 </p>
@@ -676,7 +677,8 @@ export function CollectorConsoleView({
                 <p className="text-slate-600">
                   오늘 공공 사이트 탐색 기관이 계획량보다 많습니다. 수동 테스트
                   또는 관리자 실행이 포함되었을 수 있습니다. 정기 cron 기준
-                  계획량은 48기관/일입니다.
+                  계획량은 회당 8기관, 15분 간격입니다. 웨이브가 겹치면
+                  건너뛰므로 실제 탐색은 이론치보다 적을 수 있습니다.
                 </p>
               ) : null}
               <p>
@@ -695,7 +697,8 @@ export function CollectorConsoleView({
                 자동진단 처리량: 현재 scanBatch {summary.capacity?.scanBatch ?? 3},
                 worker 실행 기준 최대 처리량 약{" "}
                 {formatCount(summary.capacity?.estimatedMaxPerDay)}건/일.
-                현재 설정만으로는 100건/일 목표 달성이 어렵습니다.
+                현재 설정 기준 최대 처리량은 약{" "}
+                {formatCount(summary.capacity?.estimatedMaxPerDay)}건/일입니다.
               </p>
             </div>
             {summary.officialSite ? (
@@ -713,7 +716,7 @@ export function CollectorConsoleView({
                       <StatCard
                         label="오늘 정기 수집 기관"
                         value={`${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.officialSite.orgsPerDayTarget)}`}
-                        hint="cron 기준 계획 48기관/일"
+                        hint="cron 기준 15분 간격 24시간"
                         className="border-teal-200 bg-white"
                       />
                       <StatCard

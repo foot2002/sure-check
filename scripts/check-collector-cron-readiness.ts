@@ -186,36 +186,35 @@ async function main() {
         crons?: Array<{ path?: string; schedule?: string }>;
       };
       const crons = vercel.crons || [];
-      const hasCollectA = crons.some(
-        (c) =>
-          c.path === "/api/internal/collector/run/a" &&
-          c.schedule === "0 17 * * *",
-      );
-      const hasCollectB = crons.some(
-        (c) =>
-          c.path === "/api/internal/collector/run/b" &&
-          c.schedule === "0 19 * * *",
-      );
+      const hasCollectA = crons.some((c) => c.path === "/api/internal/collector/run/a");
+      const hasCollectB = crons.some((c) => c.path === "/api/internal/collector/run/b");
       const hasLegacyFullRun = crons.some(
         (c) => c.path === "/api/internal/collector/run",
       );
-      const revalidateSchedules = crons
-        .filter((c) => c.path === "/api/internal/collector/revalidate")
+      const hasRevalidate = crons.some(
+        (c) => c.path === "/api/internal/collector/revalidate",
+      );
+      const officialSchedules = crons
+        .filter((c) => c.path === "/api/internal/collector/official-sites")
         .map((c) => c.schedule)
         .sort();
-      const expectedRevalidate = [
-        "0 23 * * *",
-        "0 3 * * *",
-        "0 7 * * *",
-        "0 13 * * *",
+      const expectedOfficial = [
+        "0 * * * *",
+        "15 * * * *",
+        "30 * * * *",
+        "45 * * * *",
       ].sort();
-      const hasRevalidateWaves =
-        revalidateSchedules.length === 4 &&
-        revalidateSchedules.every((s, i) => s === expectedRevalidate[i]);
+      const hasOfficialSprint =
+        officialSchedules.length === 4 &&
+        officialSchedules.every((s, i) => s === expectedOfficial[i]);
       vercelCronsOk =
-        hasCollectA && hasCollectB && !hasLegacyFullRun && hasRevalidateWaves;
+        !hasCollectA &&
+        !hasCollectB &&
+        !hasLegacyFullRun &&
+        !hasRevalidate &&
+        hasOfficialSprint;
       vercelDetail = vercelCronsOk
-        ? "A@17UTC(02KST) + B@19UTC(04KST) + revalidate×4 (08/12/16/22KST); legacy /run Cron removed"
+        ? "Naver A/B+revalidate paused; official-site every 15 min 24h"
         : `불완전: ${JSON.stringify(crons)}`;
     } catch (e) {
       vercelDetail = e instanceof Error ? e.message : String(e);

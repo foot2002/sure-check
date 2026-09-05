@@ -13,7 +13,6 @@ import {
 import {
   countCronJobsForPath,
   OFFICIAL_SITE_CRON_PATH,
-  scheduleIsOnceDaily,
 } from "../lib/collector/opsCapacityPolicy";
 
 function source(path: string): string {
@@ -47,12 +46,12 @@ console.log("[Official Site Crawl Wave Check]\n");
     crons?: Array<{ path?: string; schedule?: string }>;
   };
   const jobs = (vercel.crons || []).filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
-  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 6);
+  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 4);
   for (const job of jobs) {
-    assert.equal(scheduleIsOnceDaily(job.schedule || ""), true, job.schedule);
     assert.equal((job.schedule || "").includes(","), false);
+    assert.equal((job.schedule || "").endsWith("* * *"), true, job.schedule);
   }
-  console.log("  PASS  six staggered once-daily official-site crons (not one multi-hour job)");
+  console.log("  PASS  four hourly official-site crons (15-minute cadence, not comma hours)");
 }
 
 {

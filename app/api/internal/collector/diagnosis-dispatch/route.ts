@@ -28,7 +28,8 @@ function parseParams(request: Request): {
   return {
     limit: Number.isFinite(limit) ? limit : getAutoDiagnosisBatchSize(),
     dryRun,
-    sourceType: sourceTypeRaw === "official_site" ? "official_site" : "all",
+    // Never-crawled sprint: cron defaults to official_site. Pass sourceType=all to include search.
+    sourceType: sourceTypeRaw === "all" ? "all" : "official_site",
   };
 }
 
@@ -57,6 +58,7 @@ async function handle(request: Request): Promise<Response> {
       };
       if (typeof body.limit === "number") limit = body.limit;
       if (typeof body.dryRun === "boolean") dryRun = body.dryRun;
+      if (body.sourceType === "all") sourceType = "all";
       if (body.sourceType === "official_site") sourceType = "official_site";
     } catch {
       /* empty */

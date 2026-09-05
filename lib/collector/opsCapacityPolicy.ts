@@ -5,18 +5,20 @@
 
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 
-/** Six once-daily vercel.json entries (KST 00:30 / 03:30 / 06:30 / 12:30 / 18:30 / 21:30). */
+/**
+ * Never-crawled official-site sprint: four hourly crons → a wave every 15
+ * minutes, 24h (96 waves/day). Naver collect A/B is paused in vercel.json.
+ * Keep 8 orgs/run; do not overlap waves (already_running skip).
+ */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
 export const OFFICIAL_SITE_CRON_SCHEDULES = [
-  "30 3 * * *",
-  "30 9 * * *",
-  "30 12 * * *",
-  "30 15 * * *",
-  "30 18 * * *",
-  "30 21 * * *",
+  "0 * * * *",
+  "15 * * * *",
+  "30 * * * *",
+  "45 * * * *",
 ] as const;
 export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
-export const OFFICIAL_SITE_WAVES_PER_DAY = 6;
+export const OFFICIAL_SITE_WAVES_PER_DAY = 96;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
   OFFICIAL_SITE_MAX_ORGS_PER_RUN * OFFICIAL_SITE_WAVES_PER_DAY;
 
@@ -26,7 +28,9 @@ export const OFFICIAL_SITE_STALE_RUNNING_MS = 20 * 60 * 1000;
 export const SCAN_WORKER_CRON_PATH = "/api/internal/jobs/run-next";
 export const SCAN_WORKER_DEFAULT_BATCH = 3;
 export const SCAN_WORKER_FUTURE_BATCH = 5;
-export const SCAN_WORKER_RUNS_PER_DAY = 22;
+/** Two hourly crons at :10 and :40 UTC → 48 runs/day. */
+export const SCAN_WORKER_CRON_SCHEDULES = ["10 * * * *", "40 * * * *"] as const;
+export const SCAN_WORKER_RUNS_PER_DAY = 48;
 export const DIAGNOSIS_COMPLETED_DAILY_TARGET = 100;
 
 export const SOURCE_PAGE_URL_RATE_TARGET = 0.9;
