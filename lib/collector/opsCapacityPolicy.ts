@@ -15,15 +15,13 @@ export function hobbyOnceDailyHourlySchedules(minute: number): string[] {
 }
 
 /**
- * Never-crawled official-site sprint on Hobby: 48 once-daily slots (minute 0
- * and 30 every UTC hour) → ~30 min cadence, 8 orgs/run. Naver A/B paused.
+ * Never-crawled official-site sprint on Hobby: 24 once-daily hourly slots,
+ * 8 orgs/run. Repeating-hour expressions fail Hobby deploys; keep one
+ * expression per UTC hour. Naver A/B paused.
  * Keep 8 orgs/run; do not overlap waves (already_running skip).
  */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
-export const OFFICIAL_SITE_CRON_SCHEDULES = [
-  ...hobbyOnceDailyHourlySchedules(0),
-  ...hobbyOnceDailyHourlySchedules(30),
-] as const;
+export const OFFICIAL_SITE_CRON_SCHEDULES = hobbyOnceDailyHourlySchedules(30);
 export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
 export const OFFICIAL_SITE_WAVES_PER_DAY = OFFICIAL_SITE_CRON_SCHEDULES.length;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
@@ -35,14 +33,47 @@ export const OFFICIAL_SITE_STALE_RUNNING_MS = 20 * 60 * 1000;
 export const SCAN_WORKER_CRON_PATH = "/api/internal/jobs/run-next";
 export const SCAN_WORKER_DEFAULT_BATCH = 3;
 export const SCAN_WORKER_FUTURE_BATCH = 5;
-/** One Hobby-safe worker slot per UTC hour at :15. */
-export const SCAN_WORKER_CRON_SCHEDULES = hobbyOnceDailyHourlySchedules(15);
+/** Proven Hobby worker slots from production (22 once-daily expressions). */
+export const SCAN_WORKER_CRON_SCHEDULES = [
+  "15 0 * * *",
+  "15 1 * * *",
+  "15 2 * * *",
+  "15 4 * * *",
+  "15 5 * * *",
+  "15 6 * * *",
+  "15 8 * * *",
+  "15 9 * * *",
+  "15 10 * * *",
+  "15 11 * * *",
+  "45 0 * * *",
+  "45 1 * * *",
+  "45 2 * * *",
+  "45 4 * * *",
+  "45 5 * * *",
+  "45 6 * * *",
+  "45 8 * * *",
+  "45 9 * * *",
+  "45 10 * * *",
+  "45 11 * * *",
+  "30 14 * * *",
+  "30 22 * * *",
+] as const;
 export const SCAN_WORKER_RUNS_PER_DAY = SCAN_WORKER_CRON_SCHEDULES.length;
 
 export const DIAGNOSIS_DISPATCH_CRON_PATH =
   "/api/internal/collector/diagnosis-dispatch";
-export const DIAGNOSIS_DISPATCH_CRON_SCHEDULES =
-  hobbyOnceDailyHourlySchedules(5);
+export const DIAGNOSIS_DISPATCH_CRON_SCHEDULES = [
+  "0 0 * * *",
+  "0 1 * * *",
+  "0 2 * * *",
+  "0 4 * * *",
+  "0 5 * * *",
+  "0 6 * * *",
+  "0 8 * * *",
+  "0 9 * * *",
+  "0 10 * * *",
+  "0 11 * * *",
+] as const;
 export const DIAGNOSIS_COMPLETED_DAILY_TARGET = 100;
 
 export const SOURCE_PAGE_URL_RATE_TARGET = 0.9;

@@ -27,10 +27,10 @@ console.log("[Diagnosis Daily Capacity Check]\n");
     crons?: Array<{ path?: string }>;
   };
   const workerRuns = countCronJobsForPath(vercel.crons || [], SCAN_WORKER_CRON_PATH);
-  assert.equal(workerRuns, 24);
-  assert.equal(estimatedDiagnosisMaxPerDay(), 72);
-  assert.equal(estimatedDiagnosisMaxPerDay(5, 24), 120);
-  console.log("  PASS  scanBatch 3 × 24 worker runs = 72/day max");
+  assert.equal(workerRuns, 22);
+  assert.equal(estimatedDiagnosisMaxPerDay(), 66);
+  assert.equal(estimatedDiagnosisMaxPerDay(5, 22), 110);
+  console.log("  PASS  scanBatch 3 × 22 worker runs = 66/day max");
 }
 
 {

@@ -58,102 +58,6 @@
   "crons": [
     {
       "path": "/api/internal/collector/official-sites",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 11 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 13 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 16 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 17 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 19 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 22 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
       "schedule": "30 0 * * *"
     },
     {
@@ -250,99 +154,43 @@
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 0 * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 1 * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 2 * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 3 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 4 * * *"
+      "schedule": "0 5 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 5 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 6 * * *"
+      "schedule": "0 8 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 7 * * *"
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 8 * * *"
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 9 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 10 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 11 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 12 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 13 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 14 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 15 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 16 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 17 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 18 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 19 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 20 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 21 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 22 * * *"
-    },
-    {
-      "path": "/api/internal/collector/diagnosis-dispatch",
-      "schedule": "5 23 * * *"
+      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
@@ -358,10 +206,6 @@
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 3 * * *"
-    },
-    {
-      "path": "/api/internal/jobs/run-next",
       "schedule": "15 4 * * *"
     },
     {
@@ -371,10 +215,6 @@
     {
       "path": "/api/internal/jobs/run-next",
       "schedule": "15 6 * * *"
-    },
-    {
-      "path": "/api/internal/jobs/run-next",
-      "schedule": "15 7 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
@@ -394,51 +234,51 @@
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 12 * * *"
+      "schedule": "45 0 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 13 * * *"
+      "schedule": "45 1 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 14 * * *"
+      "schedule": "45 2 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 15 * * *"
+      "schedule": "45 4 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 16 * * *"
+      "schedule": "45 5 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 17 * * *"
+      "schedule": "45 6 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 18 * * *"
+      "schedule": "45 8 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 19 * * *"
+      "schedule": "45 9 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 20 * * *"
+      "schedule": "45 10 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 21 * * *"
+      "schedule": "45 11 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 22 * * *"
+      "schedule": "30 14 * * *"
     },
     {
       "path": "/api/internal/jobs/run-next",
-      "schedule": "15 23 * * *"
+      "schedule": "30 22 * * *"
     },
     {
       "path": "/api/internal/weekly/publish",

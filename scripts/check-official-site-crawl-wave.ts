@@ -46,13 +46,13 @@ console.log("[Official Site Crawl Wave Check]\n");
     crons?: Array<{ path?: string; schedule?: string }>;
   };
   const jobs = (vercel.crons || []).filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
-  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 48);
+  assert.equal(countCronJobsForPath(vercel.crons || [], OFFICIAL_SITE_CRON_PATH), 24);
   for (const job of jobs) {
     assert.equal((job.schedule || "").includes(","), false);
     assert.equal((job.schedule || "").includes("* * *"), true, job.schedule);
     assert.equal((job.schedule || "").includes(" * * * *"), false, job.schedule);
   }
-  console.log("  PASS  48 Hobby once-daily official-site crons (30-minute cadence)");
+  console.log("  PASS  24 Hobby once-daily official-site crons (hourly cadence)");
 }
 
 {
