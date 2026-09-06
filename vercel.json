@@ -57,28 +57,52 @@
   },
   "crons": [
     {
-      "path": "/api/internal/collector/run/a",
-      "schedule": "0 17 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 0 * * *"
     },
     {
-      "path": "/api/internal/collector/run/b",
-      "schedule": "0 19 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 2 * * *"
     },
     {
-      "path": "/api/internal/collector/revalidate",
-      "schedule": "0 23 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 4 * * *"
     },
     {
-      "path": "/api/internal/collector/revalidate",
-      "schedule": "0 3 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 6 * * *"
     },
     {
-      "path": "/api/internal/collector/revalidate",
-      "schedule": "0 7 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 8 * * *"
     },
     {
-      "path": "/api/internal/collector/revalidate",
-      "schedule": "0 13 * * *"
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/internal/collector/official-sites",
+      "schedule": "30 22 * * *"
     },
     {
       "path": "/api/internal/collector/diagnosis-dispatch",
@@ -207,30 +231,6 @@
     {
       "path": "/api/internal/jobs/run-next",
       "schedule": "30 22 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 9 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 12 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 15 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 18 * * *"
-    },
-    {
-      "path": "/api/internal/collector/official-sites",
-      "schedule": "30 21 * * *"
     },
     {
       "path": "/api/internal/weekly/publish",
