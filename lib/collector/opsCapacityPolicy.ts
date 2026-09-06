@@ -6,19 +6,26 @@
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 
 /**
- * Never-crawled official-site sprint: four hourly crons → a wave every 15
- * minutes, 24h (96 waves/day). Naver collect A/B is paused in vercel.json.
+ * Hobby-safe once-daily expressions. Hourly or repeating-minute crons fail
+ * Vercel Hobby deploys ("cron jobs that run more than once per day").
+ */
+export function hobbyOnceDailyHourlySchedules(minute: number): string[] {
+  const m = Math.max(0, Math.min(59, Math.floor(minute)));
+  return Array.from({ length: 24 }, (_, hour) => `${m} ${hour} * * *`);
+}
+
+/**
+ * Never-crawled official-site sprint on Hobby: 48 once-daily slots (minute 0
+ * and 30 every UTC hour) → ~30 min cadence, 8 orgs/run. Naver A/B paused.
  * Keep 8 orgs/run; do not overlap waves (already_running skip).
  */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
 export const OFFICIAL_SITE_CRON_SCHEDULES = [
-  "0 * * * *",
-  "15 * * * *",
-  "30 * * * *",
-  "45 * * * *",
+  ...hobbyOnceDailyHourlySchedules(0),
+  ...hobbyOnceDailyHourlySchedules(30),
 ] as const;
 export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
-export const OFFICIAL_SITE_WAVES_PER_DAY = 96;
+export const OFFICIAL_SITE_WAVES_PER_DAY = OFFICIAL_SITE_CRON_SCHEDULES.length;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =
   OFFICIAL_SITE_MAX_ORGS_PER_RUN * OFFICIAL_SITE_WAVES_PER_DAY;
 
@@ -28,9 +35,14 @@ export const OFFICIAL_SITE_STALE_RUNNING_MS = 20 * 60 * 1000;
 export const SCAN_WORKER_CRON_PATH = "/api/internal/jobs/run-next";
 export const SCAN_WORKER_DEFAULT_BATCH = 3;
 export const SCAN_WORKER_FUTURE_BATCH = 5;
-/** Two hourly crons at :10 and :40 UTC → 48 runs/day. */
-export const SCAN_WORKER_CRON_SCHEDULES = ["10 * * * *", "40 * * * *"] as const;
-export const SCAN_WORKER_RUNS_PER_DAY = 48;
+/** One Hobby-safe worker slot per UTC hour at :15. */
+export const SCAN_WORKER_CRON_SCHEDULES = hobbyOnceDailyHourlySchedules(15);
+export const SCAN_WORKER_RUNS_PER_DAY = SCAN_WORKER_CRON_SCHEDULES.length;
+
+export const DIAGNOSIS_DISPATCH_CRON_PATH =
+  "/api/internal/collector/diagnosis-dispatch";
+export const DIAGNOSIS_DISPATCH_CRON_SCHEDULES =
+  hobbyOnceDailyHourlySchedules(5);
 export const DIAGNOSIS_COMPLETED_DAILY_TARGET = 100;
 
 export const SOURCE_PAGE_URL_RATE_TARGET = 0.9;

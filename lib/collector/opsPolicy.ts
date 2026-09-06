@@ -39,9 +39,10 @@ export const COLLECTOR_STALE_RUNNING_MS = 15 * 60 * 1000;
  * Production schedule (Vercel Cron in vercel.json, UTC) — never-crawled sprint:
  * - Collect A/B paused (endpoints kept for manual).
  * - Revalidate paused.
- * - Official site every 15 minutes, 24h, 8 orgs/run (~768/일 이론, 겹치면 skip).
+ * - Official site every 30 minutes as Hobby once-daily slots, 8 orgs/run
+ *   (~384/일 이론, 겹치면 skip). Hourly `*` expressions fail Hobby deploys.
  * - Diagnosis dispatch hourly :05 UTC, official_site only.
- * - Scan worker :10 / :40 UTC every hour (scanBatch=3).
+ * - Scan worker hourly :15 UTC (scanBatch=3).
  * Legacy single /api/internal/collector/run Cron removed (endpoint kept for manual).
  */
 export const COLLECTOR_OPS_SCHEDULE_NOTES = {
@@ -50,7 +51,7 @@ export const COLLECTOR_OPS_SCHEDULE_NOTES = {
   discoveredBacklog: "일시 중지 (미탐색 공공 사이트 스프린트)",
   unreachableRetry: "일시 중지",
   officialSiteWaves:
-    "15분 간격 24시간 × 8기관 → /api/internal/collector/official-sites (이론 768기관/일, 웨이브 겹치면 skip)",
+    "30분 간격 24시간 × 8기관 → /api/internal/collector/official-sites (이론 384기관/일, 웨이브 겹치면 skip)",
 } as const;
 
 /** Target collect wall time ≤ 70% of Vercel maxDuration (120s → 84s). */

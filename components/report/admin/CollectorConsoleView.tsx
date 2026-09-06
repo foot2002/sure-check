@@ -649,8 +649,8 @@ export function CollectorConsoleView({
             </p>
             <div className="mt-3 rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
               <p>
-                계획: 미탐색 공공 사이트 스프린트 · 15분 간격 24시간 × 회당 최대 8기관
-                (이론 768기관/일, 이전 웨이브가 끝나지 않으면 skip).
+                계획: 미탐색 공공 사이트 스프린트 · 30분 간격 24시간 × 회당 최대 8기관
+                (이론 384기관/일, 이전 웨이브가 끝나지 않으면 skip).
                 네이버 검색 수집·재검증은 일시 중지입니다.
               </p>
               <p>
@@ -676,8 +676,8 @@ export function CollectorConsoleView({
               {summary.officialSite?.exceededPlanExplained ? (
                 <p className="text-slate-600">
                   오늘 공공 사이트 탐색 기관이 계획량보다 많습니다. 수동 테스트
-                  또는 관리자 실행이 포함되었을 수 있습니다. 정기 cron 기준
-                  계획량은 회당 8기관, 15분 간격입니다. 웨이브가 겹치면
+                  또는 관리자 실행이 포함되었을 수 있습니다.                   정기 cron 기준
+                  계획량은 회당 8기관, 30분 간격입니다. 웨이브가 겹치면
                   건너뛰므로 실제 탐색은 이론치보다 적을 수 있습니다.
                 </p>
               ) : null}
@@ -716,7 +716,7 @@ export function CollectorConsoleView({
                       <StatCard
                         label="오늘 정기 수집 기관"
                         value={`${formatCount(summary.officialSite.todayCronCrawled)} / ${formatCount(summary.officialSite.orgsPerDayTarget)}`}
-                        hint="cron 기준 15분 간격 24시간"
+                        hint="cron 기준 30분 간격 24시간"
                         className="border-teal-200 bg-white"
                       />
                       <StatCard

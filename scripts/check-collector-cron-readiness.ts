@@ -198,23 +198,20 @@ async function main() {
         .filter((c) => c.path === "/api/internal/collector/official-sites")
         .map((c) => c.schedule)
         .sort();
-      const expectedOfficial = [
-        "0 * * * *",
-        "15 * * * *",
-        "30 * * * *",
-        "45 * * * *",
-      ].sort();
-      const hasOfficialSprint =
-        officialSchedules.length === 4 &&
-        officialSchedules.every((s, i) => s === expectedOfficial[i]);
+      const hasOfficialSprint = officialSchedules.length === 48;
+      const allOnceDaily = crons.every((c) => {
+        const parts = String(c.schedule || "").trim().split(/\s+/);
+        return parts.length === 5 && parts[0] !== "*" && parts[1] !== "*";
+      });
       vercelCronsOk =
         !hasCollectA &&
         !hasCollectB &&
         !hasLegacyFullRun &&
         !hasRevalidate &&
-        hasOfficialSprint;
+        hasOfficialSprint &&
+        allOnceDaily;
       vercelDetail = vercelCronsOk
-        ? "Naver A/B+revalidate paused; official-site every 15 min 24h"
+        ? "Naver A/B+revalidate paused; official-site every 30 min (Hobby once-daily slots)"
         : `불완전: ${JSON.stringify(crons)}`;
     } catch (e) {
       vercelDetail = e instanceof Error ? e.message : String(e);
