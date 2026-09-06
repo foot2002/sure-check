@@ -32,6 +32,7 @@ import {
   normalizeAdminDashboardView,
   pickTodayPriorityCases,
 } from "@/lib/report/adminDashboardViews";
+import { pickPriorityEvidenceCases } from "@/lib/report/priorityEvidenceQueue";
 import {
   classifyPublicOrgGroup,
   csapCertifiedYesNo,
