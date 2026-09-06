@@ -15,13 +15,25 @@ export function hobbyOnceDailyHourlySchedules(minute: number): string[] {
 }
 
 /**
- * Never-crawled official-site sprint on Hobby: 24 once-daily hourly slots,
- * 8 orgs/run. Repeating-hour expressions fail Hobby deploys; keep one
- * expression per UTC hour. Naver A/B paused.
- * Keep 8 orgs/run; do not overlap waves (already_running skip).
+ * Never-crawled official-site sprint on Hobby: 12 once-daily slots every
+ * 2 UTC hours at :30, 8 orgs/run. Keep total crons at the proven 45 that
+ * last deployed successfully. Naver A/B paused.
  */
 export const OFFICIAL_SITE_CRON_PATH = "/api/internal/collector/official-sites";
-export const OFFICIAL_SITE_CRON_SCHEDULES = hobbyOnceDailyHourlySchedules(30);
+export const OFFICIAL_SITE_CRON_SCHEDULES = [
+  "30 0 * * *",
+  "30 2 * * *",
+  "30 4 * * *",
+  "30 6 * * *",
+  "30 8 * * *",
+  "30 10 * * *",
+  "30 12 * * *",
+  "30 14 * * *",
+  "30 16 * * *",
+  "30 18 * * *",
+  "30 20 * * *",
+  "30 22 * * *",
+] as const;
 export const OFFICIAL_SITE_CRON_SCHEDULE = OFFICIAL_SITE_CRON_SCHEDULES[0];
 export const OFFICIAL_SITE_WAVES_PER_DAY = OFFICIAL_SITE_CRON_SCHEDULES.length;
 export const OFFICIAL_SITE_TARGET_ORGS_PER_DAY =

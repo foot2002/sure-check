@@ -198,7 +198,7 @@ async function main() {
         .filter((c) => c.path === "/api/internal/collector/official-sites")
         .map((c) => c.schedule)
         .sort();
-      const hasOfficialSprint = officialSchedules.length === 24;
+      const hasOfficialSprint = officialSchedules.length === 12;
       const allOnceDaily = crons.every((c) => {
         const parts = String(c.schedule || "").trim().split(/\s+/);
         return parts.length === 5 && parts[0] !== "*" && parts[1] !== "*";
@@ -211,7 +211,7 @@ async function main() {
         hasOfficialSprint &&
         allOnceDaily;
       vercelDetail = vercelCronsOk
-        ? "Naver A/B+revalidate paused; official-site hourly (Hobby once-daily slots)"
+        ? "Naver A/B+revalidate paused; official-site every 2 hours (45 Hobby crons)"
         : `불완전: ${JSON.stringify(crons)}`;
     } catch (e) {
       vercelDetail = e instanceof Error ? e.message : String(e);

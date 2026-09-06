@@ -1,5 +1,5 @@
 /**
- * Official-site daily capacity: 8 orgs/run × 24 hourly Hobby slots = 192/day.
+ * Official-site daily capacity: 8 orgs/run × 12 bi-hourly Hobby slots = 96/day.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -26,10 +26,10 @@ console.log("[Official Site Daily Capacity Check]\n");
 
 {
   assert.equal(OFFICIAL_SITE_MAX_ORGS_PER_RUN, 8);
-  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 24);
-  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 192);
-  assert.equal(estimatedOfficialSiteOrgsPerDay(), 192);
-  console.log("  PASS  8 orgs/run × 24 waves = 192 orgs/day");
+  assert.equal(OFFICIAL_SITE_WAVES_PER_DAY, 12);
+  assert.equal(OFFICIAL_SITE_TARGET_ORGS_PER_DAY, 96);
+  assert.equal(estimatedOfficialSiteOrgsPerDay(), 96);
+  console.log("  PASS  8 orgs/run × 12 waves = 96 orgs/day");
 }
 
 {
@@ -37,13 +37,13 @@ console.log("[Official Site Daily Capacity Check]\n");
     crons?: Array<{ path?: string; schedule?: string }>;
   };
   const crons = vercel.crons || [];
-  assert.ok(crons.length <= 100, `too many crons: ${crons.length}`);
+  assert.ok(crons.length <= 45, `too many crons: ${crons.length}`);
   assert.equal(hasMultiHourCronExpression(crons), false);
   assert.ok(
     crons.every((job) => scheduleIsOnceDaily(job.schedule || "")),
     "Hobby deploy requires once-daily cron expressions",
   );
-  assert.equal(countCronJobsForPath(crons, OFFICIAL_SITE_CRON_PATH), 24);
+  assert.equal(countCronJobsForPath(crons, OFFICIAL_SITE_CRON_PATH), 12);
   const jobs = crons.filter((c) => c.path === OFFICIAL_SITE_CRON_PATH);
   const schedules = jobs.map((job) => job.schedule || "").sort();
   assert.deepEqual(schedules, [...OFFICIAL_SITE_CRON_SCHEDULES].sort());
@@ -51,8 +51,8 @@ console.log("[Official Site Daily Capacity Check]\n");
     assert.equal((job.schedule || "").includes(","), false, job.schedule);
     assert.equal(cronScheduleDailyFires(job.schedule || ""), 1, job.schedule);
   }
-  assert.equal(officialSiteWavesPerDayFromCrons(crons), 24);
-  console.log("  PASS  24 Hobby once-daily official-site crons (hourly cadence)");
+  assert.equal(officialSiteWavesPerDayFromCrons(crons), 12);
+  console.log("  PASS  12 Hobby once-daily official-site crons (every 2 hours)");
 }
 
 {
@@ -67,7 +67,7 @@ console.log("[Official Site Daily Capacity Check]\n");
 {
   const view = source("components/report/admin/CollectorConsoleView.tsx");
   assert.ok(view.includes("공공 사이트 수집 기관 수"));
-  assert.ok(view.includes("1시간 간격 24시간"));
+  assert.ok(view.includes("2시간 간격 24시간"));
   assert.ok(view.includes("회당 최대"));
   assert.ok(view.includes("8기관"));
   console.log("  PASS  collector dashboard shows official-site daily capacity");
