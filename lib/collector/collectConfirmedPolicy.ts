@@ -63,6 +63,22 @@ const OFFICIAL_SITE_UNUSABLE_STATUSES = new Set([
   "unreachable",
 ]);
 
+/** Admin queue click: still enqueue C/stale/discovered unless the form cannot be opened. */
+export function isManualDiagnosisEnqueueable(status?: string | null): boolean {
+  const s = String(status || "").trim().toLowerCase();
+  if (!s) return false;
+  return !isOfficialSiteUnusableStatus(s);
+}
+
+export function manualDiagnosisSkipReason(status?: string | null): string {
+  const s = String(status || "").trim().toLowerCase();
+  if (!s) return "not_found";
+  if (s === "closed") return "closed";
+  if (s === "restricted") return "restricted";
+  if (s === "invalid" || s === "unreachable") return "invalid";
+  return `status_${s}`;
+}
+
 export function isOfficialSiteSource(
   sourceTypes?: Array<string | null | undefined> | null,
 ): boolean {

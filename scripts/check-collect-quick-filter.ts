@@ -52,6 +52,15 @@ function main() {
     "restricted matcher",
     matchesCollectorHoldReason({ status: "restricted" }, "restricted"),
   );
+  check(
+    "thin collector page",
+    page.includes("summary={null}") && page.includes("items={[]}"),
+  );
+  check(
+    "collector export uses current filters",
+    view.includes("collectorSurveysExportUrl") &&
+      view.includes("collectorListQuery({ ...form, page: \"1\" })"),
+  );
   if (failures.length) {
     console.error(`\n${failures.length} check(s) failed`);
     process.exit(1);

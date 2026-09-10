@@ -12,12 +12,17 @@ import {
   collectorDiagnosisLabelKo,
   collectorFreshnessLabelKo,
   collectorLaneLabelKo,
+  collectorManualDiagnoseSkipLabelKo,
   collectorPlatformLabel,
   collectorSourceChannelKo,
   collectorStatusLabelKo,
   collectorTriageLabelKo,
 } from "@/lib/collector/collectorDashboardLabels";
 import { classifyCollectorRunSummary } from "@/lib/collector/runKindLabel";
+import {
+  collectorSurveysExportUrl,
+  downloadAdminBlob,
+} from "@/components/report/admin/adminDownloads";
 
 type Filters = {
   platform: string;
@@ -215,7 +220,7 @@ function StatCard({
 }
 
 export function CollectorConsoleView({
-  summary,
+  summary: initialSummary,
   items,
   listTotal = items.length,
   hasMore = false,
@@ -240,10 +245,13 @@ export function CollectorConsoleView({
     quickView: filters.quickView || "all",
     page: filters.page || "1",
   });
+  const [summary, setSummary] = useState(initialSummary);
+  const [summaryLoading, setSummaryLoading] = useState(!initialSummary);
+  const [exporting, setExporting] = useState(false);
   const [listItems, setListItems] = useState(items);
   const [listCount, setListCount] = useState(listTotal);
   const [listMore, setListMore] = useState(hasMore);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(items.length === 0);
   const [listError, setListError] = useState<string | null>(null);
   const listRequestId = useRef(0);
   const listAbort = useRef<AbortController | null>(null);
@@ -316,6 +324,34 @@ export function CollectorConsoleView({
     setListMore(hasMore);
   }, [items, listTotal, hasMore]);
 
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const res = await fetch("/api/report/admin/collector/summary", {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        summary?: typeof initialSummary;
+      };
+      if (res.ok && data.ok && data.summary) {
+        setSummary(data.summary);
+      }
+    } catch {
+      /* keep last summary */
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [initialSummary]);
+
+  useEffect(() => {
+    clientListMode.current = true;
+    void loadList(form, false);
+    void loadSummary();
+    // Initial client load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function pushForm(next: Filters, resetPage = false) {
     const payload = resetPage ? { ...next, page: "1" } : next;
     clientListMode.current = true;
@@ -340,6 +376,28 @@ export function CollectorConsoleView({
   function goToPage(page: number) {
     const nextPage = String(Math.max(1, page));
     pushForm({ ...form, page: nextPage }, false);
+  }
+
+  async function downloadSearchExcel() {
+    setExporting(true);
+    try {
+      const qs = collectorListQuery({ ...form, page: "1" });
+      const stamp = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      await downloadAdminBlob(
+        collectorSurveysExportUrl(qs),
+        `수집함_검색결과_${stamp}.xlsx`,
+      );
+      setRunMessage("검색 결과 엑셀을 내려받았습니다.");
+    } catch {
+      setRunMessage("검색 결과 엑셀을 받지 못했습니다.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   function resetFilters() {
@@ -404,6 +462,7 @@ export function CollectorConsoleView({
       );
       clientListMode.current = true;
       void loadList(form);
+      void loadSummary();
       router.refresh();
     } catch {
       setRunMessage("네트워크 오류로 수집을 시작하지 못했습니다.");
@@ -439,6 +498,7 @@ export function CollectorConsoleView({
       setRunMessage(`공공 사이트 수집 완료 — 탐색 기관 ${data.crawled ?? limit}곳`);
       clientListMode.current = true;
       void loadList(form);
+      void loadSummary();
       router.refresh();
     } catch {
       setRunMessage("공공 사이트 수집을 시작하지 못했습니다.");
@@ -450,6 +510,7 @@ export function CollectorConsoleView({
   function diagnoseResultMessage(data: {
     counts?: { queued?: number };
     reason?: string | null;
+    skipReason?: string | null;
     selected?: number;
   }): string {
     const queued = data.counts?.queued ?? 0;
@@ -471,8 +532,11 @@ export function CollectorConsoleView({
     if (data.reason === "already_diagnosed") {
       return "이미 자동진단이 등록되었거나 완료된 설문입니다.";
     }
+    if (data.reason === "not_found" || data.skipReason === "not_found") {
+      return collectorManualDiagnoseSkipLabelKo("not_found");
+    }
     if (data.reason === "not_eligible") {
-      return "이 설문은 지금 자동진단 대상이 아닙니다. (종료·제한 등)";
+      return collectorManualDiagnoseSkipLabelKo(data.skipReason);
     }
     if (data.reason === "no_open_eligible_candidates") {
       return "지금 큐에 넣을 수 있는 미진단 설문을 찾지 못했습니다.";
@@ -500,6 +564,7 @@ export function CollectorConsoleView({
         error?: string;
         counts?: { queued?: number };
         reason?: string | null;
+        skipReason?: string | null;
         selected?: number;
       };
       if (!res.ok || !data.ok) {
@@ -607,6 +672,7 @@ export function CollectorConsoleView({
         <div className="flex flex-wrap gap-2">
           <Link
             href="/report/admin"
+            prefetch
             className="rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
             관리자 메인
@@ -686,6 +752,13 @@ export function CollectorConsoleView({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {summaryLoading && !summary ? (
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <p className="text-sm text-slate-600">운영 통계를 불러오는 중입니다…</p>
+          <div className="mt-4 h-28 animate-pulse rounded-xl bg-slate-200/70" />
+        </section>
       ) : null}
 
       {summary ? (
@@ -2062,12 +2135,20 @@ export function CollectorConsoleView({
             placeholder="키워드"
           />
         </label>
-        <div className="flex items-end">
+        <div className="flex items-end gap-2 md:col-span-2">
           <button
             type="submit"
             className="w-full rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
             검색
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadSearchExcel()}
+            disabled={exporting || listCount === 0}
+            className="w-full shrink-0 rounded-lg border border-teal-700 bg-white px-3 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {exporting ? "엑셀 준비 중…" : "검색 결과 엑셀 다운로드"}
           </button>
         </div>
       </form>

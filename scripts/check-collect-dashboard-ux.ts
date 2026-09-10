@@ -4,6 +4,7 @@ import {
   collectorDiagnosisLabelKo,
   collectorFreshnessLabelKo,
   collectorLaneLabelKo,
+  collectorManualDiagnoseSkipLabelKo,
   collectorSourceChannelKo,
   collectorStatusLabelKo,
   collectorTriageLabelKo,
@@ -77,6 +78,14 @@ function main() {
       view.includes("onRowDiagnose"),
   );
   check(
+    "admin diagnose skip labels",
+    collectorManualDiagnoseSkipLabelKo("closed") ===
+      "이 설문은 종료되어 진단할 수 없습니다." &&
+      collectorManualDiagnoseSkipLabelKo("restricted") ===
+        "로그인이 필요해 진단할 수 없습니다." &&
+      !view.includes("종료·제한 등"),
+  );
+  check(
     "list diagnosis tabs",
     view.includes('aria-label="진단 여부"') &&
       view.includes('label: "미진단"') &&
@@ -97,6 +106,26 @@ function main() {
     read("lib/collector/surveyLinkListQuery.ts").includes("applySurveyLinkColumnFilters"),
   );
   check("naver source filter", read("lib/collector/surveyLinkListQuery.ts").includes('sourceType === "naver"'));
+  check(
+    "collector page does not block on summary",
+    !read("app/report/admin/collector/page.tsx").includes("getCollectorSummary") &&
+      !read("app/report/admin/collector/page.tsx").includes("listSurveyLinks"),
+  );
+  check(
+    "collector client loads summary and list",
+    view.includes("/api/report/admin/collector/summary") &&
+      view.includes("loadSummary") &&
+      view.includes("검색 결과 엑셀 다운로드"),
+  );
+  check(
+    "collector search export route",
+    read("app/api/report/admin/collector/surveys/export/route.ts").includes("listSurveyLinks") &&
+      read("app/api/report/admin/collector/surveys/export/route.ts").includes("수집함_검색결과_"),
+  );
+  check(
+    "collector loading shell",
+    read("app/report/admin/collector/loading.tsx").includes("목록을 불러오는 중입니다"),
+  );
 
   if (failures.length) {
     console.error(`\n${failures.length} check(s) failed`);

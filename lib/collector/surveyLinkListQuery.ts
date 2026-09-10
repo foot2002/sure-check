@@ -70,6 +70,48 @@ export function parseCollectorListPage(query: {
   return { limit, offset };
 }
 
+function pickSearch(params: URLSearchParams, key: string): string | undefined {
+  const value = params.get(key);
+  return value?.trim() || undefined;
+}
+
+export function collectorFiltersFromSearchParams(
+  params: URLSearchParams,
+): SurveyLinkListFilters {
+  return {
+    platform: (pickSearch(params, "platform") as SurveyLinkListFilters["platform"]) || "all",
+    status:
+      (pickSearch(params, "status") as SurveyLinkListFilters["status"]) ||
+      "default",
+    firstDiscoveredFrom: pickSearch(params, "firstDiscoveredFrom"),
+    firstDiscoveredTo: pickSearch(params, "firstDiscoveredTo"),
+    searchQuery: pickSearch(params, "searchQuery"),
+    novelty:
+      (pickSearch(params, "novelty") as SurveyLinkListFilters["novelty"]) ||
+      "all",
+    sourceType:
+      (pickSearch(params, "sourceType") as SurveyLinkListFilters["sourceType"]) ||
+      "all",
+    holdReason:
+      (pickSearch(params, "holdReason") as SurveyLinkListFilters["holdReason"]) ||
+      "all",
+    triageQueue:
+      (pickSearch(params, "triageQueue") as SurveyLinkListFilters["triageQueue"]) ||
+      "all",
+    diagnosisStatus:
+      (pickSearch(params, "diagnosisStatus") as SurveyLinkListFilters["diagnosisStatus"]) ||
+      "all",
+    q: pickSearch(params, "q"),
+    limit:
+      Number(pickSearch(params, "limit") || COLLECTOR_LIST_PAGE_SIZE) ||
+      COLLECTOR_LIST_PAGE_SIZE,
+    ...(pickSearch(params, "offset")
+      ? { offset: Number(pickSearch(params, "offset")) }
+      : {}),
+    page: pickSearch(params, "page"),
+  };
+}
+
 function holdForcesAllStatus(filters: SurveyLinkListFilters): boolean {
   const hold = filters.holdReason && filters.holdReason !== "all" ? filters.holdReason : null;
   return Boolean(hold && (!filters.status || filters.status === "default"));

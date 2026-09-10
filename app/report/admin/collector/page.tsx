@@ -3,20 +3,9 @@ import {
   getAdminSessionFromCookies,
   isAdminAuthConfigured,
 } from "@/lib/report/adminAuth";
-import {
-  getCollectorConfigError,
-  isCollectorStorageConfigured,
-} from "@/lib/collector/config";
-import {
-  COLLECTOR_LIST_PAGE_SIZE,
-  getCollectorSummary,
-  listSurveyLinks,
-} from "@/lib/collector/queries";
+import { getCollectorConfigError } from "@/lib/collector/config";
+import { COLLECTOR_LIST_PAGE_SIZE } from "@/lib/collector/queries";
 import { CollectorConsoleView } from "@/components/report/admin/CollectorConsoleView";
-import type {
-  CollectorPlatform,
-  CollectorSurveyStatus,
-} from "@/lib/collector/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -64,90 +53,16 @@ export default async function AdminCollectorPage({
     page: pick("page") || "1",
   };
 
-  let summary = null;
-  let items: Awaited<ReturnType<typeof listSurveyLinks>>["items"] = [];
-  let listTotal = 0;
-  let listHasMore = false;
-  let error: string | null = null;
-  const configError = getCollectorConfigError();
-
-  if (!isCollectorStorageConfigured()) {
-    error =
-      "Supabase가 설정되지 않아 수집 목록을 불러올 수 없습니다. SUPABASE_URL과 SUPABASE_SERVICE_ROLE_KEY를 확인하세요.";
-  } else {
-    try {
-      const fromIso = filters.firstDiscoveredFrom
-        ? `${filters.firstDiscoveredFrom}T00:00:00.000Z`
-        : undefined;
-      const toIso = filters.firstDiscoveredTo
-        ? `${filters.firstDiscoveredTo}T23:59:59.999Z`
-        : undefined;
-
-      const [nextSummary, list] = await Promise.all([
-        getCollectorSummary(),
-        listSurveyLinks({
-          platform: filters.platform as CollectorPlatform | "all",
-          status: filters.status as
-            | CollectorSurveyStatus
-            | "all"
-            | "default"
-            | "non_invalid",
-          firstDiscoveredFrom: fromIso,
-          firstDiscoveredTo: toIso,
-          searchQuery: filters.searchQuery || undefined,
-          novelty: filters.novelty as "all" | "new" | "existing",
-          sourceType: filters.sourceType as
-            | import("@/lib/collector/types").CollectorSourceType
-            | "all"
-            | "naver",
-          holdReason: filters.holdReason as
-            | "all"
-            | "date_unknown"
-            | "old_year"
-            | "closed"
-            | "restricted"
-            | "personal"
-            | "invalid"
-            | "eligible",
-          triageQueue: filters.triageQueue as
-            | "A_PRIORITY"
-            | "B_PRIORITY"
-            | "C_ARCHIVE"
-            | "all",
-          diagnosisStatus: filters.diagnosisStatus as
-            | "all"
-            | "undiagnosed"
-            | "queued"
-            | "running"
-            | "completed"
-            | "limited"
-            | "failed",
-          q: filters.q || undefined,
-          limit: COLLECTOR_LIST_PAGE_SIZE,
-          page: filters.page,
-        }),
-      ]);
-      summary = nextSummary;
-      items = list.items;
-      listTotal = list.total;
-      listHasMore = list.hasMore;
-    } catch (err) {
-      console.error("[admin-collector-page]", err);
-      error =
-        "수집 목록을 불러오지 못했습니다. migration 004–007이 적용됐는지 확인하세요.";
-    }
-  }
-
   return (
     <CollectorConsoleView
-      summary={summary}
-      items={items}
-      listTotal={listTotal}
-      hasMore={listHasMore}
+      summary={null}
+      items={[]}
+      listTotal={0}
+      hasMore={false}
       pageSize={COLLECTOR_LIST_PAGE_SIZE}
-      error={error}
+      error={null}
       filters={filters}
-      configError={configError}
+      configError={getCollectorConfigError()}
     />
   );
 }

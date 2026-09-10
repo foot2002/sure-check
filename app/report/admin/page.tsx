@@ -3,7 +3,6 @@ import {
   getAdminSessionFromCookies,
   isAdminAuthConfigured,
 } from "@/lib/report/adminAuth";
-import { listAdminCases, AdminRangeError } from "@/lib/report/adminCases";
 import { AdminConsoleView } from "@/components/report/admin/AdminConsoleView";
 
 export const dynamic = "force-dynamic";
@@ -37,47 +36,10 @@ export default async function AdminReportPage({
     return Array.isArray(value) ? value[0] : value;
   };
 
-  let data = null;
-  let error: string | null = null;
-  try {
-    data = await listAdminCases({
-      range: pick("range"),
-      risk: pick("risk"),
-      reviewStatus: pick("reviewStatus"),
-      publicationStatus: pick("publicationStatus"),
-      platform: pick("platform"),
-      publicPrivate: pick("publicPrivate"),
-      hasPersonalInfo: pick("hasPersonalInfo"),
-      hasSensitiveInfo: pick("hasSensitiveInfo"),
-      hasHighRiskInfo: pick("hasHighRiskInfo"),
-      hasEvidence: pick("hasEvidence"),
-      limitedOnly: pick("limitedOnly"),
-      outreachOnly: pick("outreachOnly"),
-      priority: pick("priority"),
-      noticeGap: pick("noticeGap"),
-      reportReview: pick("reportReview"),
-      outreachStatus: pick("outreachStatus"),
-      publicCaseStatus: pick("publicCaseStatus"),
-      view: pick("view"),
-      subjectType: pick("subjectType"),
-      from: pick("from"),
-      to: pick("to"),
-      q: pick("q"),
-      limit: pick("limit"),
-      offset: pick("offset"),
-    });
-  } catch (err) {
-    console.error("[admin-page]", err);
-    error =
-      err instanceof AdminRangeError
-        ? err.message
-        : "검토 목록을 불러오지 못했습니다.";
-  }
-
   return (
     <AdminConsoleView
-      data={data}
-      error={error}
+      data={null}
+      error={null}
       filters={{
         range: pick("from") && pick("to") ? "custom" : pick("range") || "7d",
         risk: pick("risk") || "all",

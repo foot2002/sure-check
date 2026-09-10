@@ -878,7 +878,11 @@ async function buildTodayOpsMetrics(input: {
   return { todayFunnel, qualityKpis };
 }
 
-export { listSurveyLinks, COLLECTOR_LIST_PAGE_SIZE } from "@/lib/collector/surveyLinkListQuery";
+export {
+  listSurveyLinks,
+  COLLECTOR_LIST_PAGE_SIZE,
+  collectorFiltersFromSearchParams,
+} from "@/lib/collector/surveyLinkListQuery";
 
 export async function listSourcesForSurveyLink(
   surveyLinkId: string,

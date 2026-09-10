@@ -76,7 +76,8 @@ function main() {
   check("KPI click highOrReport", consoleView.includes('applyView("highOrReport")'));
   check("KPI click evidenceMissing", consoleView.includes('applyView("evidenceMissing")'));
   check("KPI click publicInstitutions", consoleView.includes('applyView("publicInstitutions")'));
-  check("excel download button", consoleView.includes("목록 엑셀 다운로드"));
+  check("excel download next to search", consoleView.includes("검색 결과 엑셀 다운로드"));
+  check("excel not in top nav", !/href="\/report\/admin\/collector"[\s\S]{0,80}엑셀/.test(consoleView) && !consoleView.includes("목록 엑셀 다운로드"));
   check("excel export helper", /adminCasesExportUrl/.test(consoleView));
   check("today action section", consoleView.includes("오늘 해야 할 일") && consoleView.includes("오늘 우선 확인할 설문"));
   check("usage guide", consoleView.includes("사용 안내") && consoleView.includes("위법 여부를 확정하지 않습니다"));

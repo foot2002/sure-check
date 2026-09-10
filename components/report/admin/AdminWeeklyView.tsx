@@ -48,6 +48,7 @@ export function AdminWeeklyView({
         <div className="flex gap-2">
           <Link
             href="/report/admin"
+            prefetch
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
           >
             관리자 홈

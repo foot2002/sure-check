@@ -192,7 +192,7 @@ export function AdminConsoleView({
   const [publishId, setPublishId] = useState<string | null>(null);
   const [clientPayload, setClientPayload] = useState<AdminCaseListPayload | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!data);
   const [toast, setToast] = useState<string | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -239,9 +239,16 @@ export function AdminConsoleView({
     return params;
   }
 
+  useEffect(() => {
+    if (data) return;
+    void apply(form, { skipUrl: true });
+    // Initial client load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function apply(
     next: Filters,
-    options?: { append?: boolean; offset?: number },
+    options?: { append?: boolean; offset?: number; skipUrl?: boolean },
   ) {
     if (next.range === "custom") {
       if (!next.from || !next.to) {
@@ -267,7 +274,7 @@ export function AdminConsoleView({
     if (offset > 0) params.set("offset", String(offset));
     params.set("limit", "400");
     const qs = params.toString();
-    if (!append) {
+    if (!append && !options?.skipUrl) {
       router.replace(`/report/admin?${toParams(next).toString()}`, { scroll: false });
     }
     setLoading(true);
@@ -425,22 +432,16 @@ export function AdminConsoleView({
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void downloadExcel()}
-            disabled={exporting || !payload?.cases.length}
-            className="rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {exporting ? "엑셀 준비 중…" : "목록 엑셀 다운로드"}
-          </button>
           <Link
             href="/report/admin/collector"
+            prefetch
             className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
           >
             수집함
           </Link>
           <Link
             href="/report/admin/weekly"
+            prefetch
             className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
           >
             주간 리포트 관리
@@ -503,6 +504,13 @@ export function AdminConsoleView({
           <p className="mt-2">
             표시된 결과는 자동진단 기반이며 위법 여부를 확정하지 않습니다.
           </p>
+        </div>
+      ) : null}
+
+      {loading && !payload ? (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm text-slate-600">검토 목록을 불러오는 중입니다…</p>
+          <div className="mt-3 h-24 animate-pulse rounded-xl bg-slate-200/70" />
         </div>
       ) : null}
 
@@ -1051,12 +1059,20 @@ export function AdminConsoleView({
             placeholder="기관명 / 제목 / URL / 진단 내용"
           />
         </label>
-        <div className="flex items-end">
+        <div className="flex items-end gap-2 md:col-span-2">
           <button
             type="submit"
             className="w-full rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
             필터 적용
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadExcel()}
+            disabled={exporting || !payload?.cases.length}
+            className="w-full shrink-0 rounded-lg border border-teal-700 bg-white px-3 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {exporting ? "엑셀 준비 중…" : "검색 결과 엑셀 다운로드"}
           </button>
         </div>
         {form.range === "custom" ? (

@@ -42,3 +42,7 @@ export function detailReportFilename(caseId: string): string {
 export function adminCasesExportUrl(query: string): string {
   return `/api/report/admin/cases/export${query ? `?${query}` : ""}`;
 }
+
+export function collectorSurveysExportUrl(query: string): string {
+  return `/api/report/admin/collector/surveys/export${query ? `?${query}` : ""}`;
+}

@@ -11,6 +11,10 @@ import {
   filterAndSortEligible,
   isEligibleTriage,
 } from "../lib/collector/diagnosisBridge";
+import {
+  isManualDiagnosisEnqueueable,
+  manualDiagnosisSkipReason,
+} from "../lib/collector/collectConfirmedPolicy";
 import { getKstDayBounds } from "../lib/collector/diagnosisLinkRepository";
 import type { CollectorPlatform } from "../lib/collector/types";
 
@@ -28,6 +32,7 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
   assert.ok(!/processInline:\s*Boolean\(input\?\.processInline\)/.test(bridge));
   assert.ok(bridge.includes("daily.limitReached && !manual"));
   assert.ok(bridge.includes("priority: manual ? 1"));
+  assert.ok(bridge.includes("isManualDiagnosisEnqueueable"));
   console.log("  PASS  dispatcher does not open pages or run inline diagnosis");
 }
 
@@ -108,7 +113,35 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
   ]);
   assert.equal(eligible.length, 1);
   assert.equal(eligible[0]!.surveyLinkId, "active-ok");
+  const cOnly = filterAndSortEligible([
+    {
+      id: "c-archive",
+      canonicalUrl: "https://forms.gle/c",
+      platform: "google_forms" as CollectorPlatform,
+      title: "수원하이텍고등학교 입학설명회",
+      status: "active",
+      triage: {
+        ...publicA,
+        queue: "C_ARCHIVE",
+        organization: "unknown",
+      },
+    },
+  ]);
+  assert.equal(cOnly.length, 0);
+  assert.equal(isManualDiagnosisEnqueueable("active"), true);
   console.log("  PASS  closed/restricted/stale/discovered are not queued");
+}
+
+{
+  assert.equal(isManualDiagnosisEnqueueable("active"), true);
+  assert.equal(isManualDiagnosisEnqueueable("discovered"), true);
+  assert.equal(isManualDiagnosisEnqueueable("stale"), true);
+  assert.equal(isManualDiagnosisEnqueueable("closed"), false);
+  assert.equal(isManualDiagnosisEnqueueable("restricted"), false);
+  assert.equal(isManualDiagnosisEnqueueable("invalid"), false);
+  assert.equal(manualDiagnosisSkipReason("closed"), "closed");
+  assert.equal(manualDiagnosisSkipReason("restricted"), "restricted");
+  console.log("  PASS  admin click still queues C/stale/discovered, not closed/restricted");
 }
 
 {

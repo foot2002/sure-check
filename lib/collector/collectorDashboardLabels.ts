@@ -92,6 +92,20 @@ export function collectorSourceChannelKo(sourceType: string | null | undefined):
   return "출처 미확인";
 }
 
+export function collectorManualDiagnoseSkipLabelKo(
+  reason?: string | null,
+): string {
+  if (reason === "not_found") {
+    return "이 설문을 찾지 못했습니다. 목록을 새로고침한 뒤 다시 시도하세요.";
+  }
+  if (reason === "closed") return "이 설문은 종료되어 진단할 수 없습니다.";
+  if (reason === "restricted") return "로그인이 필요해 진단할 수 없습니다.";
+  if (reason === "invalid") {
+    return "주소가 잘못됐거나 열리지 않아 진단할 수 없습니다.";
+  }
+  return "이 설문은 지금 진단할 수 없습니다.";
+}
+
 export function matchesCollectorHoldReason(
   input: {
     status?: string | null;

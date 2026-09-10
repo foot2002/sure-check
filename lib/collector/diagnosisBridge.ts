@@ -25,7 +25,9 @@ import {
   getAutoDiagnosisBatchSize,
   getAutoDiagnosisDailyLimit,
   isAutoDiagnosisTarget,
+  isManualDiagnosisEnqueueable,
   isOfficialAutoDiagnosisTriage,
+  manualDiagnosisSkipReason,
 } from "@/lib/collector/collectConfirmedPolicy";
 import {
   countInProgressScanJobs,
@@ -107,6 +109,7 @@ export type DispatchResult = {
     limitReached: boolean;
   };
   reason?: string | null;
+  skipReason?: string | null;
   /** Alias of eligibleBeforeDedupe for ops responses. */
   candidates?: number;
   skippedAlreadyQueued?: number;
@@ -592,14 +595,21 @@ export async function dispatchCollectorDiagnoses(input?: {
 
   let eligible: EligibleCandidate[] = [];
   let openEligible: EligibleCandidate[] = [];
+  let requestedSkipReason: string | null = null;
   if (requestedIds.length > 0) {
     const rows = await fetchSurveyRowsByIds(requestedIds.slice(0, Math.max(limit, requestedIds.length)));
     const attached = await attachTriage(rows);
+    if (rows.length === 0) {
+      requestedSkipReason = "not_found";
+    }
     eligible = manual
       ? attached
-          .filter((row) => row.status === "active")
+          .filter((row) => isManualDiagnosisEnqueueable(row.status))
           .map((row) => toEligibleCandidate(row))
       : filterAndSortEligible(attached, { sourceType });
+    if (manual && eligible.length === 0 && !requestedSkipReason) {
+      requestedSkipReason = manualDiagnosisSkipReason(attached[0]?.status);
+    }
     openEligible = await filterOpenForEnqueue(eligible);
   } else {
     const loaded = await loadOpenCandidatesForDispatch(limit, sourceType);
@@ -781,7 +791,7 @@ export async function dispatchCollectorDiagnoses(input?: {
   let reason: string | null = null;
   if (enqueued === 0) {
     if (requestedIds.length > 0 && eligible.length === 0) {
-      reason = "not_eligible";
+      reason = requestedSkipReason === "not_found" ? "not_found" : "not_eligible";
     } else {
       const existingStatus = requestedIds
         .map((id) => existingBySurvey.get(id)?.status)
@@ -833,6 +843,10 @@ export async function dispatchCollectorDiagnoses(input?: {
       limitReached: remainingAfter <= 0,
     },
     reason,
+    skipReason:
+      requestedSkipReason ||
+      outcomes.find((o) => o.skipReason)?.skipReason ||
+      null,
     candidates: eligible.length,
     skippedAlreadyQueued: counts.skippedDuplicate,
     skippedClosed: counts.skippedPrecheckClosed,
