@@ -19,6 +19,7 @@ function main() {
   const view = read("components/report/admin/CollectorConsoleView.tsx");
   const page = read("app/report/admin/collector/page.tsx");
   check("quick filter 진단대상", view.includes("진단대상"));
+  check("quick filter 미진단", view.includes("미진단"));
   check("quick filter 진단완료", view.includes("진단완료"));
   check("quick filter 날짜불명", view.includes("날짜불명 보류"));
   check("quick filter 과거연도", view.includes("과거연도 제외"));
@@ -30,6 +31,12 @@ function main() {
   check("search panel always open", view.includes(">검색<") && !view.includes("상세 필터 (접기/펼치기)"));
   check("page size 50", read("lib/collector/surveyLinkListQuery.ts").includes("COLLECTOR_LIST_PAGE_SIZE = 50"));
   check("page passes page param", page.includes("page:") && page.includes("COLLECTOR_LIST_PAGE_SIZE"));
+  check(
+    "list paging uses surveys api",
+    view.includes("/api/report/admin/collector/surveys") &&
+      view.includes("history.pushState") &&
+      view.includes("불러오는 중"),
+  );
   check("list returns total", read("lib/collector/surveyLinkListQuery.ts").includes("total:"));
   check("source filter in DB", read("lib/collector/surveyLinkListQuery.ts").includes("fetchSourceConstraintIds"));
   check("diagnosis filter in DB", read("lib/collector/surveyLinkListQuery.ts").includes("fetchDiagnosisIds"));

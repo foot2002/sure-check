@@ -77,8 +77,20 @@ function main() {
       view.includes("onRowDiagnose"),
   );
   check(
-    "per-row diagnose button darkens after queue",
-    view.includes("border-teal-800 bg-teal-800 text-white"),
+    "list diagnosis tabs",
+    view.includes('aria-label="진단 여부"') &&
+      view.includes('label: "미진단"') &&
+      view.includes('label: "진단완료"'),
+  );
+  check(
+    "diagnosed rows hide queue register",
+    view.includes("diagnosisQueueAction") &&
+      view.includes("리포트 보기") &&
+      view.includes("등록됨"),
+  );
+  check(
+    "per-row queued state uses registered label",
+    view.includes("border-teal-800 bg-teal-800") && view.includes("등록됨"),
   );
   check(
     "quick hold filter in list",

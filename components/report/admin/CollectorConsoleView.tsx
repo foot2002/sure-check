@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   CollectorSummary,
   SurveyLinkListItem,
@@ -82,16 +82,88 @@ function isDiagnosisFinished(status?: string | null): boolean {
   return status === "completed" || status === "limited";
 }
 
-function isDiagnosisRegistered(
+type DiagnosisQueueAction = "register" | "queued" | "running" | "done";
+
+function diagnosisQueueAction(
   status?: string | null,
   local?: "queued" | "completed",
-): boolean {
-  if (local) return true;
-  return (
-    status === "queued" ||
-    status === "running" ||
-    isDiagnosisFinished(status)
+): DiagnosisQueueAction {
+  if (local === "completed" || isDiagnosisFinished(status)) return "done";
+  if (status === "running") return "running";
+  if (local === "queued" || status === "queued") return "queued";
+  return "register";
+}
+
+const DIAGNOSIS_LIST_TABS = [
+  { id: "all", label: "전체" },
+  { id: "undiagnosed", label: "미진단" },
+  { id: "completed", label: "진단완료" },
+] as const;
+
+const EMPTY_FILTERS: Filters = {
+  platform: "all",
+  status: "default",
+  firstDiscoveredFrom: "",
+  firstDiscoveredTo: "",
+  searchQuery: "",
+  novelty: "all",
+  sourceType: "all",
+  holdReason: "all",
+  quickView: "all",
+  triageQueue: "all",
+  diagnosisStatus: "all",
+  q: "",
+  page: "1",
+};
+
+function collectorListQuery(payload: Filters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(payload)) {
+    if (!value || value === "all") continue;
+    if (key === "page" && value === "1") continue;
+    params.set(key, value);
+  }
+  return params.toString();
+}
+
+function filtersFromSearch(search: string): Filters {
+  const params = new URLSearchParams(search);
+  const next = { ...EMPTY_FILTERS };
+  for (const key of Object.keys(EMPTY_FILTERS) as Array<keyof Filters>) {
+    const value = params.get(key);
+    if (value) next[key] = value;
+  }
+  return next;
+}
+
+async function fetchCollectorSurveys(
+  payload: Filters,
+  signal?: AbortSignal,
+): Promise<{
+  items: SurveyLinkListItem[];
+  total: number;
+  hasMore: boolean;
+}> {
+  const qs = collectorListQuery(payload);
+  const res = await fetch(
+    `/api/report/admin/collector/surveys${qs ? `?${qs}` : ""}`,
+    { cache: "no-store", signal },
   );
+  const data = (await res.json()) as {
+    ok?: boolean;
+    error?: string;
+    items?: SurveyLinkListItem[];
+    total?: number;
+    hasMore?: boolean;
+  };
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error || "수집 목록을 불러오지 못했습니다.");
+  }
+  return {
+    items: data.items || [],
+    total: data.total ?? 0,
+    hasMore: Boolean(data.hasMore),
+  };
 }
 
 function rateHint(
@@ -168,6 +240,15 @@ export function CollectorConsoleView({
     quickView: filters.quickView || "all",
     page: filters.page || "1",
   });
+  const [listItems, setListItems] = useState(items);
+  const [listCount, setListCount] = useState(listTotal);
+  const [listMore, setListMore] = useState(hasMore);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const listRequestId = useRef(0);
+  const listAbort = useRef<AbortController | null>(null);
+  const clientListMode = useRef(false);
+  const listSectionRef = useRef<HTMLElement | null>(null);
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [confirmDiagnose, setConfirmDiagnose] = useState(false);
@@ -185,17 +266,66 @@ export function CollectorConsoleView({
   >({});
   const [sourcesLoading, setSourcesLoading] = useState<string | null>(null);
 
+  const loadList = useCallback(async (payload: Filters, scroll = false) => {
+    const id = ++listRequestId.current;
+    listAbort.current?.abort();
+    const ac = new AbortController();
+    listAbort.current = ac;
+    setListLoading(true);
+    setListError(null);
+    try {
+      const result = await fetchCollectorSurveys(payload, ac.signal);
+      if (id !== listRequestId.current) return;
+      setListItems(result.items);
+      setListCount(result.total);
+      setListMore(result.hasMore);
+      if (scroll) {
+        listSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    } catch (error) {
+      if (ac.signal.aborted) return;
+      if (id !== listRequestId.current) return;
+      setListError(
+        error instanceof Error
+          ? error.message
+          : "수집 목록을 불러오지 못했습니다.",
+      );
+    } finally {
+      if (id === listRequestId.current) setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    function onPopState() {
+      const next = filtersFromSearch(window.location.search);
+      clientListMode.current = true;
+      setForm(next);
+      void loadList(next, true);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [loadList]);
+
+  useEffect(() => {
+    if (clientListMode.current) return;
+    setListItems(items);
+    setListCount(listTotal);
+    setListMore(hasMore);
+  }, [items, listTotal, hasMore]);
+
   function pushForm(next: Filters, resetPage = false) {
     const payload = resetPage ? { ...next, page: "1" } : next;
+    clientListMode.current = true;
     setForm(payload);
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(payload)) {
-      if (!value || value === "all") continue;
-      if (key === "page" && value === "1") continue;
-      params.set(key, value);
-    }
-    const qs = params.toString();
-    router.push(qs ? `/report/admin/collector?${qs}` : "/report/admin/collector");
+    const qs = collectorListQuery(payload);
+    const url = qs
+      ? `/report/admin/collector?${qs}`
+      : "/report/admin/collector";
+    window.history.pushState(payload, "", url);
+    void loadList(payload, true);
   }
 
   function applyFilters(event: FormEvent) {
@@ -230,10 +360,15 @@ export function CollectorConsoleView({
     });
   }
 
-  const currentPage = Math.max(1, Number(filters.page || "1") || 1);
-  const totalPages = Math.max(1, Math.ceil(listTotal / pageSize) || 1);
-  const rangeFrom = listTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const rangeTo = Math.min(listTotal, (currentPage - 1) * pageSize + items.length);
+  const currentPage = Math.max(1, Number(form.page || "1") || 1);
+  const totalPages = Math.max(1, Math.ceil(listCount / pageSize) || 1);
+  const rangeFrom = listCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const rangeTo = Math.min(
+    listCount,
+    listLoading
+      ? currentPage * pageSize
+      : (currentPage - 1) * pageSize + listItems.length,
+  );
 
   async function logout() {
     await fetch("/api/report/admin/logout", { method: "POST" });
@@ -267,6 +402,8 @@ export function CollectorConsoleView({
       setRunMessage(
         `수집 완료 — 질의 ${data.stats?.queriesCount ?? 0}건, 신규 ${data.stats?.newSurveysCount ?? 0}건, 중복 ${data.stats?.duplicateSurveysCount ?? 0}건, 오류 ${data.stats?.errorCount ?? 0}건`,
       );
+      clientListMode.current = true;
+      void loadList(form);
       router.refresh();
     } catch {
       setRunMessage("네트워크 오류로 수집을 시작하지 못했습니다.");
@@ -300,6 +437,8 @@ export function CollectorConsoleView({
         return;
       }
       setRunMessage(`공공 사이트 수집 완료 — 탐색 기관 ${data.crawled ?? limit}곳`);
+      clientListMode.current = true;
+      void loadList(form);
       router.refresh();
     } catch {
       setRunMessage("공공 사이트 수집을 시작하지 못했습니다.");
@@ -374,7 +513,7 @@ export function CollectorConsoleView({
           data.reason === "already_completed" ||
           (data.reason === "already_diagnosed" &&
             isDiagnosisFinished(
-              items.find((row) => row.id === surveyLinkId)?.diagnosis_status,
+              listItems.find((row) => row.id === surveyLinkId)?.diagnosis_status,
             ))
         ) {
           setRegisteredById((prev) => ({ ...prev, [surveyLinkId]: "completed" }));
@@ -392,7 +531,8 @@ export function CollectorConsoleView({
       } else {
         setRunMessage(diagnoseResultMessage(data));
       }
-      router.refresh();
+      clientListMode.current = true;
+      void loadList(form);
     } catch {
       const error = "자동진단 등록을 시작하지 못했습니다.";
       if (perRow) setDialogMessage(error);
@@ -1720,6 +1860,9 @@ export function CollectorConsoleView({
         {form.holdReason === "eligible" ? (
           <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">진단대상</span>
         ) : null}
+        {form.diagnosisStatus === "undiagnosed" ? (
+          <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">미진단</span>
+        ) : null}
         {form.diagnosisStatus === "completed" ? (
           <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-900">진단완료</span>
         ) : null}
@@ -1739,6 +1882,7 @@ export function CollectorConsoleView({
         {(
           [
             ["진단대상", { holdReason: form.holdReason === "eligible" ? "all" : "eligible", status: "all" }],
+            ["미진단", { diagnosisStatus: form.diagnosisStatus === "undiagnosed" ? "all" : "undiagnosed" }],
             ["진단완료", { diagnosisStatus: form.diagnosisStatus === "completed" ? "all" : "completed", status: "all" }],
             ["날짜불명 보류", { holdReason: form.holdReason === "date_unknown" ? "all" : "date_unknown", status: "all" }],
             ["과거연도 제외", { holdReason: form.holdReason === "old_year" ? "all" : "old_year", status: "all" }],
@@ -1747,10 +1891,21 @@ export function CollectorConsoleView({
             ["공공 사이트 수집", { sourceType: form.sourceType === "official_site" ? "all" : "official_site", status: "all" }],
             ["네이버 검색 수집", { sourceType: form.sourceType === "naver" ? "all" : "naver", status: "all" }],
           ] as Array<[string, Partial<Filters>]>
-        ).map(([label, patch]) => (
+        ).map(([label, patch]) => {
+          const chipActive =
+            (label === "미진단" && form.diagnosisStatus === "undiagnosed") ||
+            (label === "진단완료" && form.diagnosisStatus === "completed") ||
+            (label === "진단대상" && form.holdReason === "eligible") ||
+            (label === "날짜불명 보류" && form.holdReason === "date_unknown") ||
+            (label === "과거연도 제외" && form.holdReason === "old_year") ||
+            (label === "로그인 제외" && form.holdReason === "restricted") ||
+            (label === "공공 사이트 수집" && form.sourceType === "official_site") ||
+            (label === "네이버 검색 수집" && form.sourceType === "naver");
+          return (
           <button
             key={label}
             type="button"
+            aria-pressed={chipActive}
             onClick={() => {
               if (label === "개선안내 후보") {
                 router.push("/report/admin?outreachOnly=true");
@@ -1758,11 +1913,16 @@ export function CollectorConsoleView({
               }
               applyQuick(patch);
             }}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800"
+            className={
+              chipActive
+                ? "rounded-full border border-teal-700 bg-teal-700 px-3 py-1 text-xs font-semibold text-white"
+                : "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800"
+            }
           >
             {label}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
@@ -1913,21 +2073,72 @@ export function CollectorConsoleView({
       </form>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-          수집 설문 목록 ({listTotal.toLocaleString("ko-KR")}건
-          {listTotal > items.length
-            ? ` · ${pageSize}건씩`
-            : ""}
-          )
+      <section
+        ref={listSectionRef}
+        className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+        aria-busy={listLoading}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="text-sm font-semibold text-slate-900">
+            수집 설문 목록 ({listCount.toLocaleString("ko-KR")}건
+            {listCount > listItems.length
+              ? ` · ${pageSize}건씩`
+              : ""}
+            )
+            {listLoading ? (
+              <span className="ml-2 text-xs font-medium text-teal-800">
+                불러오는 중…
+              </span>
+            ) : null}
+          </div>
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label="진단 여부"
+          >
+            {DIAGNOSIS_LIST_TABS.map((tab) => {
+              const active =
+                (tab.id === "all" &&
+                  (!form.diagnosisStatus || form.diagnosisStatus === "all")) ||
+                form.diagnosisStatus === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => applyQuick({ diagnosisStatus: tab.id })}
+                  className={
+                    active
+                      ? "rounded-lg border border-teal-700 bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white"
+                      : "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-800"
+                  }
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="divide-y divide-slate-100">
-          {items.length === 0 ? (
+        {listError ? (
+          <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-800">
+            {listError}
+          </p>
+        ) : null}
+        <div className={`divide-y divide-slate-100 ${listLoading ? "opacity-50" : ""}`}>
+          {listItems.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">
-              조건에 맞는 수집 설문이 없습니다.
+              {listLoading
+                ? "목록을 불러오는 중입니다."
+                : "조건에 맞는 수집 설문이 없습니다."}
             </p>
           ) : (
-            items.map((item) => (
+            listItems.map((item) => {
+              const queueAction = diagnosisQueueAction(
+                item.diagnosis_status,
+                registeredById[item.id],
+              );
+              return (
               <div key={item.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -2059,23 +2270,33 @@ export function CollectorConsoleView({
                   >
                     {expandedId === item.id ? "출처 닫기" : "출처 보기"}
                   </button>
+                    {queueAction === "register" ? (
                     <button
                       type="button"
                       disabled={dispatchingSurveyId === item.id}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-70 ${
-                        isDiagnosisRegistered(
-                          item.diagnosis_status,
-                          registeredById[item.id],
-                        )
-                          ? "border-teal-800 bg-teal-800 text-white hover:bg-teal-900"
-                          : "border-teal-200 text-teal-800 hover:bg-teal-50"
-                      }`}
+                      className="rounded-lg border border-teal-200 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-70"
                       onClick={() => onRowDiagnose(item)}
                     >
                       {dispatchingSurveyId === item.id
                         ? "등록 중…"
                         : "진단 큐 등록"}
                     </button>
+                    ) : queueAction === "queued" || queueAction === "running" ? (
+                      <span className="rounded-lg border border-teal-800 bg-teal-800 px-2.5 py-1.5 text-xs font-semibold text-white">
+                        {queueAction === "running" ? "진단 중" : "등록됨"}
+                      </span>
+                    ) : item.diagnosis_job_id ? (
+                      <Link
+                        href={`/report/${item.diagnosis_job_id}`}
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                      >
+                        리포트 보기
+                      </Link>
+                    ) : (
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">
+                        진단 완료
+                      </span>
+                    )}
                     <button
                       type="button"
                       className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
@@ -2143,19 +2364,20 @@ export function CollectorConsoleView({
                   </div>
                 ) : null}
               </div>
-            ))
+              );
+            })
           )}
         </div>
-        {listTotal > 0 ? (
+        {listCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
             <p>
               {rangeFrom.toLocaleString("ko-KR")}–{rangeTo.toLocaleString("ko-KR")} /{" "}
-              {listTotal.toLocaleString("ko-KR")}건
+              {listCount.toLocaleString("ko-KR")}건
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={currentPage <= 1}
+                disabled={listLoading || currentPage <= 1}
                 onClick={() => goToPage(currentPage - 1)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -2163,14 +2385,15 @@ export function CollectorConsoleView({
               </button>
               <span className="tabular-nums text-xs font-semibold text-slate-800">
                 {currentPage} / {totalPages}페이지
+                {listLoading ? " · 불러오는 중" : ""}
               </span>
               <button
                 type="button"
-                disabled={!hasMore && currentPage >= totalPages}
+                disabled={listLoading || currentPage >= totalPages}
                 onClick={() => goToPage(currentPage + 1)}
                 className="rounded-lg border border-teal-700 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                다음
+                {listLoading ? "불러오는 중…" : "다음"}
               </button>
             </div>
           </div>
