@@ -71,8 +71,14 @@ function main() {
       read("app/api/report/admin/collector/diagnose/route.ts").includes("surveyLinkId"),
   );
   check(
-    "per-row diagnose confirm",
-    view.includes("이 설문을 자동진단 큐에 등록합니다"),
+    "per-row diagnose registers immediately",
+    view.includes("진단 대상에 등록되었습니다") &&
+      view.includes("이미 진단이 완료된 설문입니다") &&
+      view.includes("onRowDiagnose"),
+  );
+  check(
+    "per-row diagnose button darkens after queue",
+    view.includes("border-teal-800 bg-teal-800 text-white"),
   );
   check(
     "quick hold filter in list",

@@ -4,7 +4,7 @@ import {
   unauthorizedJson,
 } from "@/lib/report/adminAuth";
 import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
-import { processNextScanJob } from "@/lib/jobs/processScanJob";
+import { processNextScanJob, processScanJob } from "@/lib/jobs/processScanJob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +54,21 @@ export async function POST(request: Request) {
   });
 
   const queued = result.counts?.queued ?? 0;
-  if (queued > 0) {
+  const kickScanIds = (result.kickScanIds || []).filter(Boolean);
+  if (manual && kickScanIds.length > 0) {
+    after(() => {
+      void (async () => {
+        for (const scanId of kickScanIds) {
+          await processScanJob(scanId, "admin_diagnose").catch((err) => {
+            console.warn(
+              "[admin-diagnose] targeted worker kick failed:",
+              err instanceof Error ? err.message : err,
+            );
+          });
+        }
+      })();
+    });
+  } else if (queued > 0) {
     after(() => {
       void processNextScanJob("admin_diagnose").catch((err) => {
         console.warn(

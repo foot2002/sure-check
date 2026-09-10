@@ -340,6 +340,8 @@ export async function enqueuePendingScanJob(input: {
   cacheKey: string;
   urlHost: string | null;
   totalSteps: number;
+  /** Lower number is claimed first. Default 100. */
+  priority?: number;
 }): Promise<QueuedScanJobRow> {
   if (!isMonitoringConfigured()) {
     throw new Error("Supabase is not configured for scan job queue");
@@ -368,7 +370,10 @@ export async function enqueuePendingScanJob(input: {
     ...baseRow,
     cache_key: input.cacheKey,
     queued_at: now,
-    priority: 100,
+    priority:
+      typeof input.priority === "number" && Number.isFinite(input.priority)
+        ? Math.max(1, Math.floor(input.priority))
+        : 100,
     attempt_count: 0,
     monitoring_saved: false,
     evidence_stored: false,

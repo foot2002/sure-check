@@ -78,6 +78,22 @@ function formatPct(rate: number | undefined | null): string {
   return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
 }
 
+function isDiagnosisFinished(status?: string | null): boolean {
+  return status === "completed" || status === "limited";
+}
+
+function isDiagnosisRegistered(
+  status?: string | null,
+  local?: "queued" | "completed",
+): boolean {
+  if (local) return true;
+  return (
+    status === "queued" ||
+    status === "running" ||
+    isDiagnosisFinished(status)
+  );
+}
+
 function rateHint(
   rate: number | undefined | null,
   target: number,
@@ -155,10 +171,14 @@ export function CollectorConsoleView({
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [confirmDiagnose, setConfirmDiagnose] = useState(false);
-  const [confirmDiagnoseSurveyId, setConfirmDiagnoseSurveyId] = useState<
-    string | null
-  >(null);
   const [dispatching, setDispatching] = useState(false);
+  const [dispatchingSurveyId, setDispatchingSurveyId] = useState<string | null>(
+    null,
+  );
+  const [dialogMessage, setDialogMessage] = useState<string | null>(null);
+  const [registeredById, setRegisteredById] = useState<
+    Record<string, "queued" | "completed">
+  >({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sourcesById, setSourcesById] = useState<
     Record<string, SurveySourceRow[]>
@@ -303,6 +323,12 @@ export function CollectorConsoleView({
     if (data.reason === "in_progress_scan_jobs_at_cap") {
       return "진행 중인 진단이 많아 지금은 추가 등록하지 않았습니다. 잠시 후 다시 시도하세요.";
     }
+    if (data.reason === "already_completed") {
+      return "이미 진단이 완료된 설문입니다";
+    }
+    if (data.reason === "already_queued") {
+      return "진단 대상에 등록되었습니다";
+    }
     if (data.reason === "already_diagnosed") {
       return "이미 자동진단이 등록되었거나 완료된 설문입니다.";
     }
@@ -316,7 +342,9 @@ export function CollectorConsoleView({
   }
 
   async function runDiagnose(surveyLinkId?: string) {
-    setDispatching(true);
+    const perRow = Boolean(surveyLinkId);
+    if (perRow) setDispatchingSurveyId(surveyLinkId!);
+    else setDispatching(true);
     setRunMessage(null);
     try {
       const res = await fetch("/api/report/admin/collector/diagnose", {
@@ -336,18 +364,61 @@ export function CollectorConsoleView({
         selected?: number;
       };
       if (!res.ok || !data.ok) {
-        setRunMessage(data.error || "자동진단 등록에 실패했습니다.");
+        const error = data.error || "자동진단 등록에 실패했습니다.";
+        if (perRow) setDialogMessage(error);
+        else setRunMessage(error);
         return;
       }
-      setRunMessage(diagnoseResultMessage(data));
+      if (perRow && surveyLinkId) {
+        if (
+          data.reason === "already_completed" ||
+          (data.reason === "already_diagnosed" &&
+            isDiagnosisFinished(
+              items.find((row) => row.id === surveyLinkId)?.diagnosis_status,
+            ))
+        ) {
+          setRegisteredById((prev) => ({ ...prev, [surveyLinkId]: "completed" }));
+          setDialogMessage("이미 진단이 완료된 설문입니다");
+        } else if (
+          (data.counts?.queued ?? 0) > 0 ||
+          data.reason === "already_queued" ||
+          data.reason === "already_diagnosed"
+        ) {
+          setRegisteredById((prev) => ({ ...prev, [surveyLinkId]: "queued" }));
+          setDialogMessage("진단 대상에 등록되었습니다");
+        } else {
+          setDialogMessage(diagnoseResultMessage(data));
+        }
+      } else {
+        setRunMessage(diagnoseResultMessage(data));
+      }
       router.refresh();
     } catch {
-      setRunMessage("자동진단 등록을 시작하지 못했습니다.");
+      const error = "자동진단 등록을 시작하지 못했습니다.";
+      if (perRow) setDialogMessage(error);
+      else setRunMessage(error);
     } finally {
       setDispatching(false);
+      setDispatchingSurveyId(null);
       setConfirmDiagnose(false);
-      setConfirmDiagnoseSurveyId(null);
     }
+  }
+
+  function onRowDiagnose(item: SurveyLinkListItem) {
+    const local = registeredById[item.id];
+    if (isDiagnosisFinished(item.diagnosis_status) || local === "completed") {
+      setDialogMessage("이미 진단이 완료된 설문입니다");
+      return;
+    }
+    if (
+      item.diagnosis_status === "queued" ||
+      item.diagnosis_status === "running" ||
+      local === "queued"
+    ) {
+      setDialogMessage("진단 대상에 등록되었습니다");
+      return;
+    }
+    void runDiagnose(item.id);
   }
 
   async function toggleSources(id: string) {
@@ -452,31 +523,24 @@ export function CollectorConsoleView({
         </div>
       ) : null}
 
-      {confirmDiagnose || confirmDiagnoseSurveyId ? (
+      {confirmDiagnose ? (
         <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
           <p>
-            {confirmDiagnoseSurveyId
-              ? "이 설문을 자동진단 큐에 등록합니다. 실제 진단은 worker가 순차 처리합니다. 계속하시겠습니까?"
-              : "자동진단 큐에 다음 20건을 등록합니다. 실제 진단은 worker가 순차 처리합니다. 계속하시겠습니까?"}
+            자동진단 큐에 다음 20건을 등록합니다. 실제 진단은 worker가 순차 처리합니다. 계속하시겠습니까?
           </p>
           <div className="mt-2 flex gap-2">
             <button
               type="button"
               className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white"
               disabled={dispatching}
-              onClick={() =>
-                void runDiagnose(confirmDiagnoseSurveyId || undefined)
-              }
+              onClick={() => void runDiagnose()}
             >
               {dispatching ? "등록 중…" : "계속"}
             </button>
             <button
               type="button"
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              onClick={() => {
-                setConfirmDiagnose(false);
-                setConfirmDiagnoseSurveyId(null);
-              }}
+              onClick={() => setConfirmDiagnose(false)}
             >
               취소
             </button>
@@ -1231,10 +1295,7 @@ export function CollectorConsoleView({
               type="button"
               className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
               disabled={dispatching}
-              onClick={() => {
-                setConfirmDiagnoseSurveyId(null);
-                setConfirmDiagnose(true);
-              }}
+              onClick={() => setConfirmDiagnose(true)}
             >
               다음 20건 진단
             </button>
@@ -2000,13 +2061,20 @@ export function CollectorConsoleView({
                   </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-teal-200 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50"
-                      onClick={() => {
-                        setConfirmDiagnose(false);
-                        setConfirmDiagnoseSurveyId(item.id);
-                      }}
+                      disabled={dispatchingSurveyId === item.id}
+                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-70 ${
+                        isDiagnosisRegistered(
+                          item.diagnosis_status,
+                          registeredById[item.id],
+                        )
+                          ? "border-teal-800 bg-teal-800 text-white hover:bg-teal-900"
+                          : "border-teal-200 text-teal-800 hover:bg-teal-50"
+                      }`}
+                      onClick={() => onRowDiagnose(item)}
                     >
-                      진단 큐 등록
+                      {dispatchingSurveyId === item.id
+                        ? "등록 중…"
+                        : "진단 큐 등록"}
                     </button>
                     <button
                       type="button"
@@ -2108,6 +2176,36 @@ export function CollectorConsoleView({
           </div>
         ) : null}
       </section>
+      {dialogMessage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="diagnose-queue-dialog-title"
+          onClick={() => setDialogMessage(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p
+              id="diagnose-queue-dialog-title"
+              className="text-sm font-semibold leading-6 text-slate-900"
+            >
+              {dialogMessage}
+            </p>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+                onClick={() => setDialogMessage(null)}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

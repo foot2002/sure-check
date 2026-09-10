@@ -62,6 +62,8 @@ export async function startUrlScanJob(input: {
    */
   enqueueOnly?: boolean;
   onProcessSettled?: () => void;
+  /** Lower number is claimed first. Default 100. */
+  priority?: number;
 }): Promise<StartUrlScanResult> {
   const formUrl = input.formUrl.trim();
   if (!formUrl) {
@@ -201,6 +203,7 @@ export async function startUrlScanJob(input: {
         cacheKey,
         urlHost,
         totalSteps: SCAN_PROGRESS_STEPS.length,
+        priority: input.priority,
       });
     } catch (err) {
       console.error(`[scan/startUrl] enqueue failed (${trigger}):`, err);

@@ -26,6 +26,8 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
   assert.ok(!bridge.includes("precheckBeforeDiagnosisEnqueue"));
   assert.ok(bridge.includes("enqueueOnly: true"));
   assert.ok(!/processInline:\s*Boolean\(input\?\.processInline\)/.test(bridge));
+  assert.ok(bridge.includes("daily.limitReached && !manual"));
+  assert.ok(bridge.includes("priority: manual ? 1"));
   console.log("  PASS  dispatcher does not open pages or run inline diagnosis");
 }
 
@@ -122,6 +124,7 @@ console.log("[Auto Diagnosis Dispatch Check]\n");
   assert.ok(admin.includes("ADMIN_DISPATCH_MAX = 20"));
   assert.ok(admin.includes("surveyLinkId"));
   assert.ok(admin.includes("manual"));
+  assert.ok(admin.includes("processScanJob"));
   assert.ok(/maxDuration = 300/.test(admin));
   console.log("  PASS  admin diagnose enqueues batch or a single survey");
 }

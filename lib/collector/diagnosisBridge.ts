@@ -116,6 +116,8 @@ export type DispatchResult = {
   dailyLimit?: number;
   carryover?: number;
   enqueueOnly?: boolean;
+  /** Newly queued scan ids that a caller can start immediately. */
+  kickScanIds?: string[];
 };
 
 function scanIdentity(canonicalUrl: string): {
@@ -558,7 +560,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     limitReached: dailyRemaining <= 0,
   };
 
-  if (!dryRun && daily.limitReached) {
+  if (!dryRun && daily.limitReached && !manual) {
     return {
       dryRun,
       limit: requestedLimit,
@@ -580,10 +582,11 @@ export async function dispatchCollectorDiagnoses(input?: {
       dailyLimit: daily.max,
       carryover: 0,
       enqueueOnly: true,
+      kickScanIds: [],
     };
   }
 
-  const limit = dryRun
+  const limit = dryRun || manual
     ? requestedLimit
     : Math.min(requestedLimit, dailyRemaining);
 
@@ -604,9 +607,10 @@ export async function dispatchCollectorDiagnoses(input?: {
     openEligible = loaded.open;
   }
   const selectedPool = pickWithPlatformDiversity(openEligible, limit);
-  const existingBySurvey = await findDiagnosisLinksBySurveyIds(
-    selectedPool.map((c) => c.surveyLinkId),
-  );
+  const existingBySurvey = await findDiagnosisLinksBySurveyIds([
+    ...selectedPool.map((c) => c.surveyLinkId),
+    ...requestedIds,
+  ]);
 
   const orgDist: Record<string, number> = {};
   const platDist: Record<string, number> = {};
@@ -636,7 +640,7 @@ export async function dispatchCollectorDiagnoses(input?: {
       recency: c.triage.recency,
     };
 
-    if (!dryRun && remainingDaily <= 0) {
+    if (!manual && !dryRun && remainingDaily <= 0) {
       outcomes.push({
         ...base,
         outcome: "skipped_not_eligible",
@@ -646,7 +650,7 @@ export async function dispatchCollectorDiagnoses(input?: {
       continue;
     }
 
-    if (!dryRun && remainingSlots <= 0) {
+    if (!manual && !dryRun && remainingSlots <= 0) {
       outcomes.push({
         ...base,
         outcome: "skipped_backpressure",
@@ -682,6 +686,7 @@ export async function dispatchCollectorDiagnoses(input?: {
       completedPolicy: "any_completed",
       processInline: false,
       enqueueOnly: true,
+      priority: manual ? 1 : undefined,
     });
 
     if (!started.ok) {
@@ -766,18 +771,48 @@ export async function dispatchCollectorDiagnoses(input?: {
     eligible.length - (dryRun ? counts.wouldEnqueue : linkageCreated),
   );
   const enqueued = dryRun ? counts.wouldEnqueue : counts.queued;
+  const kickScanIds = [
+    ...new Set(
+      outcomes
+        .filter((o) => o.outcome === "queued" && o.diagnosisJobId)
+        .map((o) => String(o.diagnosisJobId)),
+    ),
+  ];
   let reason: string | null = null;
   if (enqueued === 0) {
     if (requestedIds.length > 0 && eligible.length === 0) {
       reason = "not_eligible";
-    } else if (requestedIds.length > 0 && openEligible.length === 0) {
-      reason = "already_diagnosed";
-    } else if (openEligible.length === 0) {
-      reason = "no_open_eligible_candidates";
-    } else if (counts.skippedBackpressure > 0) {
-      reason = "in_progress_scan_jobs_at_cap";
-    } else if (counts.skippedDuplicate > 0) {
-      reason = "already_diagnosed";
+    } else {
+      const existingStatus = requestedIds
+        .map((id) => existingBySurvey.get(id)?.status)
+        .find(Boolean);
+      const skip = outcomes.find((o) => o.skipReason)?.skipReason || "";
+      if (
+        existingStatus === "completed" ||
+        existingStatus === "limited" ||
+        skip === "scan_job_already_completed" ||
+        skip === "existing_completed_scan" ||
+        skip === "linkage_completed" ||
+        skip === "linkage_limited"
+      ) {
+        reason = "already_completed";
+      } else if (
+        existingStatus === "queued" ||
+        existingStatus === "running" ||
+        skip === "scan_job_running_or_pending" ||
+        skip === "linkage_queued" ||
+        skip === "linkage_running"
+      ) {
+        reason = "already_queued";
+      } else if (requestedIds.length > 0 && openEligible.length === 0) {
+        reason = "already_diagnosed";
+      } else if (openEligible.length === 0) {
+        reason = "no_open_eligible_candidates";
+      } else if (counts.skippedBackpressure > 0) {
+        reason = "in_progress_scan_jobs_at_cap";
+      } else if (counts.skippedDuplicate > 0) {
+        reason = "already_diagnosed";
+      }
     }
   }
   return {
@@ -806,6 +841,7 @@ export async function dispatchCollectorDiagnoses(input?: {
     dailyLimit: dailyMax,
     carryover,
     enqueueOnly: true,
+    kickScanIds,
   };
 }
 
