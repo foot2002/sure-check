@@ -37,10 +37,17 @@ import {
   classifyPublicOrgGroup,
   csapCertifiedYesNo,
   displayInstitutionName,
-  institutionEvidenceFromReportJson,
   piiLabelFromCode,
-  piiLabelsFromReportJson,
 } from "@/lib/report/publicInstitutionColumns";
+import { matchesAdminCaseSearch } from "@/lib/report/adminCaseSearch";
+import {
+  applyAdminSurveyColumnFilters,
+  fetchAdminSearchSurveyIds,
+  fetchPublicCaseSurveyIds,
+  intersectIds,
+  parseAdminListPage,
+  selectInChunks,
+} from "@/lib/report/adminCaseListQuery";
 
 export type AdminRange = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -56,7 +63,6 @@ export interface AdminCaseListQuery {
   hasHighRiskInfo?: string | null;
   hasEvidence?: string | null;
   limitedOnly?: string | null;
-  q?: string | null;
   outreachOnly?: string | null;
   priority?: string | null;
   noticeGap?: string | null;
@@ -67,6 +73,9 @@ export interface AdminCaseListQuery {
   subjectType?: string | null;
   from?: string | null;
   to?: string | null;
+  q?: string | null;
+  limit?: string | null;
+  offset?: string | null;
 }
 
 export interface AdminKpi {
@@ -137,6 +146,7 @@ export interface AdminCaseListItem {
   subjectType: string | null;
   surveyTitle: string | null;
   surveyUrl: string | null;
+  diagnosisSummary: string | null;
   hasPersonalInfo: boolean;
   hasSensitiveInfo: boolean;
   hasHighRiskInfo: boolean;
@@ -190,6 +200,8 @@ export interface AdminCaseListPayload {
   /** Newest collect + diagnosis snapshots for one-page ops view. */
   recentCollect: AdminRecentCollectItem[];
   recentDiagnosis: AdminCaseListItem[];
+  hasMore: boolean;
+  listTotal: number;
   generatedAt: string;
 }
 
@@ -343,6 +355,10 @@ function parsePublicCaseStatusFilter(
 const ADMIN_SURVEY_SELECT =
   "id, observed_at, observed_date_kst, overall_risk_level, user_decision_label, platform, operator_name, subject_type, survey_title, survey_url, has_personal_info, has_sensitive_info, has_high_risk_info, public_private_type, review_status, publish_status, scan_report_id, scan_job_id, question_count, personal_info_question_count, sensitive_question_count, high_risk_question_count";
 
+const ADMIN_REPORT_LITE_SELECT =
+  "id, diagnosis_status, score, user_decision_label, summary";
+
+
 export function adminCaseListQueryFromSearchParams(
   searchParams: URLSearchParams,
 ): AdminCaseListQuery {
@@ -369,6 +385,8 @@ export function adminCaseListQueryFromSearchParams(
     from: searchParams.get("from"),
     to: searchParams.get("to"),
     q: searchParams.get("q"),
+    limit: searchParams.get("limit"),
+    offset: searchParams.get("offset"),
   };
 }
 
@@ -377,120 +395,177 @@ export async function listAdminCases(
 ): Promise<AdminCaseListPayload> {
   const { range, from, to } = resolveAdminRange(query.range, query.from, query.to);
   const supabase = createSupabaseServerClient();
-
-  let surveyQuery = supabase
-    .from("survey_records")
-    .select(ADMIN_SURVEY_SELECT)
-    .order("observed_at", { ascending: false })
-    .limit(range === "all" ? 3000 : 1500);
-
-  if (from) surveyQuery = surveyQuery.gte("observed_date_kst", from);
-  if (to) surveyQuery = surveyQuery.lte("observed_date_kst", to);
-
-  if (query.limitedOnly === "true" || query.limitedOnly === "1") {
-    surveyQuery = surveyQuery.eq("overall_risk_level", "limited");
-  }
-
-  const { data: surveys, error } = await surveyQuery;
-  if (error) throw new Error(`survey_records: ${error.message}`);
-
-  let rows = surveys || [];
+  const { limit, offset } = parseAdminListPage(query);
+  const searchQuery = (query.q || "").trim();
   const publicCaseFilter = parsePublicCaseStatusFilter(query.publicCaseStatus);
-  if (publicCaseFilter !== "all" && publicCaseFilter !== "private") {
-    const { data: pubRows, error: pubFilterErr } = await supabase
-      .from("publication_records")
+  const dashboardView = normalizeAdminDashboardView(query.view);
+
+  let restrictIds: string[] | null = null;
+  if (searchQuery) {
+    restrictIds = await fetchAdminSearchSurveyIds(
+      supabase,
+      searchQuery,
+      from,
+      to,
+    );
+  }
+  const pubStatus =
+    dashboardView === "published" ||
+    dashboardView === "paused" ||
+    dashboardView === "reviewing"
+      ? dashboardView
+      : publicCaseFilter;
+  if (pubStatus !== "all" && pubStatus !== "private") {
+    restrictIds = intersectIds(
+      restrictIds,
+      await fetchPublicCaseSurveyIds(supabase, pubStatus),
+    );
+  }
+  if (parseBoolFlag(query.hasEvidence) === true) {
+    const { data: evRows, error: evErr } = await supabase
+      .from("evidence_files")
       .select("survey_record_id")
-      .eq("public_case_status", publicCaseFilter)
       .not("survey_record_id", "is", null)
-      .limit(500);
-    if (pubFilterErr) {
-      const missingPublicCase =
-        /public_case_status|public_id|schema cache|does not exist/i.test(
-          pubFilterErr.message,
-        );
-      if (!missingPublicCase) {
-        throw new Error(`publications filter: ${pubFilterErr.message}`);
-      }
-    } else {
-      const have = new Set(rows.map((r) => r.id as string));
-      const missing = [
+      .limit(3000);
+    if (evErr) throw new Error(`evidence filter: ${evErr.message}`);
+    restrictIds = intersectIds(
+      restrictIds,
+      [
         ...new Set(
-          (pubRows || [])
-            .map((r) => String(r.survey_record_id || ""))
+          (evRows || [])
+            .map((row) => String(row.survey_record_id || ""))
             .filter(Boolean),
         ),
-      ].filter((id) => !have.has(id));
-      if (missing.length) {
-        const extra = await supabase
-          .from("survey_records")
-          .select(ADMIN_SURVEY_SELECT)
-          .in("id", missing);
-        if (extra.error) {
-          throw new Error(`survey_records public cases: ${extra.error.message}`);
-        }
-        rows = [...rows, ...(extra.data || [])];
-      }
+      ],
+    );
+  }
+
+  let rows: Array<Record<string, unknown>> = [];
+  let listTotal = 0;
+
+  if (restrictIds && restrictIds.length === 0) {
+    rows = [];
+    listTotal = 0;
+  } else if (restrictIds && restrictIds.length > 150) {
+    const collected: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < restrictIds.length; i += 150) {
+      const slice = restrictIds.slice(i, i + 150);
+      let chunkQuery = supabase
+        .from("survey_records")
+        .select(ADMIN_SURVEY_SELECT)
+        .in("id", slice);
+      if (from) chunkQuery = chunkQuery.gte("observed_date_kst", from);
+      if (to) chunkQuery = chunkQuery.lte("observed_date_kst", to);
+      chunkQuery = applyAdminSurveyColumnFilters(chunkQuery, query);
+      const { data, error } = await chunkQuery;
+      if (error) throw new Error(`survey_records: ${error.message}`);
+      collected.push(...((data || []) as Array<Record<string, unknown>>));
     }
+    collected.sort((a, b) =>
+      String(b.observed_at || "").localeCompare(String(a.observed_at || "")),
+    );
+    listTotal = collected.length;
+    rows = collected.slice(offset, offset + limit);
+  } else {
+    let surveyQuery = supabase
+      .from("survey_records")
+      .select(ADMIN_SURVEY_SELECT, { count: "exact" });
+    if (from) surveyQuery = surveyQuery.gte("observed_date_kst", from);
+    if (to) surveyQuery = surveyQuery.lte("observed_date_kst", to);
+    surveyQuery = applyAdminSurveyColumnFilters(surveyQuery, query);
+    if (restrictIds) surveyQuery = surveyQuery.in("id", restrictIds);
+    surveyQuery = surveyQuery
+      .order("observed_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+    const { data: surveys, error, count } = await surveyQuery;
+    if (error) throw new Error(`survey_records: ${error.message}`);
+    rows = (surveys || []) as Array<Record<string, unknown>>;
+    listTotal = count ?? rows.length + offset;
   }
 
   const ids = rows.map((r) => r.id as string);
   const reportIds = rows
     .map((r) => r.scan_report_id as string | null)
     .filter((id): id is string => Boolean(id));
-
   const scanJobIds = rows
     .map((r) => r.scan_job_id as string | null | undefined)
     .filter((id): id is string => Boolean(id));
 
-  const [scoresRes, evidenceRes, evidenceByScanRes, pubsQuery, reportsRes, capturesRes] =
+  const [scoreRows, evidenceRows, evidenceByScanRows, pubRows, reportRows, captureRows] =
     await Promise.all([
-      ids.length
-        ? supabase
-            .from("survey_index_scores")
-            .select("survey_record_id, overall_score")
-            .in("survey_record_id", ids)
-        : Promise.resolve({ data: [], error: null }),
-      ids.length
-        ? supabase
-            .from("evidence_files")
-            .select("id, survey_record_id, scan_job_id, evidence_type")
-            .in("survey_record_id", ids)
-        : Promise.resolve({ data: [], error: null }),
-      scanJobIds.length
-        ? supabase
-            .from("evidence_files")
-            .select("id, survey_record_id, scan_job_id, evidence_type")
-            .in("scan_job_id", scanJobIds)
-        : Promise.resolve({ data: [], error: null }),
-      ids.length
-        ? supabase
-            .from("publication_records")
-            .select(
-              "survey_record_id, publish_status, public_case_status, public_id, updated_at",
-            )
-            .in("survey_record_id", ids)
-            .order("updated_at", { ascending: false })
-        : Promise.resolve({ data: [], error: null }),
-      reportIds.length
-        ? supabase
-            .from("scan_reports")
-            .select("id, diagnosis_status, score, user_decision_label, report_json")
-            .in("id", reportIds)
-        : Promise.resolve({ data: [], error: null }),
-      from || to
-        ? (() => {
-            let cq = supabase
-              .from("capture_jobs")
-              .select("id, survey_record_id, scan_job_id, status, completeness, captured_page_count");
-            if (from) cq = cq.gte("observed_date_kst", from);
-            if (to) cq = cq.lte("observed_date_kst", to);
-            return cq;
-          })()
-        : supabase
-            .from("capture_jobs")
-            .select("id, survey_record_id, scan_job_id, status, completeness, captured_page_count")
-            .limit(2000),
+      selectInChunks<{ survey_record_id: string; overall_score: number | null }>(
+        supabase,
+        "survey_index_scores",
+        "survey_record_id, overall_score",
+        "survey_record_id",
+        ids,
+      ),
+      selectInChunks<{
+        id: string;
+        survey_record_id: string | null;
+        scan_job_id: string | null;
+        evidence_type: string | null;
+      }>(
+        supabase,
+        "evidence_files",
+        "id, survey_record_id, scan_job_id, evidence_type",
+        "survey_record_id",
+        ids,
+      ),
+      selectInChunks<{
+        id: string;
+        survey_record_id: string | null;
+        scan_job_id: string | null;
+        evidence_type: string | null;
+      }>(
+        supabase,
+        "evidence_files",
+        "id, survey_record_id, scan_job_id, evidence_type",
+        "scan_job_id",
+        scanJobIds,
+      ),
+      selectInChunks<Record<string, unknown>>(
+        supabase,
+        "publication_records",
+        "survey_record_id, publish_status, public_case_status, public_id, updated_at",
+        "survey_record_id",
+        ids,
+      ),
+      selectInChunks<{
+        id: string;
+        diagnosis_status: string | null;
+        score: number | null;
+        user_decision_label: string | null;
+        summary: string | null;
+      }>(
+        supabase,
+        "scan_reports",
+        ADMIN_REPORT_LITE_SELECT,
+        "id",
+        reportIds,
+      ),
+      selectInChunks<{
+        id: string;
+        survey_record_id: string | null;
+        scan_job_id: string | null;
+        status: string | null;
+        completeness: string | null;
+        captured_page_count: number | null;
+      }>(
+        supabase,
+        "capture_jobs",
+        "id, survey_record_id, scan_job_id, status, completeness, captured_page_count",
+        "survey_record_id",
+        ids,
+      ),
     ]);
+
+  const scoresRes = { data: scoreRows, error: null };
+  const evidenceRes = { data: evidenceRows, error: null };
+  const evidenceByScanRes = { data: evidenceByScanRows, error: null };
+  const pubsQuery = { data: pubRows, error: null };
+  const reportsRes = { data: reportRows, error: null };
+  const capturesRes = { data: captureRows, error: null };
 
   if (scoresRes.error) throw new Error(`scores: ${scoresRes.error.message}`);
   if (evidenceRes.error) throw new Error(`evidence: ${evidenceRes.error.message}`);
@@ -599,26 +674,20 @@ export async function listAdminCases(
     }
   >();
   for (const row of reportsRes.data || []) {
-    const rj = (row.report_json as Record<string, unknown> | null) || null;
-    const form = (rj?.form as Record<string, unknown> | undefined) || undefined;
-    const limitedReason =
-      (typeof rj?.limitedReason === "string" && rj.limitedReason) ||
-      (typeof form?.limitedReason === "string" && form.limitedReason) ||
-      null;
-    const summary = typeof rj?.summary === "string" ? rj.summary : null;
-    const institution = institutionEvidenceFromReportJson(rj);
-    const platformHint =
-      typeof form?.platform === "string" ? form.platform : null;
+    const summary =
+      typeof row.summary === "string" && row.summary.trim()
+        ? row.summary
+        : null;
     reportMap.set(row.id, {
       diagnosis_status: row.diagnosis_status,
       score: row.score,
       user_decision_label: row.user_decision_label,
-      limited_reason: limitedReason,
+      limited_reason: null,
       summary,
-      matchedName: institution.matchedName,
-      matchedType: institution.matchedType,
-      csapCertified: csapCertifiedYesNo(platformHint, rj) === "예",
-      piiLabels: piiLabelsFromReportJson(rj),
+      matchedName: null,
+      matchedType: null,
+      csapCertified: false,
+      piiLabels: [],
     });
   }
 
@@ -757,6 +826,10 @@ export async function listAdminCases(
       subjectType: (row.subject_type as string | null) || null,
       surveyTitle: (row.survey_title as string | null) || null,
       surveyUrl: (row.survey_url as string | null) || null,
+      diagnosisSummary:
+        [report?.summary, report?.limited_reason]
+          .filter((value): value is string => Boolean(value))
+          .join("\n") || null,
       hasPersonalInfo: Boolean(row.has_personal_info),
       hasSensitiveInfo: Boolean(row.has_sensitive_info),
       hasHighRiskInfo: Boolean(row.has_high_risk_info),
@@ -859,7 +932,6 @@ export async function listAdminCases(
 
   const showOpsLimited =
     query.limitedOnly === "true" || query.limitedOnly === "1";
-  const rawCaseCount = cases.length;
   // General reporting: only analyzable diagnoses. Ops filter can still list limited.
   if (!showOpsLimited) {
     cases = cases.filter((c) =>
@@ -885,8 +957,8 @@ export async function listAdminCases(
   const todayTasks = pickTodayPriorityCases(scopedCases, 5);
   const priorityEvidence = pickPriorityEvidenceCases(scopedCases);
   const kpi: AdminKpi = {
-    totalScans: scopedCases.length,
-    rawTotalScans: rawCaseCount,
+    totalScans: listTotal,
+    rawTotalScans: listTotal,
     reviewPendingCount: scopedCases.filter(
       (c) => c.outreachUiStatus === "unreviewed",
     ).length,
@@ -933,7 +1005,6 @@ export async function listAdminCases(
     excludedFromReporting,
   };
 
-  const dashboardView = normalizeAdminDashboardView(query.view);
   if (dashboardView !== "all") {
     cases = cases.filter((c) => matchesAdminDashboardView(c, dashboardView));
   }
@@ -1000,13 +1071,8 @@ export async function listAdminCases(
   if (query.subjectType && query.subjectType !== "all") {
     cases = cases.filter((c) => c.subjectType === query.subjectType);
   }
-  const q = (query.q || "").trim().toLowerCase();
-  if (q) {
-    cases = cases.filter((c) =>
-      [c.operatorName, c.institutionName, c.orgClass, c.surveyTitle, c.surveyUrl, c.userDecisionLabel]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q)),
-    );
+  if (searchQuery) {
+    cases = cases.filter((c) => matchesAdminCaseSearch(c, searchQuery));
   }
 
   let queue: AdminQueueSummary = {
@@ -1082,6 +1148,8 @@ export async function listAdminCases(
     priorityEvidence,
     recentCollect,
     recentDiagnosis,
+    hasMore: rows.length === limit,
+    listTotal,
     generatedAt: new Date().toISOString(),
   };
 }

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { AdminCaseListItem, AdminCaseListPayload } from "@/lib/report/adminCases";
 import { appliedAdminRangeLabel } from "@/lib/report/adminCases";
+import { matchesAdminCaseSearch } from "@/lib/report/adminCaseSearch";
 import { AdminCaseDrawer } from "@/components/report/admin/AdminCaseDrawer";
 import { AdminCaseRowActions } from "@/components/report/admin/AdminCaseRowActions";
 import {
@@ -200,12 +201,27 @@ export function AdminConsoleView({
   const [exporting, setExporting] = useState(false);
   const payload = clientPayload ?? data;
   const loadError = clientError ?? error;
+  const searchTimerRef = useRef<number | null>(null);
+  const composingRef = useRef(false);
+
+  const displayedCases = useMemo(() => {
+    const rows = payload?.cases || [];
+    const q = form.q.trim();
+    if (!q) return rows;
+    return rows.filter((row) => matchesAdminCaseSearch(row, q));
+  }, [payload, form.q]);
 
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 2500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    };
+  }, []);
 
   function toParams(next: Filters): URLSearchParams {
     const params = new URLSearchParams();
@@ -223,7 +239,10 @@ export function AdminConsoleView({
     return params;
   }
 
-  async function apply(next: Filters) {
+  async function apply(
+    next: Filters,
+    options?: { append?: boolean; offset?: number },
+  ) {
     if (next.range === "custom") {
       if (!next.from || !next.to) {
         setRangeError("시작일과 종료일을 선택하세요.");
@@ -237,10 +256,20 @@ export function AdminConsoleView({
       }
     }
     setRangeError(null);
+    if (searchTimerRef.current) {
+      window.clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
     setForm(next);
+    const offset = options?.offset ?? 0;
+    const append = options?.append === true;
     const params = toParams(next);
+    if (offset > 0) params.set("offset", String(offset));
+    params.set("limit", "400");
     const qs = params.toString();
-    router.replace(`/report/admin?${qs}`, { scroll: false });
+    if (!append) {
+      router.replace(`/report/admin?${toParams(next).toString()}`, { scroll: false });
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/report/admin/cases?${qs}`, {
@@ -254,7 +283,19 @@ export function AdminConsoleView({
         setClientError(json?.error || "검토 목록을 불러오지 못했습니다.");
         return;
       }
-      setClientPayload(json);
+      setClientPayload((prev) =>
+        append && prev
+          ? {
+              ...json,
+              cases: [
+                ...prev.cases,
+                ...json.cases.filter(
+                  (row) => !prev.cases.some((existing) => existing.id === row.id),
+                ),
+              ],
+            }
+          : json,
+      );
       setClientError(null);
       setOpenId((id) =>
         id && json.cases.some((row) => row.id === id) ? id : null,
@@ -269,6 +310,14 @@ export function AdminConsoleView({
   function applyFilters(event: FormEvent) {
     event.preventDefault();
     void apply(form);
+  }
+
+  function scheduleSearch(q: string) {
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = window.setTimeout(() => {
+      searchTimerRef.current = null;
+      void apply({ ...form, q });
+    }, 300);
   }
 
   function setQuick(patch: Partial<Filters>) {
@@ -462,9 +511,13 @@ export function AdminConsoleView({
         <p className="mb-3 text-xs text-slate-500">
           적용 기간: {appliedAdminRangeLabel(payload)}
           {" · "}검토 대상 전체 {payload.kpi.totalScans.toLocaleString("ko-KR")}건
-          {form.q
-            ? ` · 전체 조건 ${payload.kpi.totalScans.toLocaleString("ko-KR")}건 중 검색 결과 ${payload.cases.length.toLocaleString("ko-KR")}건`
-            : ` · 목록 ${payload.cases.length.toLocaleString("ko-KR")}건`}
+          {form.q.trim()
+            ? ` · 전체 조건 ${payload.kpi.totalScans.toLocaleString("ko-KR")}건 중 검색 결과 ${displayedCases.length.toLocaleString("ko-KR")}건`
+            : ` · 목록 ${displayedCases.length.toLocaleString("ko-KR")}건${
+                (payload.listTotal || 0) > displayedCases.length
+                  ? ` / ${payload.listTotal.toLocaleString("ko-KR")}건`
+                  : ""
+              }`}
           {loading ? " · 갱신 중…" : ""}
         </p>
 
@@ -839,7 +892,7 @@ export function AdminConsoleView({
 
       <form
         onSubmit={applyFilters}
-        className="sticky top-0 z-10 mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur md:grid-cols-3 lg:grid-cols-4"
+        className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3 lg:grid-cols-4"
       >
         {[
           {
@@ -972,8 +1025,30 @@ export function AdminConsoleView({
           <input
             className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
             value={form.q}
-            onChange={(e) => setForm((prev) => ({ ...prev, q: e.target.value }))}
-            placeholder="기관명 / 제목 / URL / 판단"
+            autoComplete="off"
+            enterKeyHint="search"
+            onChange={(e) => {
+              const q = e.target.value;
+              setForm((prev) => ({ ...prev, q }));
+              const composing =
+                composingRef.current ||
+                ("isComposing" in e.nativeEvent &&
+                  Boolean(
+                    (e.nativeEvent as { isComposing?: boolean }).isComposing,
+                  ));
+              if (composing) return;
+              scheduleSearch(q);
+            }}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={(e) => {
+              composingRef.current = false;
+              const q = e.currentTarget.value;
+              setForm((prev) => ({ ...prev, q }));
+              scheduleSearch(q);
+            }}
+            placeholder="기관명 / 제목 / URL / 진단 내용"
           />
         </label>
         <div className="flex items-end">
@@ -1032,23 +1107,8 @@ export function AdminConsoleView({
         ) : null}
       </form>
 
-      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className={`w-full table-fixed text-left text-xs ${form.view === "publicInstitutions" ? "min-w-[80rem]" : "min-w-[68rem]"}`}>
-          <colgroup>
-            <col className="w-[6.2rem]" />
-            <col className="w-[2.6rem]" />
-            <col className="w-[3.6rem]" />
-            <col className="w-[11%]" />
-            {form.view === "publicInstitutions" ? <col className="w-[6%]" /> : null}
-            <col className="w-[14%]" />
-            {form.view === "publicInstitutions" ? <col className="w-[6%]" /> : null}
-            {form.view === "publicInstitutions" ? <col className="w-[5%]" /> : null}
-            <col className="w-[16%]" />
-            <col className="w-[11%]" />
-            <col className="w-[5.5rem]" />
-            <col className="w-[8.5rem]" />
-            <col className="w-[12.5rem]" />
-          </colgroup>
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full text-left text-xs">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
             <tr>
               <th className="px-2 py-2">진단일</th>
@@ -1067,7 +1127,7 @@ export function AdminConsoleView({
             </tr>
           </thead>
           <tbody>
-            {(payload?.cases || []).map((row: AdminCaseListItem) => {
+            {displayedCases.map((row: AdminCaseListItem) => {
               const dataBrief = formatDataCollectionBrief({
                 personalCount: row.personalInfoQuestionCount,
                 sensitiveCount: row.sensitiveQuestionCount,
@@ -1098,7 +1158,7 @@ export function AdminConsoleView({
                 }`}
                 onClick={() => setOpenId(row.id)}
               >
-                <td className="overflow-hidden truncate px-2 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-2 text-slate-600">
                   {row.observedDateKst}
                 </td>
                 <td className="px-1 py-2 text-center">
@@ -1117,41 +1177,41 @@ export function AdminConsoleView({
                   </span>
                 </td>
                 <td
-                  className="overflow-hidden px-2 py-2 font-medium text-slate-900"
+                  className="px-2 py-2 font-medium text-slate-900"
                   title={orgName}
                 >
-                  <span className="block truncate">{orgName}</span>
-                  <span className="block truncate text-[10px] font-normal text-slate-500">
+                  <span className="block break-words">{orgName}</span>
+                  <span className="block break-words text-[10px] font-normal text-slate-500">
                     {orgKind}
                   </span>
                 </td>
                 {form.view === "publicInstitutions" ? (
-                  <td className="overflow-hidden px-2 py-2 text-slate-700">
-                    <span className="block truncate">{row.orgClass || "미분류"}</span>
+                  <td className="px-2 py-2 text-slate-700">
+                    <span className="block break-words">{row.orgClass || "미분류"}</span>
                     {row.originalOrgType ? (
-                      <span className="block truncate text-[10px] text-slate-500">
+                      <span className="block break-words text-[10px] text-slate-500">
                         {row.originalOrgType}
                       </span>
                     ) : null}
                   </td>
                 ) : null}
                 <td
-                  className="overflow-hidden px-2 py-2 text-slate-800"
+                  className="px-2 py-2 text-slate-800"
                   title={row.surveyTitle || undefined}
                 >
-                  <span className="block truncate">{row.surveyTitle || "—"}</span>
+                  <span className="block break-words">{row.surveyTitle || "—"}</span>
                 </td>
                 {form.view === "publicInstitutions" ? (
-                  <td className="overflow-hidden truncate px-2 py-2 text-slate-700">
+                  <td className="px-2 py-2 text-slate-700">
                     {collectionToolKo(row.platform)}
                   </td>
                 ) : null}
                 {form.view === "publicInstitutions" ? (
-                  <td className="overflow-hidden truncate px-2 py-2 text-slate-700">
+                  <td className="px-2 py-2 text-slate-700">
                     {row.csapCertified ? "예" : "아니오"}
                   </td>
                 ) : null}
-                <td className="overflow-hidden px-2 py-2">
+                <td className="px-2 py-2">
                   {row.issueBadges.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {row.issueBadges.slice(0, 3).map((badge) => (
@@ -1167,19 +1227,19 @@ export function AdminConsoleView({
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td className="overflow-hidden px-2 py-2 text-[11px] text-slate-700">
-                  <div className="truncate font-medium">{dataBrief.headline}</div>
+                <td className="px-2 py-2 text-[11px] text-slate-700">
+                  <div className="break-words font-medium">{dataBrief.headline}</div>
                   {dataBrief.items ? (
-                    <div className="truncate text-[10px] text-slate-500">{dataBrief.items}</div>
+                    <div className="break-words text-[10px] text-slate-500">{dataBrief.items}</div>
                   ) : null}
                   {dataBrief.hasSensitive ? (
                     <div className="mt-0.5 text-[10px] font-semibold text-rose-700">민감정보 포함</div>
                   ) : null}
                 </td>
-                <td className="overflow-hidden px-2 py-2 text-[11px] text-slate-700">
+                <td className="px-2 py-2 text-[11px] text-slate-700">
                   {row.evidenceStatus}
                 </td>
-                <td className="overflow-hidden px-2 py-2 text-[10px] leading-4 text-slate-600">
+                <td className="px-2 py-2 text-[10px] leading-4 text-slate-600">
                   <div title={`검토 ${reviewStatusKo(row.reviewStatus)}`}>
                     {reviewStatusKo(row.reviewStatus)}
                   </div>
@@ -1188,14 +1248,14 @@ export function AdminConsoleView({
                   </div>
                   {row.publicCaseStatus !== "private" ? (
                     <div
-                      className={`mt-0.5 inline-block max-w-full truncate rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
+                      className={`mt-0.5 inline-block rounded border px-1 py-0.5 text-[10px] font-semibold ${publicCaseStatusBadgeClass(row.publicCaseStatus)}`}
                       title={`공개 사례 ${publicCaseStatusKo(row.publicCaseStatus)}`}
                     >
                       공개 사례 {publicCaseStatusKo(row.publicCaseStatus)}
                     </div>
                   ) : null}
                 </td>
-                <td className="overflow-hidden px-1 py-2">
+                <td className="px-1 py-2">
                   <AdminCaseRowActions
                     row={row}
                     onReview={() => setOpenId(row.id)}
@@ -1207,15 +1267,34 @@ export function AdminConsoleView({
               </tr>
               );
             })}
-            {payload && payload.cases.length === 0 ? (
+            {payload && displayedCases.length === 0 ? (
               <tr>
                 <td colSpan={form.view === "publicInstitutions" ? 13 : 10} className="px-3 py-8 text-center text-slate-500">
-                  조건에 맞는 케이스가 없습니다.
+                  {form.q.trim()
+                    ? "검색어와 맞는 진단이 없습니다. 기간을 ‘전체’로 넓혀 다시 찾아보세요."
+                    : "조건에 맞는 케이스가 없습니다."}
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
+        {payload?.hasMore ? (
+          <div className="border-t border-slate-100 px-3 py-3 text-center">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                void apply(form, {
+                  append: true,
+                  offset: payload.cases.length,
+                })
+              }
+              className="rounded-lg border border-teal-700 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "불러오는 중…" : "다음 목록 더 보기"}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <AdminCaseDrawer

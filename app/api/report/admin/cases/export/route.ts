@@ -21,10 +21,23 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const payload = await listAdminCases(
-      adminCaseListQueryFromSearchParams(searchParams),
-    );
-    const sheetRows = adminExportSheetRows(payload.cases);
+    const query = adminCaseListQueryFromSearchParams(searchParams);
+    const cases: Awaited<ReturnType<typeof listAdminCases>>["cases"] = [];
+    let offset = 0;
+    let guard = 0;
+    for (;;) {
+      const payload = await listAdminCases({
+        ...query,
+        limit: "400",
+        offset: String(offset),
+      });
+      cases.push(...payload.cases);
+      if (!payload.hasMore) break;
+      offset += 400;
+      guard += 1;
+      if (guard >= 25) break;
+    }
+    const sheetRows = adminExportSheetRows(cases);
     const ws = XLSX.utils.json_to_sheet(sheetRows);
     ws["!cols"] = [
       { wch: 6 },

@@ -63,6 +63,8 @@ export default async function AdminReportPage({
       from: pick("from"),
       to: pick("to"),
       q: pick("q"),
+      limit: pick("limit"),
+      offset: pick("offset"),
     });
   } catch (err) {
     console.error("[admin-page]", err);

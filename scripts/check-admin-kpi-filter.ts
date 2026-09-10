@@ -14,6 +14,12 @@ import {
   csapCertifiedYesNo,
   displayInstitutionName,
 } from "@/lib/report/publicInstitutionColumns";
+import {
+  adminFindingSearchOrFilter,
+  adminScanReportSearchOrFilter,
+  adminSurveyRecordSearchOrFilter,
+  matchesAdminCaseSearch,
+} from "@/lib/report/adminCaseSearch";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -85,9 +91,18 @@ function main() {
   check("P/S/H removed from console", !/P\/S\/H/.test(consoleView));
   check("no 공개 상태 label", !consoleView.includes("공개 상태"));
   check("public case wording", consoleView.includes("공개 사례") && consoleView.includes("공개중"));
-  check("KPI from scopedCases", /totalScans:\s*scopedCases\.length/.test(listLib));
+  check("KPI from scopedCases", /totalScans:\s*listTotal/.test(listLib));
   check("list filters after KPI", /const dashboardView = normalizeAdminDashboardView/.test(listLib));
-  check("search applied after KPI", /const q = \(query\.q/.test(listLib));
+  check("search applied after KPI", /matchesAdminCaseSearch/.test(listLib));
+  check("search fetches matching rows beyond cap", /fetchAdminSearchSurveyIds/.test(listLib));
+  check("column filters applied in SQL", /applyAdminSurveyColumnFilters/.test(listLib));
+  check("paged list not 3000 dump", !/limit\(range === "all" \? 3000/.test(listLib));
+  check(
+    "console live-filters search",
+    consoleView.includes("matchesAdminCaseSearch") &&
+      consoleView.includes("displayedCases") &&
+      consoleView.includes("onCompositionEnd"),
+  );
   check("view query on admin API", /searchParams\.get\("view"\)/.test(listLib));
   check("cases API uses query helper", /adminCaseListQueryFromSearchParams/.test(api));
   check("todayTasks in payload", /todayTasks/.test(listLib));
@@ -95,6 +110,75 @@ function main() {
   check("drawer keeps 개선안내 판단 order", read("components/report/admin/AdminOutreachSections.tsx").includes("개선안내 판단"));
   check("issue badges cap at 3", /badges\.length < 3/.test(outreach) && /slice\(0, 3\)/.test(outreach));
   check("search result copy", consoleView.includes("전체 조건") && consoleView.includes("검색 결과"));
+
+  check(
+    "search matches displayed institution name",
+    matchesAdminCaseSearch(
+      {
+        operatorName: "공공기관",
+        institutionName: "경기도 파주시",
+        surveyTitle: "청소년 프로그램",
+      },
+      "파주시",
+    ),
+  );
+  check(
+    "search does not match other cities",
+    !matchesAdminCaseSearch(
+      {
+        operatorName: "공공기관",
+        institutionName: "경기도 여주시",
+        surveyTitle: "참여자 사전 모집",
+      },
+      "파주시",
+    ),
+  );
+  check(
+    "search matches title and issue badges",
+    matchesAdminCaseSearch(
+      {
+        institutionName: "경기도 여주시",
+        surveyTitle: "청소년정책 워크숍",
+        issueBadges: ["고지문 미흡"],
+      },
+      "고지문",
+    ),
+  );
+  check(
+    "search or-filter covers operator/title/url",
+    (adminSurveyRecordSearchOrFilter("파주시") || "").includes(
+      "survey_title.ilike.%파주시%",
+    ) &&
+      (adminSurveyRecordSearchOrFilter("파주시") || "").includes(
+        "operator_name.ilike.%파주시%",
+      ),
+  );
+  check(
+    "search or-filter covers diagnosis summary",
+    (adminScanReportSearchOrFilter("고지문") || "").includes(
+      "summary.ilike.%고지문%",
+    ) &&
+      (adminScanReportSearchOrFilter("고지문") || "").includes(
+        "user_decision_label.ilike.%고지문%",
+      ),
+  );
+  check(
+    "search or-filter covers finding titles",
+    (adminFindingSearchOrFilter("보유기간") || "").includes(
+      "title.ilike.%보유기간%",
+    ),
+  );
+  check(
+    "search matches diagnosis summary text",
+    matchesAdminCaseSearch(
+      {
+        institutionName: "경기도 여주시",
+        surveyTitle: "참여자 모집",
+        diagnosisSummary: "개인정보 보유기간 안내가 확인되지 않았습니다.",
+      },
+      "보유기간",
+    ),
+  );
 
   const unreviewed = sample({ outreachUiStatus: "unreviewed" });
   const reviewed = sample({ outreachUiStatus: "candidate" });
