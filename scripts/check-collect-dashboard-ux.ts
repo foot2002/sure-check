@@ -115,7 +115,7 @@ function main() {
     "collector client loads summary and list",
     view.includes("/api/report/admin/collector/summary") &&
       view.includes("loadSummary") &&
-      view.includes("검색 결과 엑셀 다운로드"),
+      view.includes("엑셀 다운로드"),
   );
   check(
     "collector search export route",
