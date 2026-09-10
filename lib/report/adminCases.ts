@@ -491,7 +491,7 @@ export async function listAdminCases(
     .map((r) => r.scan_job_id as string | null | undefined)
     .filter((id): id is string => Boolean(id));
 
-  const [scoreRows, evidenceRows, evidenceByScanRows, pubRows, reportRows, captureRows] =
+  const [scoreRows, evidenceRows, evidenceByScanRows, reportRows, captureRows] =
     await Promise.all([
       selectInChunks<{ survey_record_id: string; overall_score: number | null }>(
         supabase,
@@ -524,13 +524,6 @@ export async function listAdminCases(
         "scan_job_id",
         scanJobIds,
       ),
-      selectInChunks<Record<string, unknown>>(
-        supabase,
-        "publication_records",
-        "survey_record_id, publish_status, public_case_status, public_id, updated_at",
-        "survey_record_id",
-        ids,
-      ),
       selectInChunks<{
         id: string;
         diagnosis_status: string | null;
@@ -560,49 +553,40 @@ export async function listAdminCases(
       ),
     ]);
 
-  const scoresRes = { data: scoreRows, error: null };
-  const evidenceRes = { data: evidenceRows, error: null };
-  const evidenceByScanRes = { data: evidenceByScanRows, error: null };
-  const pubsQuery = { data: pubRows, error: null };
-  const reportsRes = { data: reportRows, error: null };
-  const capturesRes = { data: captureRows, error: null };
-
-  if (scoresRes.error) throw new Error(`scores: ${scoresRes.error.message}`);
-  if (evidenceRes.error) throw new Error(`evidence: ${evidenceRes.error.message}`);
-  if (evidenceByScanRes.error) {
-    throw new Error(`evidence by scan: ${evidenceByScanRes.error.message}`);
-  }
-  let pubsRes: { data: Array<Record<string, unknown>> | null; error: { message: string } | null } =
-    pubsQuery as {
-      data: Array<Record<string, unknown>> | null;
-      error: { message: string } | null;
-    };
-  if (pubsRes.error) {
-    const missingPublicCase =
-      /public_case_status|public_id|schema cache|does not exist/i.test(
-        pubsRes.error.message,
-      );
-    if (!missingPublicCase) {
-      throw new Error(`publications: ${pubsRes.error.message}`);
+  let pubRows: Array<Record<string, unknown>> = [];
+  try {
+    pubRows = await selectInChunks<Record<string, unknown>>(
+      supabase,
+      "publication_records",
+      "survey_record_id, publish_status, public_case_status, public_id, updated_at",
+      "survey_record_id",
+      ids,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/public_case_status|public_id|schema cache|does not exist/i.test(message)) {
+      throw error;
     }
     console.warn(
       "[admin] publication_records public case columns missing — apply db/migrations/013_public_cases.sql",
     );
-    const fallback = ids.length
-      ? await supabase
-          .from("publication_records")
-          .select("survey_record_id, publish_status, updated_at")
-          .in("survey_record_id", ids)
-          .order("updated_at", { ascending: false })
-      : { data: [], error: null };
-    if (fallback.error) throw new Error(`publications: ${fallback.error.message}`);
-    pubsRes = {
-      data: (fallback.data as Array<Record<string, unknown>>) || [],
-      error: fallback.error,
-    };
+    if (ids.length) {
+      const fallback = await supabase
+        .from("publication_records")
+        .select("survey_record_id, publish_status, updated_at")
+        .in("survey_record_id", ids)
+        .order("updated_at", { ascending: false });
+      if (fallback.error) throw new Error(`publications: ${fallback.error.message}`);
+      pubRows = (fallback.data as Array<Record<string, unknown>>) || [];
+    }
   }
-  if (reportsRes.error) throw new Error(`reports: ${reportsRes.error.message}`);
-  if (capturesRes.error) throw new Error(`captures: ${capturesRes.error.message}`);
+
+  const scoresRes = { data: scoreRows };
+  const evidenceRes = { data: evidenceRows };
+  const evidenceByScanRes = { data: evidenceByScanRows };
+  const pubsRes = { data: pubRows };
+  const reportsRes = { data: reportRows };
+  const capturesRes = { data: captureRows };
 
   const scoreMap = new Map<string, number | null>();
   for (const row of scoresRes.data || []) {

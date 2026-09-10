@@ -43,7 +43,7 @@ export async function selectInChunks<T extends Record<string, unknown>>(
       .select(columns)
       .in(column, slice);
     if (error) throw new Error(`${table}: ${error.message}`);
-    out.push(...((data || []) as T[]));
+    out.push(...(((data || []) as unknown) as T[]));
   }
   return out;
 }
