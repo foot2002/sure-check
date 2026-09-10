@@ -8,6 +8,7 @@ import {
   isCollectorStorageConfigured,
 } from "@/lib/collector/config";
 import {
+  COLLECTOR_LIST_PAGE_SIZE,
   getCollectorSummary,
   listSurveyLinks,
 } from "@/lib/collector/queries";
@@ -60,10 +61,13 @@ export default async function AdminCollectorPage({
     triageQueue: pick("triageQueue") || "all",
     diagnosisStatus: pick("diagnosisStatus") || "all",
     q: pick("q") || "",
+    page: pick("page") || "1",
   };
 
   let summary = null;
-  let items: Awaited<ReturnType<typeof listSurveyLinks>> = [];
+  let items: Awaited<ReturnType<typeof listSurveyLinks>>["items"] = [];
+  let listTotal = 0;
+  let listHasMore = false;
   let error: string | null = null;
   const configError = getCollectorConfigError();
 
@@ -79,7 +83,7 @@ export default async function AdminCollectorPage({
         ? `${filters.firstDiscoveredTo}T23:59:59.999Z`
         : undefined;
 
-      [summary, items] = await Promise.all([
+      const [nextSummary, list] = await Promise.all([
         getCollectorSummary(),
         listSurveyLinks({
           platform: filters.platform as CollectorPlatform | "all",
@@ -116,10 +120,17 @@ export default async function AdminCollectorPage({
             | "queued"
             | "running"
             | "completed"
+            | "limited"
             | "failed",
           q: filters.q || undefined,
+          limit: COLLECTOR_LIST_PAGE_SIZE,
+          page: filters.page,
         }),
       ]);
+      summary = nextSummary;
+      items = list.items;
+      listTotal = list.total;
+      listHasMore = list.hasMore;
     } catch (err) {
       console.error("[admin-collector-page]", err);
       error =
@@ -131,6 +142,9 @@ export default async function AdminCollectorPage({
     <CollectorConsoleView
       summary={summary}
       items={items}
+      listTotal={listTotal}
+      hasMore={listHasMore}
+      pageSize={COLLECTOR_LIST_PAGE_SIZE}
       error={error}
       filters={filters}
       configError={configError}

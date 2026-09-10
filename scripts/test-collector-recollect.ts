@@ -241,8 +241,8 @@ async function main() {
           invalidSavedCount: stats.invalidSavedCount,
           platformsVerifiedThisPass: stats.platforms,
           falsePositives: stats.falsePositives.slice(0, 30),
-          adminDefaultCount: visible.length,
-          adminInvalidFilterCount: invalids.length,
+          adminDefaultCount: visible.items.length,
+          adminInvalidFilterCount: invalids.items.length,
           summaryTotalExclInvalid: summary.totalSurveys,
           summaryByPlatform: summary.byPlatform,
           dbAll: (allRows.data || []).map((r) => ({

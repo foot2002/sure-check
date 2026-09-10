@@ -513,6 +513,16 @@ export interface SurveyLinkListFilters {
     | "failed_final";
   q?: string;
   limit?: number;
+  offset?: number;
+  page?: number | string | null;
+}
+
+export interface SurveyLinkListResult {
+  items: SurveyLinkListItem[];
+  total: number;
+  hasMore: boolean;
+  limit: number;
+  offset: number;
 }
 
 export interface UpsertSurveyResult {

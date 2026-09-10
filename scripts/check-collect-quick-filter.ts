@@ -27,7 +27,12 @@ function main() {
   check("quick filter 네이버", view.includes("네이버 검색 수집"));
   check("applyQuick exists", view.includes("function applyQuick"));
   check("page passes holdReason", page.includes("holdReason"));
-  check("list supports holdReason", read("lib/collector/queries.ts").includes("holdReason"));
+  check("search panel always open", view.includes(">검색<") && !view.includes("상세 필터 (접기/펼치기)"));
+  check("page size 50", read("lib/collector/surveyLinkListQuery.ts").includes("COLLECTOR_LIST_PAGE_SIZE = 50"));
+  check("page passes page param", page.includes("page:") && page.includes("COLLECTOR_LIST_PAGE_SIZE"));
+  check("list returns total", read("lib/collector/surveyLinkListQuery.ts").includes("total:"));
+  check("source filter in DB", read("lib/collector/surveyLinkListQuery.ts").includes("fetchSourceConstraintIds"));
+  check("diagnosis filter in DB", read("lib/collector/surveyLinkListQuery.ts").includes("fetchDiagnosisIds"));
   check(
     "eligible matcher",
     matchesCollectorHoldReason({ autoDiagnosisTarget: true }, "eligible"),

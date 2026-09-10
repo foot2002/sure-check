@@ -74,9 +74,11 @@ function main() {
     "per-row diagnose confirm",
     view.includes("이 설문을 자동진단 큐에 등록합니다"),
   );
-  const list = read("lib/collector/queries.ts");
-  check("quick hold filter in list", list.includes("matchesCollectorHoldReason"));
-  check("naver source filter", list.includes('sourceType === "naver"'));
+  check(
+    "quick hold filter in list",
+    read("lib/collector/surveyLinkListQuery.ts").includes("applySurveyLinkColumnFilters"),
+  );
+  check("naver source filter", read("lib/collector/surveyLinkListQuery.ts").includes('sourceType === "naver"'));
 
   if (failures.length) {
     console.error(`\n${failures.length} check(s) failed`);

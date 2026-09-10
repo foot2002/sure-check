@@ -32,6 +32,7 @@ type Filters = {
   triageQueue: string;
   diagnosisStatus: string;
   q: string;
+  page: string;
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -128,12 +129,18 @@ function StatCard({
 export function CollectorConsoleView({
   summary,
   items,
+  listTotal = items.length,
+  hasMore = false,
+  pageSize = 50,
   error,
   filters,
   configError,
 }: {
   summary: CollectorSummary | null;
   items: SurveyLinkListItem[];
+  listTotal?: number;
+  hasMore?: boolean;
+  pageSize?: number;
   error: string | null;
   filters: Filters;
   configError: string | null;
@@ -143,6 +150,7 @@ export function CollectorConsoleView({
     ...filters,
     holdReason: filters.holdReason || "all",
     quickView: filters.quickView || "all",
+    page: filters.page || "1",
   });
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
@@ -157,27 +165,31 @@ export function CollectorConsoleView({
   >({});
   const [sourcesLoading, setSourcesLoading] = useState<string | null>(null);
 
-  function applyFilters(event: FormEvent) {
-    event.preventDefault();
+  function pushForm(next: Filters, resetPage = false) {
+    const payload = resetPage ? { ...next, page: "1" } : next;
+    setForm(payload);
     const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(form)) {
+    for (const [key, value] of Object.entries(payload)) {
       if (!value || value === "all") continue;
+      if (key === "page" && value === "1") continue;
       params.set(key, value);
     }
     const qs = params.toString();
     router.push(qs ? `/report/admin/collector?${qs}` : "/report/admin/collector");
   }
 
+  function applyFilters(event: FormEvent) {
+    event.preventDefault();
+    pushForm(form, true);
+  }
+
   function applyQuick(patch: Partial<Filters>) {
-    const next = { ...form, ...patch };
-    setForm(next);
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(next)) {
-      if (!value || value === "all") continue;
-      params.set(key, value);
-    }
-    const qs = params.toString();
-    router.push(qs ? `/report/admin/collector?${qs}` : "/report/admin/collector");
+    pushForm({ ...form, ...patch }, true);
+  }
+
+  function goToPage(page: number) {
+    const nextPage = String(Math.max(1, page));
+    pushForm({ ...form, page: nextPage }, false);
   }
 
   function resetFilters() {
@@ -194,8 +206,14 @@ export function CollectorConsoleView({
       triageQueue: "all",
       diagnosisStatus: "all",
       q: "",
+      page: "1",
     });
   }
+
+  const currentPage = Math.max(1, Number(filters.page || "1") || 1);
+  const totalPages = Math.max(1, Math.ceil(listTotal / pageSize) || 1);
+  const rangeFrom = listTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const rangeTo = Math.min(listTotal, (currentPage - 1) * pageSize + items.length);
 
   async function logout() {
     await fetch("/api/report/admin/logout", { method: "POST" });
@@ -1686,13 +1704,11 @@ export function CollectorConsoleView({
         ))}
       </div>
 
-      <details className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-900">
-          상세 필터 (접기/펼치기)
-        </summary>
+      <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">검색</h2>
       <form
         onSubmit={applyFilters}
-        className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3 lg:grid-cols-4"
+        className="grid gap-3 md:grid-cols-3 lg:grid-cols-4"
       >
         <label className="text-xs text-slate-500">
           플랫폼
@@ -1830,15 +1846,19 @@ export function CollectorConsoleView({
             type="submit"
             className="w-full rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
-            필터 적용
+            검색
           </button>
         </div>
       </form>
-      </details>
+      </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-          수집 설문 목록 ({items.length.toLocaleString("ko-KR")})
+          수집 설문 목록 ({listTotal.toLocaleString("ko-KR")}건
+          {listTotal > items.length
+            ? ` · ${pageSize}건씩`
+            : ""}
+          )
         </div>
         <div className="divide-y divide-slate-100">
           {items.length === 0 ? (
@@ -2058,6 +2078,35 @@ export function CollectorConsoleView({
             ))
           )}
         </div>
+        {listTotal > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
+            <p>
+              {rangeFrom.toLocaleString("ko-KR")}–{rangeTo.toLocaleString("ko-KR")} /{" "}
+              {listTotal.toLocaleString("ko-KR")}건
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => goToPage(currentPage - 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                이전
+              </button>
+              <span className="tabular-nums text-xs font-semibold text-slate-800">
+                {currentPage} / {totalPages}페이지
+              </span>
+              <button
+                type="button"
+                disabled={!hasMore && currentPage >= totalPages}
+                onClick={() => goToPage(currentPage + 1)}
+                className="rounded-lg border border-teal-700 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                다음
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
