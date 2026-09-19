@@ -225,10 +225,10 @@ async function main() {
   });
   checks.push({
     name: "수집·진단 halt",
-    ok: COLLECTOR_OPS_HALTED === true,
+    ok: COLLECTOR_OPS_HALTED === false,
     detail: COLLECTOR_OPS_HALTED
       ? "COLLECTOR_OPS_HALTED — cron 등록 유지, 핸들러 early-return"
-      : "halt 해제됨",
+      : "halt 해제됨 — official-site/diagnosis/scan worker 재개",
   });
 
   console.log("=== collector cron readiness ===\n");

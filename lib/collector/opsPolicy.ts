@@ -4,8 +4,8 @@
  * does not try to verify the entire backlog.
  */
 
-/** Pause crawl/diagnosis crons while official-letter download ships. Cron entries stay registered. */
-export const COLLECTOR_OPS_HALTED = true;
+/** Pause crawl/diagnosis crons. Keep false in production unless ops explicitly halt. */
+export const COLLECTOR_OPS_HALTED = false;
 export const COLLECTOR_OPS_HALT_REASON =
   "공문down 작업 우선 — 수집·진단 크론/워커 일시 중지";
 
@@ -61,14 +61,14 @@ export const COLLECTOR_STALE_RUNNING_MS = 15 * 60 * 1000;
  * Legacy single /api/internal/collector/run Cron removed (endpoint kept for manual).
  */
 export const COLLECTOR_OPS_SCHEDULE_NOTES = {
-  halt: COLLECTOR_OPS_HALT_REASON,
   dailyCollectA: "일시 중지 (네이버 검색 미실행)",
   dailyCollectB: "일시 중지 (네이버 검색 미실행)",
   discoveredBacklog: "일시 중지 (미탐색 공공 사이트 스프린트)",
   unreachableRetry: "일시 중지",
-  officialSiteWaves: "일시 중지 (공문down 작업 우선, cron 등록은 유지)",
-  diagnosisDispatch: "일시 중지 (공문down 작업 우선, cron 등록은 유지)",
-  scanWorker: "일시 중지 (공문down 작업 우선, cron 등록은 유지)",
+  officialSiteWaves:
+    "2시간 간격 24시간 × 8기관 → /api/internal/collector/official-sites (이론 96기관/일, 웨이브 겹치면 skip)",
+  diagnosisDispatch: "기존 worker 창에서 official_site 대상 재개",
+  scanWorker: "기존 22 once-daily 슬롯(scanBatch=3) 재개",
 } as const;
 
 /** Target collect wall time ≤ 70% of Vercel maxDuration (120s → 84s). */

@@ -185,7 +185,7 @@ function mockDetail(): AdminCaseDetail {
 }
 
 async function main() {
-  check("ops halt is on", COLLECTOR_OPS_HALTED === true);
+  check("ops halt is off", COLLECTOR_OPS_HALTED === false);
   const haltRoutes = [
     "app/api/internal/collector/official-sites/route.ts",
     "app/api/internal/collector/diagnosis-dispatch/route.ts",
