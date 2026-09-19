@@ -12,7 +12,13 @@ import {
   officialLetterXmlTest,
 } from "../lib/report/officialLetterDocx";
 import { canDownloadOfficialLetter } from "../lib/report/officialLetterEligibility";
-import { officialLetterDocNumber } from "../lib/report/officialLetterModel";
+import {
+  buildOfficialLetterModel,
+  institutionFromTitle,
+  isLetterConsentQuestion,
+  officialLetterDocNumber,
+  sanitizeOfficialLetterTitle,
+} from "../lib/report/officialLetterModel";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -263,6 +269,85 @@ async function main() {
   check("generated fills title", doc.includes("공문 생성 점검용 설문"));
   check("generated fills operator", doc.includes("서울특별시"));
   check("generated does not keep sample title", !doc.includes("생태 아웃도어 숲놀이"));
+  check(
+    "title extracts 종로구",
+    institutionFromTitle("2026 종로구 반려견 놀이터 운영") === "서울특별시 종로구",
+  );
+  check(
+    "title extracts 광주북구",
+    institutionFromTitle("[광주북구] 2026 청소년오케스트라") === "광주광역시 북구",
+  );
+  check(
+    "title extracts 한수원",
+    institutionFromTitle("한국수력원자력 아이수크림") === "한국수력원자력",
+  );
+  check(
+    "title extracts 대전 서구",
+    institutionFromTitle("대전광역시 서구 지역보건의료계획") === "대전광역시 서구",
+  );
+  check(
+    "title extracts 남악",
+    institutionFromTitle("남악청소년문화의집 프로그램 신청") === "남악청소년문화의집",
+  );
+  check(
+    "consent dump is excluded",
+    isLetterConsentQuestion(
+      "개인정보 수집·이용 동의 수집·이용 목적: 행사 운영 보유·이용 기간: 행사 종료 후 파기",
+    ),
+  );
+  check(
+    "filename strips emoji",
+    !sanitizeOfficialLetterTitle("🎶 [광주북구] 오케스트라").includes("🎶"),
+  );
+
+  const generic = mockDetail();
+  generic.summary.operatorName = "주체 확인 불가";
+  generic.summary.platform = "unknown";
+  generic.summary.surveyTitle = "2026 종로구 반려견 놀이터 운영";
+  generic.questions.push({
+    id: "q-consent",
+    questionNumber: "Q9",
+    pageNumber: 1,
+    questionLabel:
+      "개인정보 수집·이용 동의 수집·이용 목적: 행사 운영 및 안내 보유·이용 기간: 행사 종료 후 즉시 파기 동의 거부 시 불이익: 참가 제한",
+    questionType: "text",
+    isRequired: true,
+    dataRiskLevel: "high",
+    hasPersonalInfo: true,
+    hasSensitiveInfo: false,
+    hasHighRiskInfo: false,
+    categories: [
+      {
+        categoryCode: "name",
+        categoryLabel: "이름",
+        riskCategory: "direct",
+        matchedKeyword: "동의",
+      },
+    ],
+  });
+  const genericModel = buildOfficialLetterModel(generic);
+  check("generic operator uses title name", genericModel.operatorName === "서울특별시 종로구");
+  check(
+    "generic operator does not use 주체 확인 불가",
+    !genericModel.whyIntro.includes("주체 확인 불가") &&
+      genericModel.whyIntro.includes("서울특별시 종로구에서 운영"),
+  );
+  check("consent question omitted from §IV", !genericModel.questionRows.some((row) => row[0] === "Q9"));
+  check(
+    "unknown platform uses letter-friendly tool name",
+    genericModel.toolName === "자체 홈페이지 또는 기타" &&
+      genericModel.whyIntro.includes("자체 홈페이지 또는 기타를 통해"),
+  );
+  check(
+    "youth title sets caution",
+    buildOfficialLetterModel({
+      ...mockDetail(),
+      summary: {
+        ...mockDetail().summary,
+        surveyTitle: "한국수력원자력 아이수크림 참가 신청",
+      },
+    }).cautionBody.includes("미성년자·청소년"),
+  );
   check(
     "disclaimer drops 수기 검토",
     !doc.includes("수기 검토") && doc.includes("자동진단 도구(SURE-CHECK)를 통해"),

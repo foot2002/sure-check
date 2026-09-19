@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import {
   buildOfficialLetterModel,
+  sanitizeOfficialLetterTitle,
   type OfficialLetterModel,
 } from "@/lib/report/officialLetterModel";
 
@@ -439,11 +440,7 @@ export function officialLetterDownloadFilename(
   title: string,
   caseId: string,
 ): string {
-  const safe = (title || "제목없음")
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 40);
+  const safe = sanitizeOfficialLetterTitle(title);
   return `[SURE-CHECK] ${safe || "제목없음"} 실태조사 분석 보고서.docx`;
 }
 

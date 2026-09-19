@@ -45,6 +45,7 @@ export function officialLetterDownloadUrl(caseId: string): string {
 
 export function officialLetterFilename(title: string, caseId: string): string {
   const safe = (title || "제목없음")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
     .replace(/[\\/:*?"<>|]/g, " ")
     .replace(/\s+/g, " ")
     .trim()

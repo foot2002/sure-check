@@ -9,6 +9,11 @@ import {
 import { CATEGORY_LABELS } from "@/lib/reporting/reportMessages";
 import type { LegalBasisEntry, LegalBasisId } from "@/lib/reporting/legalBasisRegistry";
 import type { ScanReport } from "@/lib/types/scan";
+import {
+  GENERIC_OPERATOR_LABELS,
+  displayInstitutionName,
+  institutionEvidenceFromReportJson,
+} from "@/lib/report/publicInstitutionColumns";
 
 export type OfficialLetterRow = string[];
 
@@ -58,8 +63,31 @@ const QUASI_CODES = new Set([
   "tenure",
   "quasi_identifier",
 ]);
-const MINOR_RE =
-  /미성년|청소년|초등|중학|고등|어린이|아동|보호자|만\s*\d+\s*세/;
+const MINOR_TITLE_RE =
+  /미성년|청소년|초등|중학|고등|어린이|아동|유아|키즈|오케스트라|아이수크림|학생/;
+const MINOR_QUESTION_RE =
+  /미성년|청소년|초등|중학|어린이|아동|유아|만\s*\d+\s*세|법정대리인|친권자/;
+
+const GU_CITY: Record<string, string> = {
+  종로구: "서울특별시 종로구",
+  광주북구: "광주광역시 북구",
+};
+
+const TITLE_ORG_ALIASES: Array<[RegExp, string]> = [
+  [/한국수력원자력|한수원/, "한국수력원자력"],
+  [/\bETRI\b|한국전자통신연구원/, "한국전자통신연구원"],
+  [/남악청소년문화의집/, "남악청소년문화의집"],
+];
+
+const METRO_PREFIX: Record<string, string> = {
+  서울: "서울특별시",
+  부산: "부산광역시",
+  대구: "대구광역시",
+  인천: "인천광역시",
+  광주: "광주광역시",
+  대전: "대전광역시",
+  울산: "울산광역시",
+};
 
 const NOTICE_ITEMS: Array<{
   item: string;
@@ -86,6 +114,28 @@ const NOTICE_ITEMS: Array<{
   { item: "수집 자료 접근권한 관리 안내", key: "raw_access" },
   { item: "민감정보 별도 동의 안내", key: "sensitive" },
 ];
+
+const LEGAL_LETTER_WHY: Partial<Record<LegalBasisId, string>> = {
+  PIPA_ART_15:
+    "개인정보 수집·이용 목적, 수집 항목, 보유기간, 동의 거부권 등에 대한 안내 확인이 필요함",
+  PIPA_ART_16: "목적에 필요한 범위에서 최소 수집 원칙 준수 여부 확인이 필요함",
+  PIPA_ART_21: "설문 목적을 달성한 개인정보의 구체적 파기 시점·방법 확인이 필요함",
+  PIPA_ART_22: "동의 내용이 명확히 구분되어 안내되었는지 확인이 필요함",
+  PIPA_ART_23: "민감정보 처리 제한 및 별도 동의 확인이 필요함",
+  PIPA_ART_24: "고유식별정보 처리 제한과 안전조치 확인이 필요함",
+  PIPA_ART_26: "외부 업체에 위탁하여 처리하는 경우 관련 안내 및 관리 확인이 필요함",
+  PIPA_ART_28_8: "개인정보를 국외로 이전하는 경우 관련 안내 확인이 필요함",
+  PIPA_ART_29: "개인정보의 안전성 확보조치 확인이 필요함",
+  CSAP_PUBLIC_CLOUD:
+    "공공부문에서 클라우드 서비스를 이용할 때의 보안 기준 확인이 필요함",
+  MOIS_PUBLIC_CLOUD_NOTICE:
+    "공공기관의 클라우드 이용 시 보안 적정성 확인이 필요함",
+  NIS_SECURITY_REVIEW:
+    "공공기관 정보시스템 또는 클라우드 이용 시 보안성 검토가 필요함",
+  ISMS_P: "개인정보 관리체계(ISMS-P 등) 운영 여부 확인이 필요함",
+  INTERNAL_ACCESS_CONTROL:
+    "원자료 열람·다운로드·파기 담당 등 내부 접근권한 관리 확인이 필요함",
+};
 
 const LEGAL_LETTER_LABEL: Record<LegalBasisId, string> = {
   PIPA_ART_15: "「개인정보 보호법」 제15조",
@@ -140,6 +190,79 @@ export function formatKoDate(value: string | null | undefined): string {
   return "진단일자 미확인";
 }
 
+function objectParticle(word: string): "을" | "를" {
+  const last = Array.from(word.replace(/[)\]"'」》]/g, "")).at(-1) || "";
+  const code = last.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    return (code - 0xac00) % 28 === 0 ? "를" : "을";
+  }
+  return "를";
+}
+
+export function isLetterGenericOperator(name: string | null | undefined): boolean {
+  const t = (name || "").trim();
+  if (!t) return true;
+  if (GENERIC_OPERATOR_LABELS.has(t)) return true;
+  if (/확인\s*불가|주체 확인/.test(t)) return true;
+  return false;
+}
+
+export function institutionFromTitle(title: string | null | undefined): string | null {
+  const t = String(title || "").trim();
+  if (!t) return null;
+  for (const [pattern, name] of TITLE_ORG_ALIASES) {
+    if (pattern.test(t)) return name;
+  }
+  const metro = t.match(
+    /(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|제주특별자치도)(?:\s*([가-힣]+(?:시|군|구)))?/,
+  );
+  if (metro) return [metro[1], metro[2]].filter(Boolean).join(" ");
+  const bracket = t.match(/\[([가-힣]+(?:특별시|광역시|특별자치시|도|시|군|구)|[가-힣]{2,8}구)\]/);
+  if (bracket?.[1]) {
+    const token = bracket[1];
+    if (GU_CITY[token]) return GU_CITY[token];
+    const glued = token.match(/^(서울|부산|대구|인천|광주|대전|울산)(.+구)$/);
+    if (glued) return `${METRO_PREFIX[glued[1]]} ${glued[2]}`;
+  }
+  const yearGu = t.match(/20\d{2}\s+([가-힣]{2,6}구)/);
+  if (yearGu?.[1] && GU_CITY[yearGu[1]]) return GU_CITY[yearGu[1]];
+  const house = t.match(/([가-힣]{2,12}(?:문화의집|주민센터|구청|시청|교육청))/);
+  if (house?.[1]) return house[1];
+  return null;
+}
+
+function letterOperator(detail: AdminCaseDetail): {
+  name: string;
+  overview: string;
+  specific: boolean;
+} {
+  const evidence = institutionEvidenceFromReportJson(detail.reportJson);
+  const fromData = displayInstitutionName(
+    evidence.matchedName,
+    detail.summary.operatorName,
+  );
+  if (!isLetterGenericOperator(fromData)) {
+    return {
+      name: fromData,
+      overview: `${fromData} (설문 제목·고지문 내 명칭 확인)`,
+      specific: true,
+    };
+  }
+  const fromTitle = institutionFromTitle(detail.summary.surveyTitle);
+  if (fromTitle) {
+    return {
+      name: fromTitle,
+      overview: `${fromTitle} (설문 제목에서 확인)`,
+      specific: true,
+    };
+  }
+  return {
+    name: "미확인",
+    overview: "미확인 (화면에서 기관명 미확인)",
+    specific: false,
+  };
+}
+
 export function letterToolName(platform: string | null | undefined): string {
   switch (platform) {
     case "google_forms":
@@ -151,8 +274,38 @@ export function letterToolName(platform: string | null | undefined): string {
     case "wiseon_csap":
       return "와이즈온(CSAP)";
     default:
-      return "자체 구축 또는 기타";
+      return "자체 홈페이지 또는 기타";
   }
+}
+
+export function isLetterConsentQuestion(label: string | null | undefined): boolean {
+  const t = String(label || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    t.length >= 40 &&
+    /개인정보 수집·이용 동의|개인정보제공 및 초상권|수집·이용 목적:|보유·이용 기간:/.test(t)
+  ) {
+    return true;
+  }
+  return t.length >= 80 && /개인정보 수집|동의 거부|보유·이용 기간/.test(t);
+}
+
+export function shortenLetterQuestionLabel(label: string | null | undefined): string {
+  const t = String(label || "(문항)")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (t.length <= 60) return t;
+  return `${t.slice(0, 57)}...`;
+}
+
+export function sanitizeOfficialLetterTitle(title: string | null | undefined): string {
+  return (title || "제목없음")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
 }
 
 function letterRisk(level: string | null | undefined): {
@@ -214,11 +367,8 @@ function collectedLabel(question: AdminCaseDetail["questions"][number]): string 
 }
 
 function looksLikeMinor(detail: AdminCaseDetail): boolean {
-  const blob = [
-    detail.summary.surveyTitle || "",
-    ...detail.questions.map((q) => q.questionLabel),
-  ].join(" ");
-  return MINOR_RE.test(blob);
+  if (MINOR_TITLE_RE.test(detail.summary.surveyTitle || "")) return true;
+  return detail.questions.some((q) => MINOR_QUESTION_RE.test(q.questionLabel || ""));
 }
 
 function legalLetterLabel(entry: LegalBasisEntry): string {
@@ -226,8 +376,10 @@ function legalLetterLabel(entry: LegalBasisEntry): string {
 }
 
 function legalLetterWhy(entry: LegalBasisEntry): string {
-  const base = entry.description.replace(/입니다\.?$/, "").trim();
-  return `${base} 확인이 필요함`;
+  return (
+    LEGAL_LETTER_WHY[entry.id] ||
+    `${entry.description.replace(/입니다\.?$/, "").trim()} 확인이 필요함`
+  );
 }
 
 export function buildOfficialLetterModel(
@@ -235,12 +387,16 @@ export function buildOfficialLetterModel(
 ): OfficialLetterModel {
   const s = detail.summary;
   const risk = letterRisk(s.overallRiskLevel);
-  const operatorName = s.operatorName || "미확인";
+  const operator = letterOperator(detail);
+  const operatorName = operator.name;
   const toolName = letterToolName(s.platform);
+  const toolParticle = objectParticle(toolName);
   const diagnosedAtKo = formatKoDate(s.observedDateKst || s.observedAt);
   const surveyTitle = s.surveyTitle || "제목 없음";
   const piiQuestions = detail.questions.filter(
-    (q) => q.hasPersonalInfo || q.hasSensitiveInfo || q.hasHighRiskInfo,
+    (q) =>
+      (q.hasPersonalInfo || q.hasSensitiveInfo || q.hasHighRiskInfo) &&
+      !isLetterConsentQuestion(q.questionLabel),
   );
   const personalItems = joinItems(
     piiQuestions
@@ -292,7 +448,9 @@ export function buildOfficialLetterModel(
   let whyItems: string[] = [];
   let recItems: string[] = [];
   let legalRows: OfficialLetterRow[] = [];
-  let whyIntro = `이 설문은 ${operatorName}에서 운영하는 것으로 확인되며, ${toolName}을 통해 개인정보를 수집하고 있습니다. 아래는 자동진단에서 확인이 필요한 사항입니다.`;
+  let whyIntro = operator.specific
+    ? `이 설문은 ${operatorName}에서 운영하는 것으로 확인되며, ${toolName}${toolParticle} 통해 개인정보를 수집하고 있습니다. 아래는 자동진단에서 확인이 필요한 사항입니다.`
+    : `이 설문은 공공기관에서 운영하는 것으로 분류되며, 화면에서 구체적인 기관명은 확인되지 않았습니다. ${toolName}${toolParticle} 통해 개인정보를 수집하고 있습니다. 아래는 자동진단에서 확인이 필요한 사항입니다.`;
 
   if (isScanReport(detail.reportJson)) {
     const report = detail.reportJson;
@@ -312,12 +470,12 @@ export function buildOfficialLetterModel(
       const row = corpusByItem.get(corpusName);
       if (!row) return fallback;
       if (row.status === "not_applicable") {
-        return { status: "na" as const, note: row.evidence || fallback.note };
+        return { status: "na" as const, note: fallback.note };
       }
       if (row.status === "confirmed") {
         return { status: "posted" as const, note: "" };
       }
-      return { status: "missing" as const, note: row.evidence || fallback.note };
+      return { status: "missing" as const, note: fallback.note };
     };
 
     const hasSensitive = s.hasSensitiveInfo || summary.sensitiveItems.length > 0;
@@ -332,7 +490,7 @@ export function buildOfficialLetterModel(
       ["items", mapNotice("수집 항목", { status: "missing", note: "" })],
       ["retention", mapNotice("보유기간", { status: "missing", note: "" })],
       ["destruction", mapNotice("파기 기준", { status: "missing", note: "" })],
-      ["contact", mapNotice("담당부서/문의처", { status: "missing", note: "" })],
+      ["contact", mapNotice("담당부서/문의처", { status: "missing", note: "화면상 확인 불가" })],
       [
         "refusal",
         mapNotice("동의 거부권 및 불이익", { status: "missing", note: "" }),
@@ -379,7 +537,9 @@ export function buildOfficialLetterModel(
       .slice(0, 12)
       .map((entry) => [legalLetterLabel(entry), legalLetterWhy(entry)]);
     if (looksLikeMinor(detail)) {
-      whyIntro = `이 설문은 ${operatorName}에서 운영하는 것으로 확인되며, ${toolName}을 통해 개인정보를 수집하고 있습니다. 응답자에 미성년자·청소년이 포함될 수 있어 각별한 주의가 필요합니다.`;
+      whyIntro = operator.specific
+        ? `이 설문은 ${operatorName}에서 운영하는 것으로 확인되며, ${toolName}${toolParticle} 통해 개인정보를 수집하고 있습니다. 응답자에 미성년자·청소년이 포함될 수 있어 각별한 주의가 필요합니다.`
+        : `이 설문은 공공기관에서 운영하는 것으로 분류되며, ${toolName}${toolParticle} 통해 개인정보를 수집하고 있습니다. 응답자에 미성년자·청소년이 포함될 수 있어 각별한 주의가 필요합니다.`;
     }
   } else {
     const byItem = new Map(
@@ -489,7 +649,7 @@ export function buildOfficialLetterModel(
     piiQuestions.length > 0
       ? piiQuestions.slice(0, 40).map((q, index) => [
           q.questionNumber || `Q${index + 1}`,
-          q.questionLabel || "(문항)",
+          shortenLetterQuestionLabel(q.questionLabel),
           collectedLabel(q),
           infoTypeLabel(q),
         ])
@@ -498,9 +658,7 @@ export function buildOfficialLetterModel(
   return {
     surveyTitle,
     operatorName,
-    operatorOverview: s.operatorName
-      ? `${s.operatorName} (설문 제목·고지문 내 명칭 확인)`
-      : "미확인",
+    operatorOverview: operator.overview,
     docNumber: officialLetterDocNumber(detail.id),
     diagnosedAtKo,
     riskCover: risk.cover,
