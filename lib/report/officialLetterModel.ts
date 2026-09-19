@@ -67,6 +67,8 @@ const MINOR_TITLE_RE =
   /미성년|청소년|초등|중학|고등|어린이|아동|유아|키즈|오케스트라|아이수크림|학생/;
 const MINOR_QUESTION_RE =
   /미성년|청소년|초등|중학|어린이|아동|유아|만\s*\d+\s*세|법정대리인|친권자/;
+const ADULT_TOPIC_RE =
+  /보건의료계획|주민 요구도|인지도 설문|기술이전|지방세|아이디어 공모/;
 
 const GU_CITY: Record<string, string> = {
   종로구: "서울특별시 종로구",
@@ -226,9 +228,34 @@ export function institutionFromTitle(title: string | null | undefined): string |
   }
   const yearGu = t.match(/20\d{2}\s+([가-힣]{2,6}구)/);
   if (yearGu?.[1] && GU_CITY[yearGu[1]]) return GU_CITY[yearGu[1]];
-  const house = t.match(/([가-힣]{2,12}(?:문화의집|주민센터|구청|시청|교육청))/);
+  const house = t.match(
+    /([가-힣]{2,12}(?:문화의집|주민센터|구청|교육청)|[가-힣]{2,12}시청(?!소년))/,
+  );
   if (house?.[1]) return house[1];
   return null;
+}
+
+function localityKey(name: string): string {
+  return name
+    .replace(/\(주\)|㈜|주식회사/g, "")
+    .replace(/특별자치시|특별자치도|광역시|특별시/g, "")
+    .replace(/시청|구청|군청|교육청|주민센터/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+export function letterOrgsCompatible(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const a = String(left || "").trim();
+  const b = String(right || "").trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const ka = localityKey(a);
+  const kb = localityKey(b);
+  return ka.length >= 2 && kb.length >= 2 && (ka.includes(kb) || kb.includes(ka));
 }
 
 function letterOperator(detail: AdminCaseDetail): {
@@ -241,14 +268,22 @@ function letterOperator(detail: AdminCaseDetail): {
     evidence.matchedName,
     detail.summary.operatorName,
   );
-  if (!isLetterGenericOperator(fromData)) {
+  const fromTitle = institutionFromTitle(detail.summary.surveyTitle);
+  const dataSpecific = !isLetterGenericOperator(fromData);
+  if (fromTitle && dataSpecific && !letterOrgsCompatible(fromData, fromTitle)) {
+    return {
+      name: fromTitle,
+      overview: `${fromTitle} (설문 제목에서 확인)`,
+      specific: true,
+    };
+  }
+  if (dataSpecific) {
     return {
       name: fromData,
       overview: `${fromData} (설문 제목·고지문 내 명칭 확인)`,
       specific: true,
     };
   }
-  const fromTitle = institutionFromTitle(detail.summary.surveyTitle);
   if (fromTitle) {
     return {
       name: fromTitle,
@@ -276,6 +311,29 @@ export function letterToolName(platform: string | null | undefined): string {
     default:
       return "자체 홈페이지 또는 기타";
   }
+}
+
+function usesExternalSurveyTool(platform: string | null | undefined): boolean {
+  return (
+    platform === "google_forms" ||
+    platform === "naver_forms" ||
+    platform === "moaform"
+  );
+}
+
+function resolveLetterPlatform(
+  summaryPlatform?: string | null,
+  reportPlatform?: string | null,
+): string {
+  const candidates = [summaryPlatform, reportPlatform]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  for (const platform of candidates) {
+    if (usesExternalSurveyTool(platform) || platform === "wiseon_csap") {
+      return platform;
+    }
+  }
+  return candidates[0] || "unknown";
 }
 
 export function isLetterConsentQuestion(label: string | null | undefined): boolean {
@@ -367,7 +425,9 @@ function collectedLabel(question: AdminCaseDetail["questions"][number]): string 
 }
 
 function looksLikeMinor(detail: AdminCaseDetail): boolean {
-  if (MINOR_TITLE_RE.test(detail.summary.surveyTitle || "")) return true;
+  const title = detail.summary.surveyTitle || "";
+  if (MINOR_TITLE_RE.test(title)) return true;
+  if (ADULT_TOPIC_RE.test(title)) return false;
   return detail.questions.some((q) => MINOR_QUESTION_RE.test(q.questionLabel || ""));
 }
 
@@ -389,7 +449,12 @@ export function buildOfficialLetterModel(
   const risk = letterRisk(s.overallRiskLevel);
   const operator = letterOperator(detail);
   const operatorName = operator.name;
-  const toolName = letterToolName(s.platform);
+  const reportPlatform =
+    detail.reportJson && typeof detail.reportJson === "object"
+      ? String((detail.reportJson as { platform?: unknown }).platform || "")
+      : "";
+  const platform = resolveLetterPlatform(s.platform, reportPlatform);
+  const toolName = letterToolName(platform);
   const toolParticle = objectParticle(toolName);
   const diagnosedAtKo = formatKoDate(s.observedDateKst || s.observedAt);
   const surveyTitle = s.surveyTitle || "제목 없음";
@@ -479,11 +544,8 @@ export function buildOfficialLetterModel(
     };
 
     const hasSensitive = s.hasSensitiveInfo || summary.sensitiveItems.length > 0;
-    const external =
-      report.platform === "google_forms" ||
-      report.platform === "naver_forms" ||
-      report.platform === "moaform";
-    const overseas = report.platform === "google_forms";
+    const external = usesExternalSurveyTool(platform);
+    const overseas = platform === "google_forms";
 
     noticeByKey = new Map([
       ["purpose", mapNotice("수집 목적", { status: "missing", note: "" })],
@@ -576,14 +638,16 @@ export function buildOfficialLetterModel(
       ],
       [
         "trustee",
-        fromCheck(["위탁/외부도구 처리 기준"], {
-          status: "missing",
-          note: "위탁 여부 자체가 불분명함",
-        }),
+        usesExternalSurveyTool(platform)
+          ? fromCheck(["위탁/외부도구 처리 기준"], {
+              status: "missing",
+              note: "위탁 여부 자체가 불분명함",
+            })
+          : { status: "na", note: "외부 설문도구 미사용" },
       ],
       [
         "overseas",
-        s.platform === "google_forms"
+        platform === "google_forms"
           ? fromCheck(["국외 보관·이전 안내"], {
               status: "missing",
               note: "Google Forms 사용에 따른 확인 필요",

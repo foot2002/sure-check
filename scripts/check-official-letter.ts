@@ -348,6 +348,68 @@ async function main() {
       },
     }).cautionBody.includes("미성년자·청소년"),
   );
+
+  const gwangju = mockDetail();
+  gwangju.summary.operatorName = "전라남도";
+  gwangju.summary.surveyTitle =
+    "꿈의 오케스트라 예비거점 [광주북구] 사업설명회 참가 신청";
+  check(
+    "title district wins over conflicting diagnosis org",
+    buildOfficialLetterModel(gwangju).operatorName === "광주광역시 북구",
+  );
+
+  const etri = mockDetail();
+  etri.summary.operatorName = "금융위원회 신용보증기금";
+  etri.summary.surveyTitle = "ETRI 기술이전 문의(신용보증기금 연계 eDM)";
+  check(
+    "title named org wins over linked partner",
+    buildOfficialLetterModel(etri).operatorName === "한국전자통신연구원",
+  );
+
+  const sejong = mockDetail();
+  sejong.summary.operatorName = "세종특별자치시";
+  sejong.summary.surveyTitle =
+    "2026년 세종시청소년활동진흥센터 홈페이지 만족도 설문조사";
+  check(
+    "compatible city name is kept",
+    buildOfficialLetterModel(sejong).operatorName === "세종특별자치시",
+  );
+  check(
+    "시청 is not parsed out of 시청소년",
+    institutionFromTitle(
+      "2026년 세종시청소년활동진흥센터 홈페이지 만족도 설문조사",
+    ) !== "세종시청",
+  );
+
+  const health = mockDetail();
+  health.summary.surveyTitle =
+    "마포구 제9기 지역보건의료계획 수립을 위한 주민 요구도 조사";
+  health.questions.push({
+    id: "q-child",
+    questionNumber: "Q81",
+    pageNumber: 1,
+    questionLabel:
+      "부모로서 영유아 또는 아동, 청소년을 양육중이신가요?",
+    questionType: "text",
+    isRequired: false,
+    dataRiskLevel: "low",
+    hasPersonalInfo: false,
+    hasSensitiveInfo: false,
+    hasHighRiskInfo: false,
+    categories: [],
+  });
+  check(
+    "health survey does not get youth caution from 아동 문항",
+    !buildOfficialLetterModel(health).cautionBody.includes("미성년자·청소년"),
+  );
+  check(
+    "self-hosted trustee is 해당 없음",
+    genericModel.noticeRows.some(
+      (row) =>
+        row[0] === "외부 업체 위탁·처리 기준 안내" &&
+        row[1] === "해당 없음",
+    ),
+  );
   check(
     "disclaimer drops 수기 검토",
     !doc.includes("수기 검토") && doc.includes("자동진단 도구(SURE-CHECK)를 통해"),
