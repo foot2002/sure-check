@@ -9,6 +9,10 @@ import {
 } from "@/lib/jobs/config";
 import { processNextCaptureJob } from "@/lib/jobs/processCaptureJob";
 import { processNextScanJob } from "@/lib/jobs/processScanJob";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +40,13 @@ function authorize(request: Request): boolean {
 async function handle(request: Request): Promise<Response> {
   if (!authorize(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json({
+      ...collectorOpsHaltedPayload(),
+      results: [],
+    });
   }
 
   if (!isMonitoringConfigured()) {

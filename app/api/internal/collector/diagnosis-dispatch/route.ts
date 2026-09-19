@@ -5,6 +5,10 @@ import {
 } from "@/lib/collector/cronAuth";
 import { getAutoDiagnosisBatchSize } from "@/lib/collector/collectConfirmedPolicy";
 import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +50,14 @@ async function handle(request: Request): Promise<Response> {
   }
   if (!authorizeCollectorCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json({
+      ...collectorOpsHaltedPayload(),
+      sourceType: parseParams(request).sourceType,
+      reason: collectorOpsHaltedPayload().reason,
+    });
   }
 
   let { limit, dryRun, sourceType } = parseParams(request);

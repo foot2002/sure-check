@@ -179,6 +179,7 @@ function main() {
   check("list shows 검토 button", ui.includes(">검토<") || ui.includes("검토"));
   check("list shows 원본 action", /원본/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 요약리포트 action", /요약리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
+  check("list shows 공문down action", /공문down/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 상세리포트 action", /상세리포트/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 증빙 action", /증빙/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
   check("list shows 공개 사례 action", /공개 사례/.test(read("components/report/admin/AdminCaseRowActions.tsx")));
@@ -191,6 +192,7 @@ function main() {
     "원본 설문 열기",
     "설문 URL 복사",
     "요약리포트",
+    "공문down",
     "상세리포트",
     "신고용 ZIP 다운로드",
     "캡처 이미지 전체 다운로드",

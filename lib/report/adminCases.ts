@@ -5,6 +5,7 @@ import {
   isReportableAdminOutcome,
   type LimitedOutcomeBucket,
 } from "@/lib/report/limitedOutcomeBuckets";
+import { canDownloadOfficialLetter } from "@/lib/report/officialLetterEligibility";
 import {
   classifyEvidenceStatusKo,
   classifyOutreachPriority,
@@ -176,6 +177,7 @@ export interface AdminCaseListItem {
   publicCaseStatus: PublicCaseStatus;
   publicId: string | null;
   scanJobId: string | null;
+  letterEligible: boolean;
 }
 
 export interface AdminRecentCollectItem {
@@ -857,6 +859,13 @@ export async function listAdminCases(
       publicCaseStatus: publicCaseMap.get(row.id as string)?.status || "private",
       publicId: publicCaseMap.get(row.id as string)?.publicId || null,
       scanJobId: (row.scan_job_id as string | null) || null,
+      letterEligible: canDownloadOfficialLetter({
+        overallRiskLevel: (row.overall_risk_level as string | null) || null,
+        diagnosisStatus: report?.diagnosis_status || null,
+        userDecisionLabel,
+        limitedReason: report?.limited_reason || null,
+        summary: report?.summary || null,
+      }),
     };
   });
 

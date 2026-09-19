@@ -5,6 +5,10 @@ import {
 } from "@/lib/report/adminAuth";
 import { dispatchCollectorDiagnoses } from "@/lib/collector/diagnosisBridge";
 import { processNextScanJob, processScanJob } from "@/lib/jobs/processScanJob";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +18,10 @@ const ADMIN_DISPATCH_MAX = 20;
 
 export async function POST(request: Request) {
   if (!(await getAdminSessionFromCookies())) return unauthorizedJson();
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json(collectorOpsHaltedPayload());
+  }
 
   let limit = ADMIN_DISPATCH_MAX;
   let surveyLinkIds: string[] = [];

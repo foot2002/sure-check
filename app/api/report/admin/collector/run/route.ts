@@ -4,6 +4,10 @@ import {
   unauthorizedJson,
 } from "@/lib/report/adminAuth";
 import { runCollection } from "@/lib/collector/runCollection";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +16,10 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   if (!(await getAdminSessionFromCookies())) {
     return unauthorizedJson();
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json(collectorOpsHaltedPayload());
   }
 
   let maxQueries: number | undefined;

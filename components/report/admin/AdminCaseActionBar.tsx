@@ -10,6 +10,8 @@ import {
   evidenceProxyDownloadUrl,
   reviewReportDownloadUrl,
   reviewReportFilename,
+  officialLetterDownloadUrl,
+  officialLetterFilename,
 } from "@/components/report/admin/adminDownloads";
 import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
 import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
@@ -25,6 +27,8 @@ export function AdminCaseActionBar({
   showIndividualCaptures = false,
   publicCaseStatus = "private",
   publicId = null,
+  letterEligible = false,
+  surveyTitle = "",
   onMessage,
   onPublicCaseChanged,
 }: {
@@ -42,6 +46,8 @@ export function AdminCaseActionBar({
   showIndividualCaptures?: boolean;
   publicCaseStatus?: PublicCaseStatus;
   publicId?: string | null;
+  letterEligible?: boolean;
+  surveyTitle?: string | null;
   onMessage?: (text: string) => void;
   onPublicCaseChanged?: () => void;
 }) {
@@ -73,6 +79,13 @@ export function AdminCaseActionBar({
 
   async function downloadReport() {
     await downloadAdminBlob(reviewReportDownloadUrl(caseId), reviewReportFilename(caseId));
+  }
+
+  async function downloadOfficialLetter() {
+    await downloadAdminBlob(
+      officialLetterDownloadUrl(caseId),
+      officialLetterFilename(surveyTitle || "", caseId),
+    );
   }
 
   async function downloadDetailReport() {
@@ -140,6 +153,15 @@ export function AdminCaseActionBar({
         onClick={() => void run("report", downloadReport)}
       >
         요약리포트
+      </button>
+      <button
+        type="button"
+        className={btn}
+        disabled={!letterEligible || busy === "letter"}
+        title={letterEligible ? undefined : "정상 진단만 공문을 받을 수 있습니다."}
+        onClick={() => void run("letter", downloadOfficialLetter)}
+      >
+        공문down
       </button>
       <button
         type="button"

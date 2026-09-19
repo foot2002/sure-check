@@ -39,6 +39,19 @@ export function detailReportFilename(caseId: string): string {
   return `sure-check-detail-report-${caseId}.html`;
 }
 
+export function officialLetterDownloadUrl(caseId: string): string {
+  return `/api/report/admin/cases/${caseId}/official-letter`;
+}
+
+export function officialLetterFilename(title: string, caseId: string): string {
+  const safe = (title || "제목없음")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return `[SURE-CHECK] ${safe || "제목없음"} 실태조사 분석 보고서.docx`;
+}
+
 export function adminCasesExportUrl(query: string): string {
   return `/api/report/admin/cases/export${query ? `?${query}` : ""}`;
 }

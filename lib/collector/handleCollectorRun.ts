@@ -14,6 +14,10 @@ import {
   type CollectorPartition,
 } from "@/lib/collector/searchPartitions";
 import { resolveCollectorSearchStrategy } from "@/lib/collector/searchQueries";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 /**
  * Fail closed: never run /run/a or /run/b under legacy
@@ -51,6 +55,10 @@ export async function handleCollectorRunRequest(
 
   if (!authorizeCollectorCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json(collectorOpsHaltedPayload());
   }
 
   let maxQueries: number | undefined;

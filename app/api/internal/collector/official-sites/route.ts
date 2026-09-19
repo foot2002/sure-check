@@ -5,6 +5,10 @@ import {
 } from "@/lib/collector/cronAuth";
 import { OFFICIAL_SITE_MAX_ORGS_PER_RUN } from "@/lib/collector/officialSiteCrawlPolicy";
 import { runOfficialSiteCollection } from "@/lib/collector/runOfficialSiteCollection";
+import {
+  COLLECTOR_OPS_HALTED,
+  collectorOpsHaltedPayload,
+} from "@/lib/collector/opsPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +27,13 @@ async function handle(request: Request): Promise<Response> {
   }
   if (!authorizeCollectorCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json({
+      ...collectorOpsHaltedPayload(),
+      kind: "official_site",
+    });
   }
 
   const url = new URL(request.url);

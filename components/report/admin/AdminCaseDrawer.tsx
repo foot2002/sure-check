@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AdminCaseDetail } from "@/lib/report/adminCaseDetail";
 import { AdminOutreachSections } from "@/components/report/admin/AdminOutreachSections";
 import { AdminCaseActionBar } from "@/components/report/admin/AdminCaseActionBar";
+import { canDownloadOfficialLetterFromDetail } from "@/lib/report/officialLetterEligibility";
 import {
   classifyOutreachPriority,
   pickIssueBadges,
@@ -149,6 +150,10 @@ export function AdminCaseDrawer({
               showFullDetailLink
               publicCaseStatus={s?.publicCaseStatus || "private"}
               publicId={s?.publicId || null}
+              letterEligible={
+                current ? canDownloadOfficialLetterFromDetail(current) : false
+              }
+              surveyTitle={s?.surveyTitle}
               onMessage={setMessage}
               onPublicCaseChanged={() => {
                 setReloadToken((n) => n + 1);

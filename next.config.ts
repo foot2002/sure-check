@@ -26,6 +26,12 @@ const nextConfig: NextConfig = {
     "@fontsource/noto-sans-kr",
   ],
   outputFileTracingIncludes: {
+    "/api/report/admin/cases/[id]/official-letter": [
+      "./lib/report/templates/sure-check-official-letter.docx",
+    ],
+    "/api/report/admin/cases/[id]/official-letter/route": [
+      "./lib/report/templates/sure-check-official-letter.docx",
+    ],
     "/api/scan/file": pdfTracingIncludes,
     "/api/scan/file/route": pdfTracingIncludes,
     "/api/evidence/capture": [

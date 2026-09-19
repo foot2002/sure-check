@@ -53,6 +53,9 @@
     "app/api/report/admin/collector/diagnose/route.ts": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "app/api/report/admin/cases/[id]/official-letter/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

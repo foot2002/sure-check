@@ -19,6 +19,7 @@ import {
   riskLabelKo,
 } from "@/lib/report/adminOutreach";
 import { AdminCaseActionBar } from "@/components/report/admin/AdminCaseActionBar";
+import { canDownloadOfficialLetterFromDetail } from "@/lib/report/officialLetterEligibility";
 import { publicCaseStatusKo } from "@/lib/report/publicCasePolicy";
 
 const TABS = ["요약", "증거", "검토·조치"] as const;
@@ -210,6 +211,8 @@ export function AdminCaseDetailView({
               showIndividualCaptures
               publicCaseStatus={s.publicCaseStatus}
               publicId={s.publicId}
+              letterEligible={canDownloadOfficialLetterFromDetail(detail)}
+              surveyTitle={s.surveyTitle}
               onMessage={setMessage}
             />
           </div>

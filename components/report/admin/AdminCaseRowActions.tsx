@@ -10,6 +10,8 @@ import {
   evidenceProxyDownloadUrl,
   reviewReportDownloadUrl,
   reviewReportFilename,
+  officialLetterDownloadUrl,
+  officialLetterFilename,
 } from "@/components/report/admin/adminDownloads";
 import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
 
@@ -133,6 +135,26 @@ export function AdminCaseRowActions({
       </button>
       <button
         type="button"
+        className={`${ghost} hidden sm:inline-flex`}
+        disabled={busy || !row.letterEligible}
+        title={
+          row.letterEligible
+            ? undefined
+            : "정상 진단만 공문을 받을 수 있습니다."
+        }
+        onClick={() =>
+          void run(async () => {
+            await downloadAdminBlob(
+              officialLetterDownloadUrl(row.id),
+              officialLetterFilename(row.surveyTitle || "", row.id),
+            );
+          })
+        }
+      >
+        공문down
+      </button>
+      <button
+        type="button"
         className={`${ghost} hidden md:inline-flex`}
         disabled={busy || (!hasZip && !hasShots)}
         title={evidenceLabel}
@@ -188,6 +210,27 @@ export function AdminCaseRowActions({
               }}
             >
               요약리포트
+            </button>
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy || !row.letterEligible}
+              title={
+                row.letterEligible
+                  ? undefined
+                  : "정상 진단만 공문을 받을 수 있습니다."
+              }
+              onClick={() => {
+                setOpen(false);
+                void run(async () => {
+                  await downloadAdminBlob(
+                    officialLetterDownloadUrl(row.id),
+                    officialLetterFilename(row.surveyTitle || "", row.id),
+                  );
+                });
+              }}
+            >
+              공문down
             </button>
             <button
               type="button"

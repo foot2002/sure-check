@@ -17,6 +17,7 @@ import {
 } from "../lib/collector/config";
 import {
   COLLECTOR_DISCOVERED_BATCH_SIZE,
+  COLLECTOR_OPS_HALTED,
   COLLECTOR_STALE_RUNNING_MS,
   COLLECTOR_UNREACHABLE_BATCH_SIZE,
 } from "../lib/collector/opsPolicy";
@@ -221,6 +222,13 @@ async function main() {
     name: "Vercel Cron 스케줄 (vercel.json)",
     ok: vercelCronsOk,
     detail: vercelDetail,
+  });
+  checks.push({
+    name: "수집·진단 halt",
+    ok: COLLECTOR_OPS_HALTED === true,
+    detail: COLLECTOR_OPS_HALTED
+      ? "COLLECTOR_OPS_HALTED — cron 등록 유지, 핸들러 early-return"
+      : "halt 해제됨",
   });
 
   console.log("=== collector cron readiness ===\n");

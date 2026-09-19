@@ -5,10 +5,12 @@ import {
 } from "@/lib/collector/cronAuth";
 import {
   COLLECTOR_DISCOVERED_BATCH_SIZE,
+  COLLECTOR_OPS_HALTED,
   COLLECTOR_REVALIDATE_CONCURRENCY,
   COLLECTOR_REVALIDATE_DELAY_MS,
   COLLECTOR_REVALIDATE_MAX_RETRIES,
   COLLECTOR_UNREACHABLE_BATCH_SIZE,
+  collectorOpsHaltedPayload,
 } from "@/lib/collector/opsPolicy";
 import {
   beginRevalidateCollectionRun,
@@ -36,6 +38,10 @@ async function handleRevalidate(request: Request) {
   }
   if (!authorizeCollectorCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (COLLECTOR_OPS_HALTED) {
+    return NextResponse.json(collectorOpsHaltedPayload());
   }
 
   // Noon Cron defaults to both; POST body may override for manual tests.

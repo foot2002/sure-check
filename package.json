@@ -117,6 +117,7 @@
     "weekly-main-card-check": "tsx scripts/check-weekly-main-card.ts",
     "cases-route-redirect-check": "tsx scripts/check-cases-route-redirect.ts",
     "admin:outreach-actions-check": "tsx scripts/check-admin-outreach-actions.ts",
+    "admin:official-letter-check": "tsx scripts/check-official-letter.ts",
     "admin:kpi-filter-check": "tsx scripts/check-admin-kpi-filter.ts",
     "admin-dashboard-ux-check": "tsx scripts/check-admin-kpi-filter.ts",
     "queue:schema-check": "tsx scripts/check-queue-schema.ts",
