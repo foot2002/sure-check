@@ -414,10 +414,17 @@ export const NOTICE_KEYWORDS = [
   "개인정보",
   "수집·이용",
   "수집 이용",
+  "수집 목적",
+  "수집목적",
+  "수집 항목",
+  "수집항목",
   "보유기간",
+  "보유 기간",
+  "보유·이용 기간",
   "이용기간",
   "파기",
   "동의 거부",
+  "동의합니다",
   "불이익",
   "제3자 제공",
   "위탁",
@@ -428,6 +435,45 @@ export const NOTICE_KEYWORDS = [
   "담당자",
   "문의처",
 ];
+
+const NOTICE_CHUNK_RE =
+  /개인정보|수집·이용|수집 이용|수집\s*(?:및\s*)?(?:이용\s*)?목적|수집\s*항목|보유\s*[·ㆍ]?\s*(?:이용\s*)?기간|동의\s*거부|동의합니다/;
+
+export function looksLikePrivacyConsent(text: string): boolean {
+  const normalized = collapseWhitespace(text);
+  if (normalized.length < 4) return false;
+  return (
+    /개인정보.{0,48}동의/.test(normalized) ||
+    /동의.{0,48}개인정보/.test(normalized) ||
+    /수집\s*[·ㆍ⋅.]?\s*이용.{0,24}동의/.test(normalized)
+  );
+}
+
+export function collectNoticeChunks(...texts: string[]): string[] {
+  const chunks = texts
+    .map((text) => collapseWhitespace(text))
+    .filter((text) => text.length >= 8);
+  const hits = chunks.filter(
+    (text) =>
+      NOTICE_KEYWORDS.some((keyword) => text.includes(keyword)) ||
+      NOTICE_CHUNK_RE.test(text),
+  );
+  return [...new Set(hits)].slice(0, 80);
+}
+
+/** Keep known notice-block bodies even when a paragraph omits the keyword. */
+export function mergeForcedNoticeTexts(
+  forced: string[],
+  ...keywordSources: string[]
+): string[] {
+  const kept = forced
+    .map((text) => collapseWhitespace(text))
+    .filter((text) => text.length >= 8);
+  return [...new Set([...kept, ...collectNoticeChunks(...keywordSources, ...forced)])].slice(
+    0,
+    80,
+  );
+}
 
 export const CATEGORY_TO_PERSONAL_LABEL: Record<string, string> = {
   name: "이름",

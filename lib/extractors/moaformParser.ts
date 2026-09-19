@@ -1,11 +1,10 @@
 import * as cheerio from "cheerio";
 import {
   collapseWhitespace,
+  collectNoticeChunks,
   detectCategories,
-  extractSentencesWithKeywords,
   isDirectPiiSolicitation,
   isMeaningfulText,
-  NOTICE_KEYWORDS,
 } from "@/lib/extractors/htmlTextUtils";
 import type {
   MoaformExtractionMethod,
@@ -113,7 +112,7 @@ function asString(value: unknown): string {
 }
 
 function collectNoticeTexts(...texts: string[]): string[] {
-  return extractSentencesWithKeywords(texts.filter(Boolean).join("\n"), NOTICE_KEYWORDS);
+  return collectNoticeChunks(...texts);
 }
 
 function extractPrivacyPolicyUrls(html: string, description: string): string[] {
@@ -567,7 +566,11 @@ function parseBlocksPayload(payload: Record<string, unknown>): {
     title,
     description,
     welcomeContent,
-    ...questions.map((question) => question.questionText),
+    ...questions.flatMap((question) => [
+      question.questionText,
+      question.description || "",
+      ...question.options,
+    ]),
   );
   const emailCollectionPossible = questions.some(
     (question) =>

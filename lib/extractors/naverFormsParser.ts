@@ -1,10 +1,10 @@
 import * as cheerio from "cheerio";
 import {
   collapseWhitespace,
+  collectNoticeChunks,
   detectCategories,
-  extractSentencesWithKeywords,
   isMeaningfulText,
-  NOTICE_KEYWORDS,
+  looksLikePrivacyConsent,
 } from "@/lib/extractors/htmlTextUtils";
 import type {
   NaverFormsParsedQuestion,
@@ -68,7 +68,7 @@ function richTextToPlain(value: unknown): string {
 }
 
 function collectNoticeTexts(...texts: string[]): string[] {
-  return extractSentencesWithKeywords(texts.filter(Boolean).join("\n"), NOTICE_KEYWORDS);
+  return collectNoticeChunks(...texts);
 }
 
 function detectFormFlags(html: string): {
@@ -206,6 +206,9 @@ function parseSurveyPayload(
       const riskTags: string[] = [];
 
       if (questionType === "file_upload") riskTags.push("file_upload");
+      if (looksLikePrivacyConsent([combined, ...items].join(" "))) {
+        riskTags.push("privacy_consent");
+      }
       if (detectedCategories.includes("email") || /email|이메일/i.test(combined)) {
         emailCollectionPossible = true;
       }
@@ -233,7 +236,15 @@ function parseSurveyPayload(
     }
   }
 
-  const noticeTexts = collectNoticeTexts(title, description, ...questions.map((q) => q.questionText));
+  const noticeTexts = collectNoticeTexts(
+    title,
+    description,
+    ...questions.flatMap((q) => [
+      q.questionText,
+      q.description || "",
+      ...q.options,
+    ]),
+  );
   const isLimited = htmlFlags.loginRequired || closedForm || questions.length === 0;
 
   let limitedReason: string | undefined;
@@ -310,6 +321,9 @@ function parseDomFallback(
     const detectedCategories = detectCategories(questionText);
     const riskTags: string[] = [];
     if (questionType === "file_upload") riskTags.push("file_upload");
+    if (looksLikePrivacyConsent([questionText, ...options].join(" "))) {
+      riskTags.push("privacy_consent");
+    }
 
     questions.push({
       id: $item.attr("qid") ?? `dom_q_${questionIndex}`,
@@ -325,7 +339,11 @@ function parseDomFallback(
     questionIndex += 1;
   });
 
-  const noticeTexts = collectNoticeTexts(htmlMeta.title, htmlMeta.description);
+  const noticeTexts = collectNoticeTexts(
+    htmlMeta.title,
+    htmlMeta.description,
+    ...questions.flatMap((q) => [q.questionText, q.description || "", ...q.options]),
+  );
   const isLimited = flags.loginRequired || flags.closedForm || questions.length === 0;
 
   return {

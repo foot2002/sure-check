@@ -30,6 +30,7 @@ export interface GoogleFormsParsedQuestion {
   detectedCategories: string[];
   riskTags: string[];
   isPageBreak?: boolean;
+  isNoticeBlock?: boolean;
   sectionTitle?: string;
   sectionDescription?: string;
 }

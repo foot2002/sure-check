@@ -2,9 +2,9 @@ import * as cheerio from "cheerio";
 import {
   collapseWhitespace,
   detectCategories,
-  extractSentencesWithKeywords,
   isMeaningfulText,
-  NOTICE_KEYWORDS,
+  looksLikePrivacyConsent,
+  mergeForcedNoticeTexts,
 } from "@/lib/extractors/htmlTextUtils";
 import type {
   GoogleFormsExtractionMethod,
@@ -14,6 +14,7 @@ import type {
 } from "@/lib/extractors/googleFormsTypes";
 
 const PAGE_BREAK_TYPE = 8;
+const TEXT_BLOCK_TYPE = 6;
 
 const TYPE_CODE_MAP: Record<number, GoogleFormsQuestionType> = {
   0: "short_text",
@@ -162,9 +163,32 @@ function detectBranching(field: unknown[]): boolean {
   );
 }
 
-function collectNoticeTexts(...texts: string[]): string[] {
-  const joined = texts.filter(Boolean).join("\n");
-  return extractSentencesWithKeywords(joined, NOTICE_KEYWORDS);
+function noticeFieldsFromQuestion(question: GoogleFormsParsedQuestion): string[] {
+  return [
+    question.questionText,
+    question.description,
+    question.sectionTitle,
+    question.sectionDescription,
+    ...question.options,
+    ...question.rows,
+    ...question.columns,
+  ].filter((text): text is string => Boolean(text));
+}
+
+function collectNoticeTexts(
+  title: string,
+  description: string,
+  questions: GoogleFormsParsedQuestion[],
+): string[] {
+  const forced = questions
+    .filter((question) => question.isNoticeBlock || question.isPageBreak)
+    .flatMap(noticeFieldsFromQuestion);
+  return mergeForcedNoticeTexts(
+    forced,
+    title,
+    description,
+    ...questions.flatMap(noticeFieldsFromQuestion),
+  );
 }
 
 function detectFormFlags(html: string): {
@@ -224,13 +248,55 @@ function parseFbPublicLoadData(
         detectedCategories: [],
         riskTags: [],
         isPageBreak: true,
+        isNoticeBlock: true,
         sectionTitle: questionText || undefined,
         sectionDescription: fieldDescription || undefined,
       });
       continue;
     }
 
-    if (!isMeaningfulText(questionText, 1)) continue;
+    if (typeCode === TEXT_BLOCK_TYPE) {
+      questions.push({
+        id: fieldId,
+        questionText,
+        description: fieldDescription || undefined,
+        questionType: "unknown",
+        required: false,
+        options: [],
+        rows: [],
+        columns: [],
+        pageIndex,
+        questionIndex: -1,
+        detectedCategories: [],
+        riskTags: [],
+        isNoticeBlock: true,
+        sectionTitle: questionText || undefined,
+        sectionDescription: fieldDescription || undefined,
+      });
+      continue;
+    }
+
+    if (!isMeaningfulText(questionText, 1)) {
+      if (isMeaningfulText(fieldDescription, 8)) {
+        questions.push({
+          id: fieldId,
+          questionText: "",
+          description: fieldDescription,
+          questionType: "unknown",
+          required: false,
+          options: [],
+          rows: [],
+          columns: [],
+          pageIndex,
+          questionIndex: -1,
+          detectedCategories: [],
+          riskTags: [],
+          isNoticeBlock: true,
+          sectionDescription: fieldDescription,
+        });
+      }
+      continue;
+    }
 
     const questionType = mapTypeCode(typeCode, rawField);
     const options = extractChoiceOptions(entry);
@@ -244,6 +310,9 @@ function parseFbPublicLoadData(
 
     if (questionType === "file_upload") {
       riskTags.push("file_upload");
+    }
+    if (looksLikePrivacyConsent(combinedText)) {
+      riskTags.push("privacy_consent");
     }
     if (
       detectedCategories.includes("email") ||
@@ -272,8 +341,8 @@ function parseFbPublicLoadData(
     questionIndex += 1;
   }
 
-  const answerable = questions.filter((q) => !q.isPageBreak);
-  const noticeTexts = collectNoticeTexts(title, description, ...answerable.map((q) => q.questionText));
+  const answerable = questions.filter((q) => !q.isPageBreak && !q.isNoticeBlock);
+  const noticeTexts = collectNoticeTexts(title, description, questions);
 
   if (pageIndex > 0 || questions.some((q) => q.isPageBreak)) {
     branchDetected = true;
@@ -357,6 +426,9 @@ function parseDomFallback(
     );
     const riskTags: string[] = [];
     if (questionType === "file_upload") riskTags.push("file_upload");
+    if (looksLikePrivacyConsent([questionText, ...options].join(" "))) {
+      riskTags.push("privacy_consent");
+    }
 
     questions.push({
       id: `dom_q_${questionIndex}`,
@@ -374,8 +446,8 @@ function parseDomFallback(
     questionIndex += 1;
   });
 
-  const noticeTexts = collectNoticeTexts(title, description, ...questions.map((q) => q.questionText));
-  const answerable = questions.filter((q) => !q.isPageBreak);
+  const noticeTexts = collectNoticeTexts(title, description, questions);
+  const answerable = questions.filter((q) => !q.isPageBreak && !q.isNoticeBlock);
   const isLimited =
     flags.loginRequired || flags.closedForm || answerable.length === 0;
 

@@ -71,11 +71,11 @@ function buildPages(questions: NormalizedQuestion[]): NormalizedPage[] {
     .map(([, page]) => page);
 }
 
-function detectNoticeFlags(noticeTexts: string[], description: string) {
-  const joined = [description, ...noticeTexts].join(" ");
+function detectNoticeFlags(noticeTexts: string[], extra: string) {
+  const joined = [extra, ...noticeTexts].join(" ");
   return {
     hasPrivacyNotice: /개인정보/.test(joined),
-    hasConsent: /동의/.test(joined),
+    hasConsent: /동의/.test(joined) && /개인정보|수집|이용/.test(joined),
     hasRetentionNotice: /보유|이용기간/.test(joined),
     hasOverseasTransferNotice: /국외/.test(joined),
   };
@@ -91,7 +91,28 @@ export async function extractNaverForms(
   const parsed = await parseNaverFormsDocument(input.html, targetUrl);
   const normalizedQuestions = parsed.questions.map(toNormalizedQuestion);
   const pages = buildPages(normalizedQuestions);
-  const noticeFlags = detectNoticeFlags(parsed.noticeTexts, parsed.description);
+  const noticeFlags = detectNoticeFlags(
+    parsed.noticeTexts,
+    [
+      parsed.description,
+      ...parsed.questions.flatMap((question) => [
+        question.questionText,
+        question.description ?? "",
+        ...question.options,
+      ]),
+    ].join("\n"),
+  );
+
+  const consentText = normalizedQuestions
+    .filter((question) => question.riskTags?.includes("privacy_consent"))
+    .map((question) =>
+      [question.label, question.auxiliaryText, ...(question.options ?? [])]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
 
   const description = collapseWhitespace(
     [parsed.description, ...parsed.noticeTexts].filter(Boolean).join("\n"),
@@ -128,13 +149,14 @@ export async function extractNaverForms(
     loginRequired: parsed.loginRequired,
     branchDetected: parsed.branchDetected,
     extractedFromHtml: true,
-    hasPrivacyNotice: noticeFlags.hasPrivacyNotice,
-    hasConsent: noticeFlags.hasConsent,
+    hasPrivacyNotice: noticeFlags.hasPrivacyNotice || parsed.noticeTexts.length > 0,
+    hasConsent: noticeFlags.hasConsent || Boolean(consentText),
     hasRetentionNotice: noticeFlags.hasRetentionNotice,
     hasOverseasTransferNotice: noticeFlags.hasOverseasTransferNotice,
     notices: {
-      description: description.slice(0, 2000),
-      privacyNotice: parsed.noticeTexts.join("\n").slice(0, 2000),
+      description: description.slice(0, 12000),
+      privacyNotice: parsed.noticeTexts.join("\n").slice(0, 12000),
+      consentText: consentText || undefined,
     },
     metadata: {
       noticeTexts: parsed.noticeTexts,

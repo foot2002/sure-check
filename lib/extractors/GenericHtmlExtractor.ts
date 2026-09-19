@@ -9,14 +9,13 @@ import type {
 import {
   categoriesToDataLevel,
   collapseWhitespace,
+  collectNoticeChunks,
   dedupeKey,
   detectCategories,
-  extractSentencesWithKeywords,
   getDetectedCategoryDisplayLabel,
   isPersonalDataCategory,
   isMeaningfulText,
   mapInputType,
-  NOTICE_KEYWORDS,
 } from "@/lib/extractors/htmlTextUtils";
 import { NON_ACTIONABLE_LIMITED_MESSAGE } from "@/lib/scan/nonActionableForm";
 import { EXTRACTION_LIMITED_REASON } from "@/lib/scan/limitedReport";
@@ -166,12 +165,21 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     .filter(isMeaningfulText);
 
   const formTexts = $("form")
-    .map((_, el) => collapseWhitespace($(el).text()).slice(0, 500))
+    .map((_, el) => collapseWhitespace($(el).text()).slice(0, 12000))
     .get()
     .filter((t) => t.length > 10);
 
-  const bodyText = collapseWhitespace($("body").text());
-  const noticeTexts = extractSentencesWithKeywords(bodyText, NOTICE_KEYWORDS);
+  const blockTexts = $("p, li, h1, h2, h3, h4, section, article, [role='heading']")
+    .map((_, el) => collapseWhitespace($(el).text()).slice(0, 12000))
+    .get()
+    .filter((t) => t.length >= 8);
+
+  const noticeTexts = collectNoticeChunks(
+    title,
+    ...headings,
+    ...blockTexts,
+    ...formTexts,
+  );
 
   const privacyPolicyUrls = $("a[href]")
     .map((_, el) => {
@@ -215,11 +223,13 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
   const questions = dedupeQuestions(candidates).map(toNormalizedQuestion);
   const noticeFlags = detectNoticeFlags(noticeTexts);
   const hasNoQuestions = questions.length === 0;
+  const bodyText = collapseWhitespace($("body").text()).slice(0, 8000);
   const pageText = [
     title,
     ...headings,
     ...noticeTexts,
     ...formTexts,
+    bodyText,
   ].join(" ");
   const closedOrRestricted =
     /더\s*이상\s*응답|응답이\s*마감|설문이\s*종료|응답\s*기간이?\s*종료|closed|private|비공개|로그인\s*필요|접근\s*권한|접근이\s*제한/i.test(
@@ -263,9 +273,9 @@ export function extractGenericHtml(input: ExtractorInput): NormalizedForm {
     hasRetentionNotice: noticeFlags.hasRetentionNotice,
     hasOverseasTransferNotice: noticeFlags.hasOverseasTransferNotice,
     notices: {
-      description: descriptionParts.join("\n").slice(0, 1500),
+      description: descriptionParts.join("\n").slice(0, 12000),
       privacyPolicyUrl: privacyPolicyUrls[0],
-      privacyNotice: noticeTexts.slice(0, 5).join("\n"),
+      privacyNotice: noticeTexts.join("\n").slice(0, 12000),
     },
     metadata: {
       noticeTexts,

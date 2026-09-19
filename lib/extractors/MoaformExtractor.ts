@@ -99,7 +99,7 @@ export async function extractMoaform(
 
   const privacyNoticeRaw = collapseWhitespace(
     [...privacyConsentTexts, ...parsed.noticeTexts].filter(Boolean).join("\n"),
-  ).slice(0, 8000);
+  ).slice(0, 12000);
 
   const description = collapseWhitespace(
     [parsed.description, ...parsed.noticeTexts].filter(Boolean).join("\n"),
@@ -149,7 +149,7 @@ export async function extractMoaform(
     hasRetentionNotice: noticeFlags.hasRetentionNotice,
     hasOverseasTransferNotice: noticeFlags.hasOverseasTransferNotice,
     notices: {
-      description: description.slice(0, 2000),
+      description: description.slice(0, 12000),
       privacyNotice: privacyNoticeRaw,
       privacyPolicyUrl: parsed.privacyPolicyUrls[0],
       // 기관명만으로 담당문의처를 확인됨 처리하지 않음

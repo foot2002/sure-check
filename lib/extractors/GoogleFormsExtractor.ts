@@ -54,13 +54,27 @@ function buildPages(
   const pageMap = new Map<number, NormalizedPage>();
 
   for (const parsed of parsedQuestions) {
-    if (parsed.isPageBreak) {
-      const page: NormalizedPage = {
-        id: `page_${parsed.pageIndex}`,
-        title: parsed.sectionTitle ?? parsed.questionText,
-        questions: [],
-      };
-      pageMap.set(parsed.pageIndex, page);
+    if (parsed.isPageBreak || parsed.isNoticeBlock) {
+      const existing = pageMap.get(parsed.pageIndex);
+      const title = parsed.sectionTitle ?? parsed.questionText;
+      const description = parsed.sectionDescription ?? parsed.description;
+      if (existing) {
+        if (!existing.title && title) existing.title = title;
+        if (description) {
+          const current = existing.description?.trim() ?? "";
+          if (!current) existing.description = description;
+          else if (!current.includes(description)) {
+            existing.description = `${current}\n${description}`;
+          }
+        }
+      } else {
+        pageMap.set(parsed.pageIndex, {
+          id: `page_${parsed.pageIndex}`,
+          title,
+          description,
+          questions: [],
+        });
+      }
     }
   }
 
@@ -84,11 +98,11 @@ function buildPages(
     .map(([, page]) => page);
 }
 
-function detectNoticeFlags(noticeTexts: string[], description: string) {
-  const joined = [description, ...noticeTexts].join(" ");
+function detectNoticeFlags(noticeTexts: string[], extra: string) {
+  const joined = [extra, ...noticeTexts].join(" ");
   return {
     hasPrivacyNotice: /개인정보/.test(joined),
-    hasConsent: /동의/.test(joined),
+    hasConsent: /동의/.test(joined) && /개인정보|수집|이용/.test(joined),
     hasRetentionNotice: /보유|이용기간/.test(joined),
     hasOverseasTransferNotice: /국외/.test(joined),
   };
@@ -96,10 +110,20 @@ function detectNoticeFlags(noticeTexts: string[], description: string) {
 
 export function extractGoogleForms(input: GoogleFormsExtractorInput): NormalizedForm {
   const parsed = parseGoogleFormsHtml(input.html);
-  const answerable = parsed.questions.filter((q) => !q.isPageBreak);
+  const answerable = parsed.questions.filter((q) => !q.isPageBreak && !q.isNoticeBlock);
   const normalizedQuestions = answerable.map(toNormalizedQuestion);
   const pages = buildPages(normalizedQuestions, parsed.questions);
-  const noticeFlags = detectNoticeFlags(parsed.noticeTexts, parsed.description);
+  const noticeFlags = detectNoticeFlags(
+    parsed.noticeTexts,
+    [
+      parsed.description,
+      ...parsed.questions.flatMap((question) => [
+        question.questionText,
+        question.description ?? "",
+        ...question.options,
+      ]),
+    ].join("\n"),
+  );
 
   const description = collapseWhitespace(
     [parsed.description, ...parsed.noticeTexts].filter(Boolean).join("\n"),
@@ -116,6 +140,17 @@ export function extractGoogleForms(input: GoogleFormsExtractorInput): Normalized
 
   const hasNoQuestions = normalizedQuestions.length === 0;
   const isLimited = parsed.isLimited || hasNoQuestions;
+
+  const consentText = normalizedQuestions
+    .filter((question) => question.riskTags?.includes("privacy_consent"))
+    .map((question) =>
+      [question.label, question.auxiliaryText, ...(question.options ?? [])]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
 
   return {
     platform: "google_forms",
@@ -135,13 +170,14 @@ export function extractGoogleForms(input: GoogleFormsExtractorInput): Normalized
     loginRequired: parsed.loginRequired,
     branchDetected: parsed.branchDetected,
     extractedFromHtml: true,
-    hasPrivacyNotice: noticeFlags.hasPrivacyNotice,
-    hasConsent: noticeFlags.hasConsent,
+    hasPrivacyNotice: noticeFlags.hasPrivacyNotice || parsed.noticeTexts.length > 0,
+    hasConsent: noticeFlags.hasConsent || Boolean(consentText),
     hasRetentionNotice: noticeFlags.hasRetentionNotice,
     hasOverseasTransferNotice: noticeFlags.hasOverseasTransferNotice,
     notices: {
-      description: description.slice(0, 2000),
-      privacyNotice: parsed.noticeTexts.join("\n").slice(0, 2000),
+      description: description.slice(0, 12000),
+      privacyNotice: parsed.noticeTexts.join("\n").slice(0, 12000),
+      consentText: consentText || undefined,
     },
     metadata: {
       noticeTexts: parsed.noticeTexts,

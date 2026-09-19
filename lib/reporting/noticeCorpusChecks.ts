@@ -20,20 +20,31 @@ function matchesAny(text: string, patterns: RegExp[]): boolean {
 
 /** 수집 목적 */
 export function hasCollectionPurpose(corpus: string): boolean {
-  return includesAny(corpus, [
-    "수집 목적",
-    "수집·이용 목적",
-    "수집 이용 목적",
-    "개인정보 수집·이용 목적",
-    "개인정보 수집 이용 목적",
-    "이용 목적",
-    "활용 목적",
-    "처리 목적",
-    "조사 목적",
-    "서비스 개선 목적",
-    "설문조사 경품 지급",
-    "경품 지급",
-  ]);
+  if (
+    includesAny(corpus, [
+      "수집 목적",
+      "수집목적",
+      "수집·이용 목적",
+      "수집 이용 목적",
+      "수집 및 이용 목적",
+      "개인정보 수집·이용 목적",
+      "개인정보 수집 이용 목적",
+      "이용 목적",
+      "활용 목적",
+      "처리 목적",
+      "조사 목적",
+      "서비스 개선 목적",
+      "설문조사 경품 지급",
+      "경품 지급",
+    ])
+  ) {
+    return true;
+  }
+  const compact = corpus.replace(/\s+/g, " ");
+  return (
+    /개인정보.{0,80}(?:수집|이용|처리).{0,40}목적/.test(compact) ||
+    /(?:수집|이용|처리)\s*목적.{0,80}개인정보/.test(compact)
+  );
 }
 
 /** 수집 항목 */
@@ -41,6 +52,7 @@ export function hasCollectionItems(corpus: string): boolean {
   if (
     includesAny(corpus, [
       "수집 항목",
+      "수집항목",
       "수집하려는 개인정보 항목",
       "개인정보 항목",
       "처리 항목",
@@ -50,9 +62,8 @@ export function hasCollectionItems(corpus: string): boolean {
   ) {
     return true;
   }
-  // 고지문에서 항목을 나열하는 경우
   return (
-    /수집.{0,12}(개인정보\s*)?항목/.test(corpus) &&
+    /수집.{0,20}(개인정보\s*)?항목/.test(corpus) &&
     includesAny(corpus, [
       "성명",
       "이름",

@@ -160,6 +160,7 @@ export interface FormMetadata {
 export interface NormalizedPage {
   id: string;
   title?: string;
+  description?: string;
   questions: NormalizedQuestion[];
 }
 

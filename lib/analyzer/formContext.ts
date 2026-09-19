@@ -71,7 +71,7 @@ function pushBlock(
   blocks.push({
     id: `b${blocks.length + 1}`,
     type: input.type,
-    text: text.slice(0, 2000),
+    text: text.slice(0, 12000),
     order,
     pageIndex: input.pageIndex,
     source: input.source,
@@ -129,6 +129,23 @@ export function buildSurveyFormContext(form: NormalizedForm): SurveyFormContext 
     pushBlock(blocks, {
       type: classifyLooseText(raw),
       text: raw,
+      pageIndex: null,
+      source: "metadata",
+      confidence: "medium",
+    });
+  }
+
+  for (const page of form.pages || []) {
+    pushBlock(blocks, {
+      type: classifyLooseText(page.title || ""),
+      text: page.title || "",
+      pageIndex: null,
+      source: "metadata",
+      confidence: "medium",
+    });
+    pushBlock(blocks, {
+      type: classifyLooseText(page.description || ""),
+      text: page.description || "",
       pageIndex: null,
       source: "metadata",
       confidence: "medium",
