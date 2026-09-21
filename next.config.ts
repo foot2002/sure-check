@@ -32,6 +32,12 @@ const nextConfig: NextConfig = {
     "/api/report/admin/cases/[id]/official-letter/route": [
       "./lib/report/templates/sure-check-official-letter.docx",
     ],
+    "/api/report/admin/cases/[id]/official-notice": [
+      "./lib/report/templates/sure-check-official-notice.docx",
+    ],
+    "/api/report/admin/cases/[id]/official-notice/route": [
+      "./lib/report/templates/sure-check-official-notice.docx",
+    ],
     "/api/scan/file": pdfTracingIncludes,
     "/api/scan/file/route": pdfTracingIncludes,
     "/api/evidence/capture": [

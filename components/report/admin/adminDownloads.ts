@@ -53,6 +53,20 @@ export function officialLetterFilename(title: string, caseId: string): string {
   return `[SURE-CHECK] ${safe || "제목없음"} 실태조사 분석 보고서.docx`;
 }
 
+export function officialNoticeDownloadUrl(caseId: string): string {
+  return `/api/report/admin/cases/${caseId}/official-notice`;
+}
+
+export function officialNoticeFilename(title: string, caseId: string): string {
+  const safe = (title || "제목없음")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return `[SURE-CHECK] ${safe || "제목없음"} 실태조사 결과 통보.docx`;
+}
+
 export function adminCasesExportUrl(query: string): string {
   return `/api/report/admin/cases/export${query ? `?${query}` : ""}`;
 }

@@ -88,7 +88,7 @@ function main() {
   check("table issue badges slice 3", consoleView.includes("issueBadges.slice(0, 3)"));
   check("readable data summary", consoleView.includes("formatDataCollectionBrief") && consoleView.includes("민감정보 포함"));
   check("evidence column", consoleView.includes(">증빙<"));
-  check("row actions visible", rowActions.includes("검토") && rowActions.includes("원본") && rowActions.includes("리포트") && rowActions.includes("증빙"));
+  check("row actions visible", rowActions.includes("검토") && rowActions.includes("원본") && rowActions.includes("리포트최종") && rowActions.includes("공문") && rowActions.includes("증빙"));
   check("P/S/H removed from console", !/P\/S\/H/.test(consoleView));
   check("no 공개 상태 label", !consoleView.includes("공개 상태"));
   check("public case wording", consoleView.includes("공개 사례") && consoleView.includes("공개중"));

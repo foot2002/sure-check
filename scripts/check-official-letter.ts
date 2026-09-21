@@ -420,12 +420,12 @@ async function main() {
     /buildOfficialLetterDocx/.test(read("app/api/report/admin/cases/[id]/official-letter/route.ts")),
   );
   check(
-    "list shows 공문down",
-    read("components/report/admin/AdminCaseRowActions.tsx").includes("공문down"),
+    "list shows 리포트최종",
+    read("components/report/admin/AdminCaseRowActions.tsx").includes("리포트최종"),
   );
   check(
-    "action bar shows 공문down",
-    read("components/report/admin/AdminCaseActionBar.tsx").includes("공문down"),
+    "action bar shows 리포트최종",
+    read("components/report/admin/AdminCaseActionBar.tsx").includes("리포트최종"),
   );
   check(
     "list disables non-reportable",

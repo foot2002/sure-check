@@ -12,6 +12,8 @@ import {
   reviewReportFilename,
   officialLetterDownloadUrl,
   officialLetterFilename,
+  officialNoticeDownloadUrl,
+  officialNoticeFilename,
 } from "@/components/report/admin/adminDownloads";
 import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
 
@@ -121,17 +123,22 @@ export function AdminCaseRowActions({
       <button
         type="button"
         className={`${ghost} hidden sm:inline-flex`}
-        disabled={busy}
+        disabled={busy || !row.letterEligible}
+        title={
+          row.letterEligible
+            ? undefined
+            : "정상 진단만 리포트를 받을 수 있습니다."
+        }
         onClick={() =>
           void run(async () => {
             await downloadAdminBlob(
-              reviewReportDownloadUrl(row.id),
-              reviewReportFilename(row.id),
+              officialLetterDownloadUrl(row.id),
+              officialLetterFilename(row.surveyTitle || "", row.id),
             );
           })
         }
       >
-        리포트
+        리포트최종
       </button>
       <button
         type="button"
@@ -145,13 +152,13 @@ export function AdminCaseRowActions({
         onClick={() =>
           void run(async () => {
             await downloadAdminBlob(
-              officialLetterDownloadUrl(row.id),
-              officialLetterFilename(row.surveyTitle || "", row.id),
+              officialNoticeDownloadUrl(row.id),
+              officialNoticeFilename(row.surveyTitle || "", row.id),
             );
           })
         }
       >
-        공문down
+        공문
       </button>
       <button
         type="button"
@@ -218,7 +225,7 @@ export function AdminCaseRowActions({
               title={
                 row.letterEligible
                   ? undefined
-                  : "정상 진단만 공문을 받을 수 있습니다."
+                  : "정상 진단만 리포트를 받을 수 있습니다."
               }
               onClick={() => {
                 setOpen(false);
@@ -230,7 +237,28 @@ export function AdminCaseRowActions({
                 });
               }}
             >
-              공문down
+              리포트최종
+            </button>
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy || !row.letterEligible}
+              title={
+                row.letterEligible
+                  ? undefined
+                  : "정상 진단만 공문을 받을 수 있습니다."
+              }
+              onClick={() => {
+                setOpen(false);
+                void run(async () => {
+                  await downloadAdminBlob(
+                    officialNoticeDownloadUrl(row.id),
+                    officialNoticeFilename(row.surveyTitle || "", row.id),
+                  );
+                });
+              }}
+            >
+              공문
             </button>
             <button
               type="button"

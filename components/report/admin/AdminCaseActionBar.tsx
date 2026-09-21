@@ -12,6 +12,8 @@ import {
   reviewReportFilename,
   officialLetterDownloadUrl,
   officialLetterFilename,
+  officialNoticeDownloadUrl,
+  officialNoticeFilename,
 } from "@/components/report/admin/adminDownloads";
 import { AdminPublishCaseModal } from "@/components/report/admin/AdminPublishCaseModal";
 import { PUBLIC_INDIVIDUAL_CASES_ENABLED } from "@/lib/report/publicCasePolicy";
@@ -88,6 +90,13 @@ export function AdminCaseActionBar({
     );
   }
 
+  async function downloadOfficialNotice() {
+    await downloadAdminBlob(
+      officialNoticeDownloadUrl(caseId),
+      officialNoticeFilename(surveyTitle || "", caseId),
+    );
+  }
+
   async function downloadDetailReport() {
     await downloadAdminBlob(detailReportDownloadUrl(caseId), detailReportFilename(caseId));
   }
@@ -158,10 +167,19 @@ export function AdminCaseActionBar({
         type="button"
         className={btn}
         disabled={!letterEligible || busy === "letter"}
-        title={letterEligible ? undefined : "정상 진단만 공문을 받을 수 있습니다."}
+        title={letterEligible ? undefined : "정상 진단만 리포트를 받을 수 있습니다."}
         onClick={() => void run("letter", downloadOfficialLetter)}
       >
-        공문down
+        리포트최종
+      </button>
+      <button
+        type="button"
+        className={btn}
+        disabled={!letterEligible || busy === "notice"}
+        title={letterEligible ? undefined : "정상 진단만 공문을 받을 수 있습니다."}
+        onClick={() => void run("notice", downloadOfficialNotice)}
+      >
+        공문
       </button>
       <button
         type="button"

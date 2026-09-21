@@ -56,6 +56,9 @@
     },
     "app/api/report/admin/cases/[id]/official-letter/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/report/admin/cases/[id]/official-notice/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

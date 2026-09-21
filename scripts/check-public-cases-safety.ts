@@ -224,7 +224,8 @@ function main() {
 
   const row = read("components/report/admin/AdminCaseRowActions.tsx");
   check("row 요약리포트", row.includes("요약리포트"));
-  check("row 공문down", row.includes("공문down"));
+  check("row 리포트최종", row.includes("리포트최종"));
+  check("row 공문", row.includes("        공문"));
   check("row 상세리포트", row.includes("상세리포트"));
   check("row 공개 사례", row.includes("공개 사례"));
 
